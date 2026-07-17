@@ -8,7 +8,7 @@
 - 최초 기능 완료 커밋: `3873f62`
 - Python: 3.14+
 - 플랫폼: macOS
-- 자동 테스트: 단위 테스트 68개(기준 커버리지 90%), 합성 FFmpeg E2E 2개
+- 자동 테스트: 단위 테스트 74개(기준 커버리지 90%), 합성 FFmpeg E2E 2개
 - 성능 기준: 12시간·영상 200개, 총 31.645초, p95 0.159초, p99 0.161초,
   peak RSS 287.9MB(2026-07-17 Apple Silicon)
 
@@ -43,6 +43,7 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 - 자동 테스트에 실제 사용자 미디어나 네트워크를 넣지 않는다.
 - 선택 파일/진행률은 stderr로 분리한다. `analyze`는 기본 사람용 목록이며 `--json`에서만
   상세 JSON을 stdout에 출력한다. `process` stdout과 `--report` 파일은 JSON을 유지한다.
+- PR 제목에는 한글이 최소 한 글자 있어야 하며 사용자에게 보이는 CI 명칭은 한국어다.
 
 이 불변식을 바꾸는 요구는 단순 리팩터가 아니라 제품 정책 변경이다. 별도 합의, RED
 테스트, 문서와 REPORT_VERSION 영향을 먼저 정리한다.
@@ -137,8 +138,8 @@ uv run pytest tests/unit -q
 
 그다음 관련 테스트 파일에서 RED를 만들고 구현한다. 완료 시 전체 검사, 벤치 필요 여부,
 비밀정보·미디어 추적 여부, 문서 갱신 여부를 확인한 뒤 작업 브랜치 PR을 만든다. `main`
-직접 commit/push/merge는 금지하며 Unit Tests, Synthetic FFmpeg E2E, Quality 통과 후
-GitHub PR에서 병합한다.
+직접 commit/push/merge는 금지하며 한글 PR 제목 검사, 단위 테스트, 합성 미디어 종단간
+테스트, 코드 품질·보안·패키지 생성 통과 후 GitHub PR에서 병합한다.
 
 ## 배포·전역 설치 인수인계
 
