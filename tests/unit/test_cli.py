@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from recordersync.cli import build_parser, main
-from recordersync.models import AudioMatch, MatchStatus
+from recordersync.models import AudioMatch, AudioMatchSegment, MatchStatus
 from recordersync.pipeline import AnalysisBundle
 
 
@@ -46,7 +46,7 @@ def test_처리_CLI는_안전한_교체_정책을_기본값으로_사용한다()
     assert args.audio_dir == Path("/audio")
     assert args.output_dir is None
     assert args.mode == "replace"
-    assert args.camera_audio_volume == pytest.approx(0.1)
+    assert args.camera_audio_volume is None
     assert args.external_audio_volume == pytest.approx(1.0)
     assert args.min_confidence == pytest.approx(0.75)
     assert args.min_peak_margin == pytest.approx(0.05)
@@ -56,6 +56,15 @@ def test_처리_CLI는_안전한_교체_정책을_기본값으로_사용한다()
     assert args.output_suffix == ""
     assert not args.json
     assert not args.overwrite
+
+
+def test_부분_분석과_폴백_처리는_구간_매칭을_활성화한다() -> None:
+    analyze_args = build_parser().parse_args(["analyze", "/video", "--partial"])
+    process_args = build_parser().parse_args(["process", "/video", "--mode", "fallback"])
+
+    assert analyze_args.partial
+    assert process_args.mode == "fallback"
+    assert process_args.camera_audio_volume is None
 
 
 def test_처리_CLI는_오디오_디렉터리_생략을_허용한다() -> None:
@@ -289,6 +298,29 @@ def test_메인_모의_실행은_출력_이름의_접두사와_접미사를_적�
 
     assert exit_code == 0
     assert '"output": "/video/replace/final_clip_synced.mp4"' in capsys.readouterr().out
+    pipeline.process.assert_not_called()
+
+
+def test_메인_폴백_모의_실행은_부분_매칭을_성공으로_처리한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    match = AudioMatch(
+        Path("clip.mov"),
+        10,
+        MatchStatus.PARTIAL,
+        segments=(AudioMatchSegment("session-001", 2, 4, 5, confidence=0.9),),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = AnalysisBundle((), (), (match,))
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(["process", "/video", "--mode", "fallback", "--dry-run"])
+
+    assert exit_code == 0
+    stdout = capsys.readouterr().out
+    assert '"status": "partial"' in stdout
+    assert '"output": "/video/replace/clip.mp4"' in stdout
+    assert pipeline.analyze.call_args.kwargs["match_options"].enable_partial
     pipeline.process.assert_not_called()
 
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from recordersync.matching import MatchOptions, match_video_features
 from recordersync.media import FFmpegTools, VideoInfo, discover_audio_files
 from recordersync.models import AudioMatch, MatchStatus, RecordingSession
-from recordersync.render import RenderMode, RenderPlan, resolve_output_path
+from recordersync.render import RenderMode, RenderPlan, RenderSegment, resolve_output_path
 from recordersync.sessions import group_recording_sessions
 
 
@@ -67,11 +67,11 @@ def match_videos(
 def build_render_plan(
     match: AudioMatch,
     video: VideoInfo,
-    session: RecordingSession,
+    session: RecordingSession | Sequence[RecordingSession],
     output_dir: Path,
     *,
     mode: RenderMode = RenderMode.REPLACE,
-    camera_audio_volume: float = 0.1,
+    camera_audio_volume: float | None = None,
     external_audio_volume: float = 1.0,
     overwrite: bool = False,
     output_prefix: str = "",
@@ -79,23 +79,68 @@ def build_render_plan(
 ) -> RenderPlan:
     """승인된 매칭을 렌더 계획으로 변환한다."""
 
-    if match.status is not MatchStatus.MATCHED:
-        raise ValueError("Only matched audio can be rendered")
-    if match.session_id != session.id or match.external_start_seconds is None:
-        raise ValueError("Match does not belong to the supplied recording session")
+    if match.status is MatchStatus.PARTIAL and mode is not RenderMode.FALLBACK:
+        raise ValueError("Partial audio can only be rendered in fallback mode")
+    if match.status not in {MatchStatus.MATCHED, MatchStatus.PARTIAL}:
+        raise ValueError("Only matched or partial audio can be rendered")
+
+    resolved_sessions = (session,) if isinstance(session, RecordingSession) else tuple(session)
+    session_by_id = {item.id: item for item in resolved_sessions}
+    if match.segments:
+        missing = {
+            segment.session_id
+            for segment in match.segments
+            if segment.session_id not in session_by_id
+        }
+        if missing:
+            raise ValueError("Match does not belong to the supplied recording sessions")
+        render_segments = tuple(
+            RenderSegment(
+                session=session_by_id[segment.session_id],
+                video_start_seconds=segment.video_start_seconds,
+                external_start_seconds=segment.external_start_seconds,
+                duration_seconds=segment.duration_seconds,
+                tempo_ratio=segment.tempo_ratio,
+            )
+            for segment in match.segments
+        )
+    else:
+        if (
+            match.session_id is None
+            or match.external_start_seconds is None
+            or match.session_id not in session_by_id
+        ):
+            raise ValueError("Match does not belong to the supplied recording session")
+        render_segments = ()
+
+    primary_session = (
+        render_segments[0].session if render_segments else session_by_id[match.session_id or ""]
+    )
+    external_start = (
+        render_segments[0].external_start_seconds
+        if render_segments
+        else match.external_start_seconds or 0.0
+    )
+    tempo_ratio = render_segments[0].tempo_ratio if render_segments else match.tempo_ratio
+    resolved_camera_volume = (
+        camera_audio_volume
+        if camera_audio_volume is not None
+        else (1.0 if mode is RenderMode.FALLBACK else 0.1)
+    )
     return RenderPlan(
         video=video,
-        session=session,
+        session=primary_session,
         output_path=resolve_output_path(
             video.path,
             output_dir,
             prefix=output_prefix,
             suffix=output_suffix,
         ),
-        external_start_seconds=match.external_start_seconds,
-        tempo_ratio=match.tempo_ratio,
+        external_start_seconds=external_start,
+        tempo_ratio=tempo_ratio,
         mode=mode,
-        camera_audio_volume=camera_audio_volume,
+        camera_audio_volume=resolved_camera_volume,
         external_audio_volume=external_audio_volume,
         overwrite=overwrite,
+        segments=render_segments if mode is RenderMode.FALLBACK else (),
     )

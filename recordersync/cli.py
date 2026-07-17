@@ -47,6 +47,12 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--min-confidence", type=float, default=0.75)
     parser.add_argument("--min-peak-margin", type=float, default=0.05)
+    parser.add_argument(
+        "--min-partial-seconds",
+        type=float,
+        default=5.0,
+        help="부분 매칭으로 승인할 최소 연속 구간 길이(기본: 5.0)",
+    )
     parser.add_argument("--session-gap-seconds", type=float, default=10.0)
 
 
@@ -74,6 +80,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="기계 처리를 위한 전체 JSON을 표준 출력으로 내보냅니다.",
     )
+    analyze.add_argument(
+        "--partial",
+        action="store_true",
+        help="부분·다중 구간 매칭과 카메라음 폴백 가능성을 분석합니다.",
+    )
 
     process = subparsers.add_parser("process", help="매칭 후 개별 표준화 영상을 생성")
     _add_common_options(process)
@@ -81,8 +92,8 @@ def build_parser() -> argparse.ArgumentParser:
     process.add_argument(
         "--camera-audio-volume",
         type=_unit_interval,
-        default=0.1,
-        help="원본 영상 오디오 볼륨(0.0~1.0, mix 전용, 기본: 0.1)",
+        default=None,
+        help="원본 영상 오디오 볼륨(기본: mix 0.1, fallback 1.0)",
     )
     process.add_argument(
         "--external-audio-volume",
@@ -111,11 +122,19 @@ def _match_options(args: argparse.Namespace) -> MatchOptions:
     return MatchOptions(
         min_confidence=args.min_confidence,
         min_peak_margin=args.min_peak_margin,
+        enable_partial=(
+            bool(getattr(args, "partial", False))
+            or getattr(args, "mode", None) == RenderMode.FALLBACK.value
+        ),
+        min_partial_duration_seconds=args.min_partial_seconds,
     )
 
 
-def _exit_code(report: MatchReport) -> int:
-    return 0 if all(match.status is MatchStatus.MATCHED for match in report.matches) else 2
+def _exit_code(report: MatchReport, *, accept_partial: bool = False) -> int:
+    successful = {MatchStatus.MATCHED}
+    if accept_partial:
+        successful.add(MatchStatus.PARTIAL)
+    return 0 if all(match.status in successful for match in report.matches) else 2
 
 
 def _print_selection(kind: str, paths: tuple[Path, ...]) -> None:
@@ -138,6 +157,7 @@ def _dry_run_report(
     bundle: object,
     output_dir: Path,
     *,
+    mode: RenderMode,
     output_prefix: str,
     output_suffix: str,
 ) -> MatchReport:
@@ -156,6 +176,7 @@ def _dry_run_report(
                     suffix=output_suffix,
                 )
                 if match.status is MatchStatus.MATCHED
+                or (match.status is MatchStatus.PARTIAL and mode is RenderMode.FALLBACK)
                 else None
             ),
         )
@@ -175,6 +196,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     audio_dir = args.audio_dir or args.video_dir
     output_dir = args.output_dir or args.video_dir / "replace"
     report_language = ReportLanguage(args.report_language)
+    render_mode = RenderMode(args.mode) if args.command == "process" else RenderMode.REPLACE
 
     try:
         bundle = pipeline.analyze(
@@ -192,6 +214,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             report = _dry_run_report(
                 bundle,
                 output_dir,
+                mode=render_mode,
                 output_prefix=args.output_prefix,
                 output_suffix=args.output_suffix,
             )
@@ -199,7 +222,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             report = pipeline.process(
                 bundle,
                 output_dir,
-                mode=RenderMode(args.mode),
+                mode=render_mode,
                 camera_audio_volume=args.camera_audio_volume,
                 external_audio_volume=args.external_audio_volume,
                 overwrite=args.overwrite,
@@ -217,7 +240,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(report.to_text(language=report_language))
         else:
             print(report.to_json(language=report_language))
-        return _exit_code(report)
+        return _exit_code(
+            report,
+            accept_partial=args.command == "process" and render_mode is RenderMode.FALLBACK,
+        )
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         print(f"recordersync: {exc}", file=sys.stderr)
         return 1

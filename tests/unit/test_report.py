@@ -6,7 +6,13 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from recordersync.models import AudioChunk, AudioMatch, MatchStatus, RecordingSession
+from recordersync.models import (
+    AudioChunk,
+    AudioMatch,
+    AudioMatchSegment,
+    MatchStatus,
+    RecordingSession,
+)
 from recordersync.report import MatchReport, ReportLanguage
 
 
@@ -40,11 +46,12 @@ def test_매칭_리포트는_세션과_매칭과_요약을_직렬화한다() -> 
 
     payload = json.loads(report.to_json())
 
-    assert payload["version"] == 1
+    assert payload["version"] == 2
     assert payload["language"] == "ko"
     assert payload["summary"] == {
         "total": 2,
         "matched": 1,
+        "partial": 0,
         "unmatched": 0,
         "ambiguous": 1,
         "error": 0,
@@ -54,6 +61,51 @@ def test_매칭_리포트는_세션과_매칭과_요약을_직렬화한다() -> 
     assert payload["matches"][1]["reason"] == (
         "최상위 후보와 차순위 후보의 차이가 충분하지 않습니다."
     )
+
+
+def test_매칭_리포트는_부분_구간과_레코더_사용률을_표시한다() -> None:
+    match = AudioMatch(
+        Path("partial.mov"),
+        10,
+        MatchStatus.PARTIAL,
+        confidence=0.85,
+        reason="Only part of the camera audio matched the external recording",
+        segments=(
+            AudioMatchSegment("session-001", 1, 3, 3, confidence=0.9),
+            AudioMatchSegment("session-002", 7, 4, 2, confidence=0.8),
+        ),
+    )
+    report = MatchReport(
+        sessions=(),
+        matches=(match,),
+        created_at=datetime(2026, 7, 17, tzinfo=UTC),
+    )
+
+    payload = report.to_dict()
+
+    assert payload["summary"] == {
+        "total": 1,
+        "matched": 0,
+        "partial": 1,
+        "unmatched": 0,
+        "ambiguous": 0,
+        "error": 0,
+    }
+    assert payload["matches"][0]["coverage_ratio"] == 0.5
+    assert payload["matches"][0]["segments"][1] == {
+        "session_id": "session-002",
+        "video_start_seconds": 7,
+        "external_start_seconds": 4,
+        "duration_seconds": 2,
+        "tempo_ratio": 1.0,
+        "correlation": 0.0,
+        "peak_margin": 0.0,
+        "confidence": 0.8,
+    }
+    assert report.to_text().splitlines() == [
+        "분석 결과: 0/1개 전체 매칭, 1개 부분 매칭",
+        ("- partial.mov | 매칭 여부: 부분 | 매칭률: 85.0% | 레코더 사용: 50.0% | 구간: 2개"),
+    ]
 
 
 def test_매칭_리포트는_영문_사유를_렌더링할_수_있다() -> None:

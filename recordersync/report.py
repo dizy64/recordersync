@@ -10,7 +10,7 @@ from pathlib import Path
 
 from recordersync.models import AudioMatch, MatchStatus, RecordingSession
 
-REPORT_VERSION = 1
+REPORT_VERSION = 2
 
 
 class ReportLanguage(StrEnum):
@@ -41,6 +41,10 @@ _KOREAN_REASONS = {
         "FFmpeg가 성공을 보고했지만 출력 파일을 만들지 않았습니다."
     ),
     "mix mode requires camera audio": "mix 모드에는 카메라 오디오가 필요합니다.",
+    "fallback mode requires camera audio": "fallback 모드에는 카메라 오디오가 필요합니다.",
+    "Only part of the camera audio matched the external recording": (
+        "카메라 오디오의 일부만 외부 녹음과 일치합니다."
+    ),
 }
 
 _KOREAN_REASON_PREFIXES = {
@@ -85,6 +89,7 @@ class MatchReport:
         return {
             "total": len(self.matches),
             "matched": sum(match.status is MatchStatus.MATCHED for match in self.matches),
+            "partial": sum(match.status is MatchStatus.PARTIAL for match in self.matches),
             "unmatched": sum(match.status is MatchStatus.UNMATCHED for match in self.matches),
             "ambiguous": sum(match.status is MatchStatus.AMBIGUOUS for match in self.matches),
             "error": sum(match.status is MatchStatus.ERROR for match in self.matches),
@@ -115,6 +120,20 @@ class MatchReport:
                     "correlation": match.correlation,
                     "peak_margin": match.peak_margin,
                     "confidence": match.confidence,
+                    "coverage_ratio": match.coverage_ratio,
+                    "segments": [
+                        {
+                            "session_id": segment.session_id,
+                            "video_start_seconds": segment.video_start_seconds,
+                            "external_start_seconds": segment.external_start_seconds,
+                            "duration_seconds": segment.duration_seconds,
+                            "tempo_ratio": segment.tempo_ratio,
+                            "correlation": segment.correlation,
+                            "peak_margin": segment.peak_margin,
+                            "confidence": segment.confidence,
+                        }
+                        for segment in match.segments
+                    ],
                     "reason": _translate_reason(match.reason, language),
                     "output": str(match.output_path) if match.output_path else None,
                 }
@@ -131,27 +150,45 @@ class MatchReport:
         summary = self._summary()
         total = summary["total"]
         matched = summary["matched"]
+        partial = summary["partial"]
         overall_rate = matched / total * 100 if total else 0.0
 
         if language is ReportLanguage.KO:
-            summary_line = f"분석 결과: {matched}/{total}개 매칭 ({overall_rate:.1f}%)"
-            matched_label, yes, no = "매칭 여부", "성공", "실패"
+            summary_line = (
+                f"분석 결과: {matched}/{total}개 전체 매칭, {partial}개 부분 매칭"
+                if partial
+                else f"분석 결과: {matched}/{total}개 매칭 ({overall_rate:.1f}%)"
+            )
+            matched_label, yes, partial_value, no = "매칭 여부", "성공", "부분", "실패"
             confidence_label, reason_label = "매칭률", "사유"
+            coverage_label, segment_label = "레코더 사용", "구간"
             missing_reason = "사유를 확인할 수 없습니다."
         else:
-            summary_line = f"Analysis result: {matched}/{total} matched ({overall_rate:.1f}%)"
-            matched_label, yes, no = "matched", "yes", "no"
+            summary_line = (
+                f"Analysis result: {matched}/{total} fully matched, {partial} partially matched"
+                if partial
+                else f"Analysis result: {matched}/{total} matched ({overall_rate:.1f}%)"
+            )
+            matched_label, yes, partial_value, no = "matched", "yes", "partial", "no"
             confidence_label, reason_label = "match confidence", "reason"
+            coverage_label, segment_label = "recorder coverage", "segments"
             missing_reason = "reason unavailable"
 
         lines = [summary_line]
         for match in self.matches:
             is_matched = match.status is MatchStatus.MATCHED
+            is_partial = match.status is MatchStatus.PARTIAL
+            match_value = partial_value if is_partial else (yes if is_matched else no)
             line = (
-                f"- {match.video_path.name} | {matched_label}: {yes if is_matched else no} | "
+                f"- {match.video_path.name} | {matched_label}: {match_value} | "
                 f"{confidence_label}: {match.confidence * 100:.1f}%"
             )
-            if not is_matched:
+            if is_partial:
+                line = (
+                    f"{line} | {coverage_label}: {match.coverage_ratio * 100:.1f}% | "
+                    f"{segment_label}: {len(match.segments)}개"
+                )
+            elif not is_matched:
                 reason = _translate_reason(match.reason, language) or missing_reason
                 line = f"{line} | {reason_label}: {reason}"
             lines.append(line)
