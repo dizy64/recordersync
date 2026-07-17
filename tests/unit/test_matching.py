@@ -164,3 +164,67 @@ def test_특징_정렬_보정은_클럭_드리프트를_추정한다() -> None:
 
     assert start_frame == 200
     assert tempo_ratio == pytest.approx((1_600 + 4) / 1_600, rel=1e-4)
+
+
+def test_부분_매칭은_짧은_녹음과_일치하는_연속_영상_구간을_찾는다() -> None:
+    rng = np.random.default_rng(29)
+    video = _standardize(rng.normal(size=(6, 120)).astype(np.float32))
+    session = _standardize(video[:, 20:100] + rng.normal(scale=0.01, size=(6, 80)))
+
+    result = match_video_features(
+        Path("clip.mov"),
+        duration_seconds=6.0,
+        video_features=video,
+        sessions=[FeatureTimeline("session-001", session, 0.05)],
+        options=MatchOptions(
+            min_confidence=0.7,
+            min_peak_margin=0.03,
+            enable_partial=True,
+            partial_window_seconds=1.0,
+            min_partial_duration_seconds=1.0,
+        ),
+    )
+
+    assert result.status is MatchStatus.PARTIAL
+    assert len(result.segments) == 1
+    assert result.segments[0].session_id == "session-001"
+    assert result.segments[0].video_start_seconds == pytest.approx(1.0)
+    assert result.segments[0].external_start_seconds == pytest.approx(0.0, abs=0.05)
+    assert result.segments[0].duration_seconds == pytest.approx(4.0)
+    assert result.coverage_ratio == pytest.approx(4 / 6)
+
+
+def test_부분_매칭은_중간_불일치_양쪽을_서로_다른_세션으로_찾는다() -> None:
+    rng = np.random.default_rng(31)
+    video = _standardize(rng.normal(size=(6, 160)).astype(np.float32))
+    first_session = rng.normal(scale=0.02, size=(6, 100)).astype(np.float32)
+    second_session = rng.normal(scale=0.02, size=(6, 100)).astype(np.float32)
+    first_session[:, 20:80] += video[:, :60]
+    second_session[:, 20:80] += video[:, 100:160]
+
+    result = match_video_features(
+        Path("clip.mov"),
+        duration_seconds=8.0,
+        video_features=video,
+        sessions=[
+            FeatureTimeline("session-001", _standardize(first_session), 0.05),
+            FeatureTimeline("session-002", _standardize(second_session), 0.05),
+        ],
+        options=MatchOptions(
+            min_confidence=0.7,
+            min_peak_margin=0.03,
+            enable_partial=True,
+            partial_window_seconds=1.0,
+            min_partial_duration_seconds=1.0,
+        ),
+    )
+
+    assert result.status is MatchStatus.PARTIAL
+    assert [
+        (segment.session_id, segment.video_start_seconds, segment.duration_seconds)
+        for segment in result.segments
+    ] == [
+        ("session-001", pytest.approx(0.0), pytest.approx(3.0)),
+        ("session-002", pytest.approx(5.0), pytest.approx(3.0)),
+    ]
+    assert result.coverage_ratio == pytest.approx(0.75)
