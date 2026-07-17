@@ -1,5 +1,7 @@
 """배치 분석·렌더 오케스트레이션 단위 테스트."""
 
+# ruff: noqa: N802 - 테스트 이름은 한국어 문장으로 작성한다.
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,7 +26,7 @@ def _features() -> tuple[np.ndarray, np.ndarray]:
     return video, session
 
 
-def test_pipeline_analyze_discovers_sessions_and_matches_video(tmp_path: Path) -> None:
+def test_파이프라인_분석은_세션을_찾고_영상과_매칭한다(tmp_path: Path) -> None:
     audio_dir = tmp_path / "audio"
     video_dir = tmp_path / "video"
     audio_dir.mkdir()
@@ -68,7 +70,7 @@ def test_pipeline_analyze_discovers_sessions_and_matches_video(tmp_path: Path) -
     ]
 
 
-def test_pipeline_marks_video_without_camera_audio_as_error(tmp_path: Path) -> None:
+def test_파이프라인은_카메라_오디오가_없는_영상을_오류로_표시한다(tmp_path: Path) -> None:
     audio_dir = tmp_path / "audio"
     video_dir = tmp_path / "video"
     audio_dir.mkdir()
@@ -91,7 +93,7 @@ def test_pipeline_marks_video_without_camera_audio_as_error(tmp_path: Path) -> N
     tools.extract_features.assert_not_called()
 
 
-def test_pipeline_process_renders_only_matched_videos(tmp_path: Path) -> None:
+def test_파이프라인_처리는_매칭된_영상만_렌더링한다(tmp_path: Path) -> None:
     video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True)
     session = RecordingSession(
         "session-001",

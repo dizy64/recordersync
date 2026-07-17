@@ -1,5 +1,7 @@
 """오디오 특징 생성과 FFT 매칭 정책."""
 
+# ruff: noqa: N802 - 테스트 이름은 한국어 문장으로 작성한다.
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,7 +25,7 @@ def _standardize(features: np.ndarray) -> np.ndarray:
     return (features - mean) / std
 
 
-def test_build_multiband_features_returns_finite_normalized_bands() -> None:
+def test_다중_대역_특징_생성은_유한한_정규화_대역을_반환한다() -> None:
     sample_rate = 8_000
     seconds = 3
     time = np.arange(sample_rate * seconds) / sample_rate
@@ -39,7 +41,7 @@ def test_build_multiband_features_returns_finite_normalized_bands() -> None:
     assert features.mean(axis=1) == pytest.approx(np.zeros(6), abs=1e-5)
 
 
-def test_match_video_features_finds_inserted_region() -> None:
+def test_영상_특징_매칭은_삽입된_구간을_찾는다() -> None:
     rng = np.random.default_rng(7)
     video = _standardize(rng.normal(size=(6, 120)).astype(np.float32))
     session = rng.normal(scale=0.05, size=(6, 1_000)).astype(np.float32)
@@ -59,7 +61,7 @@ def test_match_video_features_finds_inserted_region() -> None:
     assert result.peak_margin >= 0.05
 
 
-def test_match_video_features_marks_repeated_pattern_ambiguous() -> None:
+def test_영상_특징_매칭은_반복_패턴을_모호함으로_표시한다() -> None:
     rng = np.random.default_rng(9)
     video = _standardize(rng.normal(size=(6, 100)).astype(np.float32))
     session = rng.normal(scale=0.02, size=(6, 700)).astype(np.float32)
@@ -78,7 +80,7 @@ def test_match_video_features_marks_repeated_pattern_ambiguous() -> None:
     assert result.peak_margin < 0.05
 
 
-def test_match_video_features_detects_overlapping_repeated_pattern_as_ambiguous() -> None:
+def test_영상_특징_매칭은_겹치는_반복_패턴을_모호함으로_감지한다() -> None:
     rng = np.random.default_rng(10)
     repeating_unit = rng.normal(size=(6, 20)).astype(np.float32)
     video = _standardize(np.tile(repeating_unit, (1, 5)))
@@ -96,7 +98,7 @@ def test_match_video_features_detects_overlapping_repeated_pattern_as_ambiguous(
     assert result.status is MatchStatus.AMBIGUOUS
 
 
-def test_match_video_features_marks_unrelated_audio_unmatched() -> None:
+def test_영상_특징_매칭은_무관한_오디오를_불일치로_표시한다() -> None:
     rng = np.random.default_rng(11)
     video = _standardize(rng.normal(size=(6, 100)).astype(np.float32))
     session = _standardize(rng.normal(size=(6, 700)).astype(np.float32))
@@ -113,7 +115,7 @@ def test_match_video_features_marks_unrelated_audio_unmatched() -> None:
     assert result.session_id is None
 
 
-def test_match_video_features_rejects_short_session() -> None:
+def test_영상_특징_매칭은_짧은_세션을_거부한다() -> None:
     features = np.ones((6, 100), dtype=np.float32)
 
     result = match_video_features(
@@ -127,7 +129,7 @@ def test_match_video_features_rejects_short_session() -> None:
     assert "shorter" in (result.reason or "")
 
 
-def test_match_video_features_allows_same_region_for_multiple_videos() -> None:
+def test_영상_특징_매칭은_여러_영상에_같은_구간을_허용한다() -> None:
     rng = np.random.default_rng(13)
     video = _standardize(rng.normal(size=(6, 80)).astype(np.float32))
     session = rng.normal(scale=0.02, size=(6, 500)).astype(np.float32)
@@ -143,7 +145,7 @@ def test_match_video_features_allows_same_region_for_multiple_videos() -> None:
     assert first.external_start_seconds == second.external_start_seconds
 
 
-def test_refine_feature_alignment_estimates_clock_drift() -> None:
+def test_특징_정렬_보정은_클럭_드리프트를_추정한다() -> None:
     rng = np.random.default_rng(17)
     video = _standardize(rng.normal(size=(6, 2_000)).astype(np.float32))
     session = rng.normal(scale=0.01, size=(6, 3_000)).astype(np.float32)
