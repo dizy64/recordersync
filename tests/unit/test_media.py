@@ -1,7 +1,5 @@
 """FFprobe/FFmpeg 경계와 미디어 탐색 단위 테스트."""
 
-# ruff: noqa: N802 - 테스트 이름은 한국어 문장으로 작성한다.
-
 from __future__ import annotations
 
 import json

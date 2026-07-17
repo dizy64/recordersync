@@ -1,7 +1,5 @@
 """합성 레코더 조각부터 최종 영상까지 CLI E2E 검증."""
 
-# ruff: noqa: N802 - 테스트 이름은 한국어 문장으로 작성한다.
-
 from __future__ import annotations
 
 import json

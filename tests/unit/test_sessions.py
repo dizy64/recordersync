@@ -1,7 +1,5 @@
 """녹음 조각의 정렬과 세션 분리 규칙."""
 
-# ruff: noqa: N802 - 테스트 이름은 한국어 문장으로 작성한다.
-
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta

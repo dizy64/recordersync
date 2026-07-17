@@ -1,7 +1,5 @@
 """오디오 특징 생성과 FFT 매칭 정책."""
 
-# ruff: noqa: N802 - 테스트 이름은 한국어 문장으로 작성한다.
-
 from __future__ import annotations
 
 from pathlib import Path

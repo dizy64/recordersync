@@ -1,7 +1,5 @@
 """향후 TubeArchive가 호출할 공개 Python API 계약."""
 
-# ruff: noqa: N802 - 테스트 이름은 한국어 문장으로 작성한다.
-
 from __future__ import annotations
 
 from pathlib import Path

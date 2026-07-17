@@ -1,7 +1,5 @@
 """공개 CLI 인자 계약."""
 
-# ruff: noqa: N802 - 테스트 이름은 한국어 문장으로 작성한다.
-
 from __future__ import annotations
 
 import json
