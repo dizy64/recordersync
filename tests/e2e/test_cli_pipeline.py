@@ -1,5 +1,7 @@
 """합성 레코더 조각부터 최종 영상까지 CLI E2E 검증."""
 
+# ruff: noqa: N802 - 테스트 이름은 한국어 문장으로 작성한다.
+
 from __future__ import annotations
 
 import json
@@ -26,7 +28,7 @@ def _stream(payload: dict[str, Any], codec_type: str) -> dict[str, Any]:
     )
 
 
-def test_analyze_cli_defaults_to_human_output_and_supports_json(
+def test_분석_CLI는_기본적으로_사람용_출력을_제공하고_JSON을_지원한다(
     synthetic_project: SyntheticProject,
 ) -> None:
     base_command = [
@@ -66,7 +68,7 @@ def test_analyze_cli_defaults_to_human_output_and_supports_json(
     assert payload["matches"][0]["video"] == str(synthetic_project.video_path)
 
 
-def test_process_cli_matches_split_audio_and_renders_source_profile(
+def test_처리_CLI는_분할_오디오를_매칭하고_원본_프로필로_렌더링한다(
     synthetic_project: SyntheticProject,
 ) -> None:
     source_stat = synthetic_project.video_path.stat()
