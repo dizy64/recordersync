@@ -1,4 +1,4 @@
-name: 지속적 통합
+name: CI
 
 on:
   push:
@@ -9,80 +9,50 @@ permissions:
   contents: read
 
 jobs:
-  pull-request-title:
-    name: 풀 리퀘스트 제목 한글 검사
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - name: 저장소 체크아웃
-        uses: actions/checkout@v6
-      - name: 풀 리퀘스트 제목 검사
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: python3 scripts/check_pr_title.py
-
   unit-test:
-    name: 단위 테스트
+    name: Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - name: 저장소 체크아웃
-        uses: actions/checkout@v6
-      - name: uv와 파이썬 설치
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
           python-version: "3.14"
-      - name: 개발 의존성 설치
-        run: uv sync --frozen
-      - name: 단위 테스트 실행
-        run: uv run pytest tests/unit -v --tb=short
+      - run: uv sync --frozen
+      - run: uv run pytest tests/unit -v --tb=short
 
   e2e-test:
-    name: 합성 미디어 종단간 테스트
+    name: Synthetic FFmpeg E2E
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: 저장소 체크아웃
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
       - name: FFmpeg 설치
         run: |
           sudo apt-get update
           sudo apt-get install --yes ffmpeg
           ffmpeg -hide_banner -encoders 2>/dev/null | grep libx265
-      - name: uv와 파이썬 설치
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
           python-version: "3.14"
-      - name: 개발 의존성 설치
-        run: uv sync --frozen
-      - name: 합성 미디어 종단간 테스트 실행
-        run: bash scripts/test-e2e.sh
+      - run: uv sync --frozen
+      - run: bash scripts/test-e2e.sh
 
   quality:
-    name: 코드 품질·보안·패키지 생성
+    name: Lint, Types, Security, Complexity, Build
     runs-on: ubuntu-latest
     steps:
-      - name: 저장소 체크아웃
-        uses: actions/checkout@v6
-      - name: uv와 파이썬 설치
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
           python-version: "3.14"
-      - name: 개발 의존성 설치
-        run: uv sync --frozen
-      - name: Ruff 린트 검사
-        run: uv run ruff check recordersync tests scripts
-      - name: Ruff 포맷 검사
-        run: uv run ruff format --check recordersync tests scripts
-      - name: 정적 타입 검사
-        run: uv run mypy recordersync scripts/check_pr_title.py
-      - name: 의존성 보안 감사
-        run: uv run pip-audit
-      - name: 순환 복잡도 검사
-        run: uv run radon cc recordersync -a -nc
-      - name: 유지보수성 지수 검사
-        run: uv run radon mi recordersync -s
-      - name: 배포 패키지 생성
-        run: uv build
+      - run: uv sync --frozen
+      - run: uv run ruff check recordersync tests scripts
+      - run: uv run ruff format --check recordersync tests scripts
+      - run: uv run mypy recordersync
+      - run: uv run pip-audit
+      - run: uv run radon cc recordersync -a -nc
+      - run: uv run radon mi recordersync -s
+      - run: uv build

@@ -12,7 +12,6 @@
 - 최소 변경, strict mypy, ruff, pytest, pip-audit 통과
 - 코드 변경은 `../.worktrees/recordersync/{name}` worktree에서 수행
 - `main`에 직접 commit/push/merge하지 않고 작업 브랜치의 PR과 필수 CI를 통해 병합
-- PR 제목은 한글을 한 글자 이상 포함하고 사용자에게 표시되는 CI 명칭은 한국어로 작성
 - `AGENTS.md`는 이 파일을 가리키는 심볼릭 링크로 유지
 
 ## 작업 전 읽기 순서
@@ -77,9 +76,8 @@ E2E는 사용자가 명시적으로 요청한 실제 도구 경계 검증이다.
 
 1. 최신 `main`에서 worktree 작업 브랜치를 만든다.
 2. RED→GREEN→Refactor와 로컬 검증을 완료하고 push한다.
-3. `gh pr create --title "한글 제목"`으로 PR을 만들고 변경·테스트·성능·보안 영향을 기록한다.
-4. `풀 리퀘스트 제목 한글 검사`, `단위 테스트`, `합성 미디어 종단간 테스트`,
-   `코드 품질·보안·패키지 생성`이 모두 통과해야 한다.
+3. `gh pr create`로 PR을 만들고 변경·테스트·성능·보안 영향을 기록한다.
+4. GitHub Actions의 Unit Tests, Synthetic FFmpeg E2E, Quality가 모두 통과해야 한다.
 5. 미해결 리뷰 대화를 정리한 뒤 GitHub PR을 통해 병합하고 작업 브랜치를 삭제한다.
 
 긴급 상황에서도 branch protection을 우회하지 않는다. 보호 규칙 변경이 필요하면 이유와

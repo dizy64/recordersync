@@ -24,7 +24,7 @@ info "Ruff format 검사 중..."
 uv run ruff format --check "${staged_python_files[@]}" || fail "Ruff format 실패"
 
 info "mypy strict 검사 중..."
-uv run mypy recordersync scripts/check_pr_title.py || fail "mypy 실패"
+uv run mypy recordersync || fail "mypy 실패"
 
 info "단위 테스트 실행 중..."
 uv run pytest tests/unit -q || fail "단위 테스트 실패"

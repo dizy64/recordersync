@@ -32,7 +32,7 @@ cd ../.worktrees/recordersync/short-name
 
 ```bash
 git push -u origin feat/short-name
-gh pr create --title "변경 내용을 설명하는 한글 제목" --fill
+gh pr create --fill
 gh pr checks --watch
 gh pr merge --delete-branch
 
@@ -62,9 +62,6 @@ worktree로 복사하지 않는다.
 비즈니스 정책 테스트는 `tests/unit/`에 두고 실제 FFmpeg, ffprobe, 네트워크를
 호출하지 않는다. 실제 CLI/코덱 경계는 `tests/e2e/`에서 공개 합성 미디어로만 검증하며
 사용자의 미디어와 네트워크는 사용하지 않는다.
-
-Python 테스트 함수 식별자는 도구·검색 호환성을 위해 영문 `snake_case`를 유지한다.
-GitHub Actions에서 사용자에게 보이는 workflow, job, step 이름은 한국어로 작성한다.
 
 - 순수 정책은 작은 dataclass와 NumPy 배열로 검증한다.
 - 파일 경계는 `tmp_path`를 사용한다.
@@ -140,9 +137,7 @@ Document global uv tool installation workflow
 
 PR에는 문제와 범위, RED 재현, 테스트 결과, 성능·보안·데이터 영향, 남은 위험을 적는다.
 `.github/pull_request_template.md` 체크리스트를 모두 확인한다.
-PR 제목에는 한글을 한 글자 이상 포함한다. 프로젝트명이나 옵션명 등 필요한 영문 혼용은
-허용한다. `main` 보호 규칙은 PR, 최신 main 기준 한국어 이름의 필수 CI, 미해결 대화
-해소를 요구한다.
+`main` 보호 규칙은 PR, 최신 main 기준 필수 CI, 미해결 대화 해소를 요구한다.
 
 ## 완료 정의
 
