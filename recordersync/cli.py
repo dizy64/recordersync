@@ -63,6 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 세부 옵션은 `recordersync analyze --help` 또는 `recordersync process --help`로 확인합니다.""",
     )
+    parser.set_defaults(json=False)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 

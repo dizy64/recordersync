@@ -54,6 +54,7 @@ def test_process_cli_defaults_to_safe_replace_policy() -> None:
     assert args.report_language == "ko"
     assert args.output_prefix == ""
     assert args.output_suffix == ""
+    assert not args.json
     assert not args.overwrite
 
 
