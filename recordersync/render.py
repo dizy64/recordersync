@@ -68,26 +68,14 @@ def _number(value: float) -> str:
 
 
 def _video_filter(video: VideoInfo) -> list[str]:
-    hdr_filter = ""
     if video.color_transfer in {"arib-std-b67", "smpte2084"}:
-        hdr_filter = ",colorspace=all=bt709:iall=bt2020:dither=fsb,format=yuv420p10le"
-
-    if video.is_portrait:
         return [
-            "[0:v:0]split=2[bg_src][fg_src]",
             (
-                "[bg_src]scale=3840:2160:force_original_aspect_ratio=increase,"
-                "crop=3840:2160,boxblur=20:2[bg]"
+                "[0:v:0]colorspace=all=bt709:iall=bt2020:dither=fsb,"
+                "format=yuv420p10le,format=p010le[vout]"
             ),
-            "[fg_src]scale=-2:2160[fg]",
-            f"[bg][fg]overlay=(W-w)/2:(H-h)/2{hdr_filter},format=p010le[vout]",
         ]
-    return [
-        (
-            "[0:v:0]scale=3840:2160:force_original_aspect_ratio=decrease,"
-            f"pad=3840:2160:(ow-iw)/2:(oh-ih)/2{hdr_filter},format=p010le[vout]"
-        )
-    ]
+    return ["[0:v:0]format=p010le[vout]"]
 
 
 class FFmpegCommandBuilder:

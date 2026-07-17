@@ -120,16 +120,18 @@ FFmpeg `atempo`에 그대로 전달하므로 1보다 크면 외부 음원을 빠
 | 항목 | 값 |
 |---|---|
 | 컨테이너 | MP4 |
-| 해상도 | 3840×2160 |
+| 해상도 | 회전 메타데이터 적용 후 원본 표시 해상도 |
 | frame rate | 30000/1001 |
 | 영상 | `hevc_videotoolbox`, 50Mbps, `p010le`, `hvc1` |
 | 색공간 | BT.709 SDR, TV range |
 | 오디오 | AAC 48kHz 256kbps |
 | 폴백 | `libx265`, `yuv420p10le`, preset medium |
 
-세로 영상은 블러 배경 위에 원본을 배치한다. HLG/PQ 입력은 TubeArchive와 같은
-`colorspace=all=bt709:iall=bt2020:dither=fsb` 필터를 사용한다. `zscale`은 기본
-Homebrew FFmpeg 구성에 없을 수 있으므로 의존하지 않는다.
+FFmpeg 기본 autorotate가 스마트폰의 display matrix를 실제 픽셀 방향에 적용한다.
+렌더 필터는 `scale`, `pad`, `crop`, 배경 `overlay`를 사용하지 않으므로 1080×1920 세로
+입력은 1080×1920, 3840×2160 가로 입력은 3840×2160으로 출력된다. HLG/PQ 입력은
+TubeArchive와 같은 `colorspace=all=bt709:iall=bt2020:dither=fsb` 필터를 사용한다.
+`zscale`은 기본 Homebrew FFmpeg 구성에 없을 수 있으므로 의존하지 않는다.
 
 렌더는 숨김 임시 파일에 먼저 쓰고 성공한 뒤 최종 경로로 원자적으로 이동한다.
 VideoToolbox가 실패하면 임시 파일을 제거하고 libx265로 재시도한다. 최종 파일이 이미

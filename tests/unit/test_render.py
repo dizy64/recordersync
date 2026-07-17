@@ -80,6 +80,28 @@ def test_build_replace_command_uses_tubearchive_profile() -> None:
     assert "-c:a aac -b:a 256k -ar 48000" in joined
     assert "[external]" in joined
     assert "amix" not in joined
+    assert "scale=" not in joined
+    assert "pad=" not in joined
+
+
+def test_build_portrait_command_preserves_source_dimensions() -> None:
+    plan = RenderPlan(
+        video=_video(portrait=True),
+        session=_session(),
+        output_path=Path("out.mp4"),
+        external_start_seconds=0,
+        tempo_ratio=1.0,
+    )
+
+    command = FFmpegCommandBuilder().build(plan, Path("concat.txt"))
+    joined = " ".join(command)
+
+    assert "scale=" not in joined
+    assert "pad=" not in joined
+    assert "crop=" not in joined
+    assert "overlay=" not in joined
+    assert "split=2" not in joined
+    assert "-noautorotate" not in command
 
 
 def test_build_mix_command_keeps_camera_audio_at_requested_volume() -> None:
@@ -100,7 +122,8 @@ def test_build_mix_command_keeps_camera_audio_at_requested_volume() -> None:
     assert "-y" in command[:8]
     assert "volume=0.08" in joined
     assert "amix=inputs=2" in joined
-    assert "split=2" in joined
+    assert "scale=" not in joined
+    assert "pad=" not in joined
     assert "colorspace=all=bt709:iall=bt2020:dither=fsb" in joined
 
 

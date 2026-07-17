@@ -69,7 +69,8 @@ uv run recordersync process ~/Videos/day1 \
 4. FFT 기반 normalized cross-correlation으로 후보 구간을 찾고, 시작·끝 특징으로
    offset과 recorder clock drift를 보정합니다.
 5. confidence 0.75 이상이고 차순위 peak와 0.05 이상 차이 나는 결과만 승인합니다.
-6. 승인된 영상은 TubeArchive 호환 3840×2160 HEVC 10-bit/AAC MP4로 출력합니다.
+6. 승인된 영상은 원본 표시 해상도와 가로·세로 방향을 유지한 HEVC 10-bit/AAC MP4로
+   출력합니다. 스마트폰 회전 메타데이터는 FFmpeg가 실제 픽셀 방향에 적용합니다.
 
 기본 출력 이름은 `replace/<원본명>_replaced.mp4`입니다. 기존 출력은
 `--overwrite` 없이는 덮어쓰지 않습니다.
