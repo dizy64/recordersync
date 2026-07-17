@@ -12,7 +12,7 @@ from recordersync import __version__
 from recordersync.matching import MatchOptions
 from recordersync.models import MatchStatus
 from recordersync.pipeline import RecorderSyncPipeline
-from recordersync.render import RenderMode, resolve_output_path
+from recordersync.render import RenderMode, resolve_output_path, validate_output_affix
 from recordersync.report import MatchReport, ReportLanguage
 
 if TYPE_CHECKING:
@@ -65,6 +65,18 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common_options(process)
     process.add_argument("--mode", choices=[mode.value for mode in RenderMode], default="replace")
     process.add_argument("--camera-audio-volume", type=_unit_interval, default=0.1)
+    process.add_argument(
+        "--output-prefix",
+        type=validate_output_affix,
+        default="",
+        help="출력 파일명 앞에 붙일 문자열",
+    )
+    process.add_argument(
+        "--output-suffix",
+        type=validate_output_affix,
+        default="",
+        help="출력 파일명 뒤에 붙일 문자열",
+    )
     process.add_argument("--overwrite", action="store_true")
     process.add_argument("--dry-run", action="store_true")
     return parser
@@ -81,7 +93,13 @@ def _exit_code(report: MatchReport) -> int:
     return 0 if all(match.status is MatchStatus.MATCHED for match in report.matches) else 2
 
 
-def _dry_run_report(bundle: object, output_dir: Path) -> MatchReport:
+def _dry_run_report(
+    bundle: object,
+    output_dir: Path,
+    *,
+    output_prefix: str,
+    output_suffix: str,
+) -> MatchReport:
     from recordersync.pipeline import AnalysisBundle
 
     if not isinstance(bundle, AnalysisBundle):
@@ -90,7 +108,12 @@ def _dry_run_report(bundle: object, output_dir: Path) -> MatchReport:
         replace(
             match,
             output_path=(
-                resolve_output_path(match.video_path, output_dir)
+                resolve_output_path(
+                    match.video_path,
+                    output_dir,
+                    prefix=output_prefix,
+                    suffix=output_suffix,
+                )
                 if match.status is MatchStatus.MATCHED
                 else None
             ),
@@ -118,7 +141,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "analyze":
             report = bundle.report()
         elif args.dry_run:
-            report = _dry_run_report(bundle, output_dir)
+            report = _dry_run_report(
+                bundle,
+                output_dir,
+                output_prefix=args.output_prefix,
+                output_suffix=args.output_suffix,
+            )
         else:
             report = pipeline.process(
                 bundle,
@@ -126,6 +154,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 mode=RenderMode(args.mode),
                 camera_audio_volume=args.camera_audio_volume,
                 overwrite=args.overwrite,
+                output_prefix=args.output_prefix,
+                output_suffix=args.output_suffix,
             )
 
         report_path = args.report

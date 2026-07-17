@@ -169,6 +169,18 @@ recordersync process /path/to/media \
   --output-dir /path/to/output
 ```
 
+기본 결과는 `/path/to/output/<원본 stem>.mp4`다. 이름을 구분해야 할 때만 접두사나
+접미사를 추가한다.
+
+```bash
+recordersync process /path/to/media \
+  --output-prefix final_ \
+  --output-suffix _synced
+```
+
+접두사·접미사에는 경로 구분자를 사용할 수 없다. `--output-dir`를 원본 디렉터리로
+지정해 계산된 출력 경로가 원본 MP4와 같아지는 경우에는 `--overwrite`도 허용되지 않는다.
+
 현장음을 남기려면 명시적으로 mix를 사용한다.
 
 ```bash
@@ -253,7 +265,7 @@ recordersync process "$smoke_dir/video" --audio-dir "$smoke_dir/audio" \
 
 ffprobe -v error -show_entries \
   stream=codec_name,width,height,pix_fmt,sample_rate,bit_rate \
-  -of json "$smoke_dir/output/clip_replaced.mp4"
+  -of json "$smoke_dir/output/clip.mp4"
 ```
 
 기대 시작점은 약 3.00초이며 출력 해상도는 원본과 같은 320×240이다. 스마트폰 회전

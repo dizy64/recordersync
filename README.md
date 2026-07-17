@@ -72,8 +72,10 @@ uv run recordersync process ~/Videos/day1 \
 6. 승인된 영상은 원본 표시 해상도, 가로·세로 방향, 프레임 타임스탬프를 유지한 HEVC
    10-bit/AAC MP4로 출력합니다. 스마트폰 회전 메타데이터와 VFR도 보존합니다.
 
-기본 출력 이름은 `replace/<원본명>_replaced.mp4`입니다. 기존 출력은
-`--overwrite` 없이는 덮어쓰지 않습니다.
+기본 출력 이름은 `replace/<원본명>.mp4`입니다. 접두사·접미사가 필요할 때만
+`--output-prefix`와 `--output-suffix`를 지정합니다. 기존 출력은 `--overwrite` 없이는
+덮어쓰지 않으며, 출력 경로를 원본 MP4와 같게 지정하면 overwrite 여부와 관계없이
+거부합니다.
 
 ### 매칭 상태
 
@@ -93,6 +95,8 @@ uv run recordersync process ~/Videos/day1 \
 ```text
 --audio-dir DIR               레코더 오디오 디렉터리(기본: VIDEO_DIR)
 --output-dir DIR              출력 디렉터리(기본: VIDEO_DIR/replace)
+--output-prefix TEXT          출력 파일명 앞에 붙일 문자열(기본: 없음)
+--output-suffix TEXT          출력 파일명 뒤에 붙일 문자열(기본: 없음)
 --report PATH                 JSON 리포트 저장 경로
 --report-language ko|en       리포트 사유 언어(기본: ko)
 --min-confidence 0.75         최소 종합 신뢰도
@@ -106,6 +110,12 @@ uv run recordersync process ~/Videos/day1 \
 
 JSON 키와 `matched` 같은 상태값은 자동화 호환성을 위해 영어로 고정되며, 사람이 읽는
 `reason`만 기본 한국어 또는 `--report-language en`의 영어로 출력됩니다.
+
+예를 들어 `clip.mov`를 `final_clip_synced.mp4`로 만들려면 다음처럼 실행합니다.
+
+```bash
+recordersync process ~/Capture/day1 --output-prefix final_ --output-suffix _synced
+```
 
 지원 오디오: AAC, AIF/AIFF, FLAC, M4A, MP3, WAV/WAVE
 

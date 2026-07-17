@@ -84,8 +84,10 @@ def test_build_render_plan_maps_approved_match() -> None:
         Path("replace"),
         mode=RenderMode.MIX,
         camera_audio_volume=0.1,
+        output_prefix="final_",
+        output_suffix="_synced",
     )
 
     assert plan.external_start_seconds == 2.5
-    assert plan.output_path == Path("replace/clip_replaced.mp4")
+    assert plan.output_path == Path("replace/final_clip_synced.mp4")
     assert plan.mode is RenderMode.MIX

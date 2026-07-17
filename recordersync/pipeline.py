@@ -111,6 +111,8 @@ class RecorderSyncPipeline:
         mode: RenderMode = RenderMode.REPLACE,
         camera_audio_volume: float = 0.1,
         overwrite: bool = False,
+        output_prefix: str = "",
+        output_suffix: str = "",
     ) -> MatchReport:
         sessions = {session.id: session for session in bundle.sessions}
         videos = {video.path: video for video in bundle.videos}
@@ -135,7 +137,12 @@ class RecorderSyncPipeline:
                 )
                 continue
 
-            output_path = resolve_output_path(match.video_path, output_dir)
+            output_path = resolve_output_path(
+                match.video_path,
+                output_dir,
+                prefix=output_prefix,
+                suffix=output_suffix,
+            )
             plan = RenderPlan(
                 video=videos[match.video_path],
                 session=sessions[match.session_id],

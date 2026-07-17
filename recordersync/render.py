@@ -59,8 +59,24 @@ def build_concat_manifest(session: RecordingSession) -> str:
     )
 
 
-def resolve_output_path(video_path: Path, output_dir: Path) -> Path:
-    return output_dir / f"{video_path.stem}_replaced.mp4"
+def validate_output_affix(value: str) -> str:
+    """파일명 접두사·접미사가 출력 디렉터리를 벗어나지 않도록 검증한다."""
+
+    if "/" in value or "\\" in value or "\x00" in value:
+        raise ValueError("output prefix/suffix must not contain a path separator")
+    return value
+
+
+def resolve_output_path(
+    video_path: Path,
+    output_dir: Path,
+    *,
+    prefix: str = "",
+    suffix: str = "",
+) -> Path:
+    safe_prefix = validate_output_affix(prefix)
+    safe_suffix = validate_output_affix(suffix)
+    return output_dir / f"{safe_prefix}{video_path.stem}{safe_suffix}.mp4"
 
 
 def _number(value: float) -> str:
@@ -186,6 +202,8 @@ class FFmpegRenderer:
         return subprocess.run(command, capture_output=True, text=True, check=False)
 
     def render(self, plan: RenderPlan) -> Path:
+        if plan.output_path.resolve() == plan.video.path.resolve():
+            raise ValueError("Output path must not overwrite the source video")
         if plan.output_path.exists() and not plan.overwrite:
             raise FileExistsError(f"Output already exists: {plan.output_path}")
         plan.output_path.parent.mkdir(parents=True, exist_ok=True)

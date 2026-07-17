@@ -52,15 +52,30 @@ def test_build_concat_manifest_escapes_paths() -> None:
 
 def test_resolve_output_path_uses_replace_dir_and_mp4() -> None:
     assert resolve_output_path(Path("/video/clip.mov"), Path("/video/replace")) == Path(
-        "/video/replace/clip_replaced.mp4"
+        "/video/replace/clip.mp4"
     )
+
+
+def test_resolve_output_path_applies_requested_prefix_and_suffix() -> None:
+    assert resolve_output_path(
+        Path("/video/clip.mov"),
+        Path("/video/replace"),
+        prefix="final_",
+        suffix="_synced",
+    ) == Path("/video/replace/final_clip_synced.mp4")
+
+
+@pytest.mark.parametrize("affix", ["../escape", "nested/name", "nested\\name"])
+def test_resolve_output_path_rejects_path_separators(affix: str) -> None:
+    with pytest.raises(ValueError, match="path separator"):
+        resolve_output_path(Path("clip.mov"), Path("replace"), suffix=affix)
 
 
 def test_build_replace_command_uses_tubearchive_profile() -> None:
     plan = RenderPlan(
         video=_video(),
         session=_session(),
-        output_path=Path("replace/clip_replaced.mp4"),
+        output_path=Path("replace/clip.mp4"),
         external_start_seconds=65.25,
         tempo_ratio=1.0002,
         mode=RenderMode.REPLACE,
@@ -142,7 +157,7 @@ def test_render_plan_rejects_invalid_camera_volume() -> None:
 
 
 def test_renderer_falls_back_to_libx265_and_atomically_publishes(tmp_path: Path) -> None:
-    output = tmp_path / "replace" / "clip_replaced.mp4"
+    output = tmp_path / "replace" / "clip.mp4"
     plan = RenderPlan(
         video=_video(),
         session=_session(),
@@ -169,7 +184,7 @@ def test_renderer_falls_back_to_libx265_and_atomically_publishes(tmp_path: Path)
 
 
 def test_renderer_preserves_existing_output_without_overwrite(tmp_path: Path) -> None:
-    output = tmp_path / "clip_replaced.mp4"
+    output = tmp_path / "clip.mp4"
     output.write_bytes(b"original")
     plan = RenderPlan(_video(), _session(), output, 0, 1, overwrite=False)
 
@@ -177,3 +192,16 @@ def test_renderer_preserves_existing_output_without_overwrite(tmp_path: Path) ->
         FFmpegRenderer().render(plan)
 
     assert output.read_bytes() == b"original"
+
+
+def test_renderer_never_overwrites_source_video() -> None:
+    plan = RenderPlan(_video(), _session(), Path("clip.mov"), 0, 1, overwrite=True)
+    renderer = FFmpegRenderer()
+
+    with (
+        patch.object(renderer, "_run") as run,
+        pytest.raises(ValueError, match="source video"),
+    ):
+        renderer.render(plan)
+
+    run.assert_not_called()

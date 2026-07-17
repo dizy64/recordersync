@@ -23,7 +23,7 @@ def test_match_report_serializes_sessions_matches_and_summary() -> None:
             session_id="session-001",
             external_start_seconds=2.5,
             confidence=0.9,
-            output_path=Path("replace/a_replaced.mp4"),
+            output_path=Path("replace/a.mp4"),
         ),
         AudioMatch(
             Path("b.mov"),

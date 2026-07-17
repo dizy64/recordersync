@@ -6,7 +6,7 @@ RecorderSync의 자동 테스트는 단위 테스트다. FFmpeg·ffprobe·파일
 도메인 정책과 분리하고 목/스텁으로 대체한다. 실제 코덱 동작은 공개 가능한 합성
 미디어를 임시 디렉터리에 생성해 수동 smoke로 확인한다.
 
-현재 기준은 49개 테스트, 전체 커버리지 88%다. 새 변경은 전체 커버리지를 85% 아래로
+현재 기준은 56개 테스트, 전체 커버리지 88%다. 새 변경은 전체 커버리지를 85% 아래로
 떨어뜨리지 않고, 변경된 비즈니스 분기의 정상·경계·오류를 직접 검증해야 한다.
 
 ## 현재 테스트 지도
@@ -16,9 +16,9 @@ RecorderSync의 자동 테스트는 단위 테스트다. FFmpeg·ffprobe·파일
 | `test_sessions.py` | 7 | 자연 정렬, 연속 조각, gap, 스트림 불일치, 복사 시각 |
 | `test_matching.py` | 8 | 특징, 정확한 구간, 반복/겹침, 무관 음원, drift, 다중 카메라 |
 | `test_media.py` | 7 | 탐색, ffprobe 파싱, PCM, 실패, 조각 frame padding |
-| `test_render.py` | 8 | 원본 해상도, concat escaping, 프로파일, mix, 볼륨, 폴백, 원자 출력 |
+| `test_render.py` | 13 | 출력명·경로 안전, 해상도, concat, 프로파일, mix, 폴백, 원자 출력 |
 | `test_pipeline.py` | 3 | 배치 분석, 카메라음 없음, matched만 렌더 |
-| `test_cli.py` | 10 | 기본값, 경로 생략, 언어 검증, JSON 출력, 종료 코드, fatal 오류 |
+| `test_cli.py` | 12 | 기본값, 경로·출력명, 언어 검증, JSON 출력, 종료 코드, fatal 오류 |
 | `test_api.py` | 3 | 외부 소비자용 세션·매칭·렌더 계획 API |
 | `test_report.py` | 3 | JSON 버전, 상태 요약, 한국어·영어 사유와 진단 보존 |
 
@@ -57,6 +57,8 @@ RecorderSync의 자동 테스트는 단위 테스트다. FFmpeg·ffprobe·파일
 - VideoToolbox 실패 후 libx265 명령을 만드는가
 - 소프트웨어 폴백도 실패하면 최종 파일이 남지 않는가
 - 기존 출력이 `--overwrite` 없이 보존되는가
+- 기본 출력명에 자동 suffix가 없고 명시한 prefix/suffix만 적용되는가
+- affix의 경로 구분자를 거부하고 원본과 같은 출력 경로는 overwrite도 거부하는가
 - 가로·세로 입력 모두 고정 scale/pad/crop/overlay 없이 원본 표시 해상도를 유지하는가
 - 고정 `-r` 없이 `-fps_mode:v passthrough`로 원본 프레임 타임스탬프를 유지하는가
 - HLG/PQ 입력이 설치된 FFmpeg에 없는 `zscale`을 요구하지 않는가

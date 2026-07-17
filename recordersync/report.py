@@ -34,6 +34,9 @@ _KOREAN_REASONS = {
         "자동 매칭에는 카메라 오디오가 필요합니다."
     ),
     "Matched result is missing render metadata": "매칭 결과에 렌더 메타데이터가 없습니다.",
+    "Output path must not overwrite the source video": (
+        "출력 경로는 원본 영상을 덮어쓸 수 없습니다."
+    ),
     "FFmpeg reported success but produced no output file": (
         "FFmpeg가 성공을 보고했지만 출력 파일을 만들지 않았습니다."
     ),

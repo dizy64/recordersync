@@ -98,7 +98,7 @@ def test_pipeline_process_renders_only_matched_videos(tmp_path: Path) -> None:
         ),
     )
     renderer = MagicMock(spec=FFmpegRenderer)
-    expected = tmp_path / "clip_replaced.mp4"
+    expected = tmp_path / "final_clip_synced.mp4"
     renderer.render.return_value = expected
 
     report = RecorderSyncPipeline(renderer=renderer).process(
@@ -106,11 +106,14 @@ def test_pipeline_process_renders_only_matched_videos(tmp_path: Path) -> None:
         tmp_path,
         mode=RenderMode.MIX,
         camera_audio_volume=0.08,
+        output_prefix="final_",
+        output_suffix="_synced",
     )
 
     assert renderer.render.call_count == 1
     plan = renderer.render.call_args.args[0]
     assert plan.mode is RenderMode.MIX
     assert plan.camera_audio_volume == 0.08
+    assert plan.output_path == expected
     assert report.matches[0].output_path == expected
     assert report.matches[1].status is MatchStatus.AMBIGUOUS

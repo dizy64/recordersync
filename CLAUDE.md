@@ -48,6 +48,10 @@
 추가하지 않고 `-fps_mode:v passthrough`를 유지한다. JSON 필드와 상태값은 번역하지 않고
 `reason`만 `ko/en`으로 직렬화하며 CLI 기본값은 `ko`다.
 
+기본 출력 파일명은 `<원본 stem>.mp4`이며 자동 접두사·접미사를 붙이지 않는다. 사용자가
+명시한 `--output-prefix/--output-suffix`만 적용하고 경로 구분자를 거부한다. 어떤
+경우에도 출력 경로가 원본 영상과 같으면 `--overwrite` 여부와 무관하게 렌더하지 않는다.
+
 ## 검증 명령
 
 ```bash

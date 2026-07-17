@@ -73,6 +73,8 @@ def build_render_plan(
     mode: RenderMode = RenderMode.REPLACE,
     camera_audio_volume: float = 0.1,
     overwrite: bool = False,
+    output_prefix: str = "",
+    output_suffix: str = "",
 ) -> RenderPlan:
     """승인된 매칭을 렌더 계획으로 변환한다."""
 
@@ -83,7 +85,12 @@ def build_render_plan(
     return RenderPlan(
         video=video,
         session=session,
-        output_path=resolve_output_path(video.path, output_dir),
+        output_path=resolve_output_path(
+            video.path,
+            output_dir,
+            prefix=output_prefix,
+            suffix=output_suffix,
+        ),
         external_start_seconds=match.external_start_seconds,
         tempo_ratio=match.tempo_ratio,
         mode=mode,

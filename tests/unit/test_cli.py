@@ -25,6 +25,8 @@ def test_process_cli_defaults_to_safe_replace_policy() -> None:
     assert args.min_peak_margin == pytest.approx(0.05)
     assert args.session_gap_seconds == pytest.approx(10.0)
     assert args.report_language == "ko"
+    assert args.output_prefix == ""
+    assert args.output_suffix == ""
     assert not args.overwrite
 
 
@@ -33,6 +35,15 @@ def test_process_cli_allows_audio_dir_to_be_omitted() -> None:
 
     assert args.video_dir == Path("/media")
     assert args.audio_dir is None
+
+
+def test_process_cli_accepts_output_name_affixes() -> None:
+    args = build_parser().parse_args(
+        ["process", "/media", "--output-prefix", "final_", "--output-suffix", "_synced"]
+    )
+
+    assert args.output_prefix == "final_"
+    assert args.output_suffix == "_synced"
 
 
 def test_analyze_cli_accepts_json_report_path() -> None:
@@ -131,6 +142,33 @@ def test_main_dry_run_returns_partial_exit_without_rendering() -> None:
         exit_code = main(["process", "/video", "--audio-dir", "/audio", "--dry-run"])
 
     assert exit_code == 2
+    pipeline.process.assert_not_called()
+
+
+def test_main_dry_run_applies_output_name_affixes(capsys: pytest.CaptureFixture[str]) -> None:
+    bundle = AnalysisBundle(
+        sessions=(),
+        videos=(),
+        matches=(AudioMatch(Path("clip.mov"), 5, MatchStatus.MATCHED),),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = bundle
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(
+            [
+                "process",
+                "/video",
+                "--dry-run",
+                "--output-prefix",
+                "final_",
+                "--output-suffix",
+                "_synced",
+            ]
+        )
+
+    assert exit_code == 0
+    assert '"output": "/video/replace/final_clip_synced.mp4"' in capsys.readouterr().out
     pipeline.process.assert_not_called()
 
 
