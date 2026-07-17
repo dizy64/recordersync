@@ -1,0 +1,13 @@
+.DS_Store
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.coverage
+htmlcov/
+replace/
+.recordersync-tmp/
+
