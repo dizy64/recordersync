@@ -21,18 +21,23 @@ uv sync
 
 ## 빠른 시작
 
-매칭 결과만 확인합니다. 파일을 만들지 않고 JSON을 표준 출력으로 내보냅니다.
+영상과 레코더 파일이 같은 디렉터리에 있으면 `--audio-dir`를 생략합니다. 매칭 결과만
+확인하는 `analyze`는 미디어 파일을 만들지 않고 JSON을 표준 출력으로 내보냅니다.
 
 ```bash
-uv run recordersync analyze ~/Videos/day1 \
-  --audio-dir ~/Recordings/day1
+uv run recordersync analyze ~/Capture/day1
 ```
 
-매칭이 확실한 영상만 `~/Videos/day1/replace`에 생성합니다.
+매칭이 확실한 영상만 `~/Capture/day1/replace`에 생성합니다.
 
 ```bash
-uv run recordersync process ~/Videos/day1 \
-  --audio-dir ~/Recordings/day1
+uv run recordersync process ~/Capture/day1
+```
+
+레코더 파일이 별도 디렉터리에 있을 때만 경로를 지정합니다.
+
+```bash
+uv run recordersync process ~/Videos/day1 --audio-dir ~/Recordings/day1
 ```
 
 카메라 현장음을 10% 섞으려면 `mix` 모드를 명시합니다. 낮은 신뢰도의 매칭이
@@ -85,6 +90,7 @@ uv run recordersync process ~/Videos/day1 \
 ## 주요 옵션
 
 ```text
+--audio-dir DIR               레코더 오디오 디렉터리(기본: VIDEO_DIR)
 --output-dir DIR              출력 디렉터리(기본: VIDEO_DIR/replace)
 --report PATH                 JSON 리포트 저장 경로
 --min-confidence 0.75         최소 종합 신뢰도
@@ -113,9 +119,30 @@ sessions = discover_sessions(Path("~/Recordings/day1").expanduser())
 matches = match_videos(video_paths, sessions)
 ```
 
-향후 TubeArchive는 `match_videos()`의 `session_id`, `external_start_seconds`,
-`tempo_ratio`를 기존 Transcoder에 전달하고, 기존 Merger와 YouTube 업로더를 그대로
-사용할 수 있습니다.
+가장 단순한 연동은 RecorderSync가 만든 표준 개별 MP4 목록을 TubeArchive의 기존
+병합·업로드 경로에 전달하는 것입니다. 매칭 결과를 Transcoder가 직접 소비하려면
+`session_id`, `external_start_seconds`, `tempo_ratio`와 함께 여러 레코더 조각을 concat
+입력으로 처리해야 합니다. 첫 오디오 조각만 전달하면 조각 경계를 넘는 영상이 깨집니다.
+
+## 전역 설치와 업데이트
+
+저장소 밖에서도 `recordersync`를 직접 호출하려면 uv의 격리된 tool 환경에 설치합니다.
+
+```bash
+uv tool install --python 3.14 /absolute/path/to/recordersync
+uv tool update-shell
+exec zsh
+recordersync --version
+```
+
+버전이 같아도 현재 로컬 소스로 강제 갱신하려면 다음을 사용합니다.
+
+```bash
+uv tool install --python 3.14 --force --reinstall /absolute/path/to/recordersync
+```
+
+GitHub main 직접 설치, editable 개발 설치, 제거 방법은
+[설치·실행·운영 가이드](docs/OPERATIONS.md)에 정리되어 있습니다.
 
 ## 개발 및 검증
 
@@ -131,3 +158,14 @@ uv run python scripts/benchmark_matcher.py
 비즈니스 로직 테스트는 FFmpeg와 파일 I/O를 목/스텁으로 격리한 단위 테스트입니다.
 실제 운영 전에는 대표 보이스레코더 파일로 `analyze`를 먼저 실행하고, 결과 영상의
 초반·중간·후반 싱크를 확인하는 것을 권장합니다.
+
+## 문서
+
+- [제품 컨셉](docs/CONCEPT.md)
+- [아키텍처와 알고리즘](docs/ARCHITECTURE.md)
+- [개발·기여 방법](CONTRIBUTING.md)
+- [테스트 전략](docs/TESTING.md)
+- [설치·실행·운영](docs/OPERATIONS.md)
+- [JSON 리포트 계약](docs/REPORT_SCHEMA.md)
+- [인수인계와 다음 작업](docs/HANDOFF.md)
+- [보안·개인정보](SECURITY.md)
