@@ -19,6 +19,7 @@ from recordersync.render import (
     FFmpegRenderer,
     RenderMode,
     RenderPlan,
+    RenderSegment,
     resolve_output_path,
 )
 from recordersync.report import MatchReport
@@ -129,7 +130,7 @@ class RecorderSyncPipeline:
         output_dir: Path,
         *,
         mode: RenderMode = RenderMode.REPLACE,
-        camera_audio_volume: float = 0.1,
+        camera_audio_volume: float | None = None,
         external_audio_volume: float = 1.0,
         overwrite: bool = False,
         output_prefix: str = "",
@@ -139,26 +140,49 @@ class RecorderSyncPipeline:
         sessions = {session.id: session for session in bundle.sessions}
         videos = {video.path: video for video in bundle.videos}
         processed: list[AudioMatch] = []
-        render_total = sum(match.status is MatchStatus.MATCHED for match in bundle.matches)
+        render_total = sum(
+            match.status is MatchStatus.MATCHED
+            or (match.status is MatchStatus.PARTIAL and mode is RenderMode.FALLBACK)
+            for match in bundle.matches
+        )
         render_completed = 0
+        resolved_camera_volume = (
+            camera_audio_volume
+            if camera_audio_volume is not None
+            else (1.0 if mode is RenderMode.FALLBACK else 0.1)
+        )
         if progress_callback is not None:
             progress_callback("render", 0, render_total, "")
 
         for match in bundle.matches:
-            if match.status is not MatchStatus.MATCHED:
+            is_renderable = match.status is MatchStatus.MATCHED or (
+                match.status is MatchStatus.PARTIAL and mode is RenderMode.FALLBACK
+            )
+            if not is_renderable:
                 processed.append(match)
                 continue
+            segment_sessions_exist = all(
+                segment.session_id in sessions for segment in match.segments
+            )
             if (
-                match.session_id is None
-                or match.external_start_seconds is None
-                or match.session_id not in sessions
-                or match.video_path not in videos
+                match.video_path not in videos
+                or not segment_sessions_exist
+                or (
+                    not match.segments
+                    and (
+                        match.session_id is None
+                        or match.external_start_seconds is None
+                        or match.session_id not in sessions
+                    )
+                )
             ):
                 processed.append(
                     replace(
                         match,
                         status=MatchStatus.ERROR,
                         reason="Matched result is missing render metadata",
+                        output_path=None,
+                        segments=(),
                     )
                 )
                 render_completed += 1
@@ -171,24 +195,52 @@ class RecorderSyncPipeline:
                     )
                 continue
 
-            output_path = resolve_output_path(
-                match.video_path,
-                output_dir,
-                prefix=output_prefix,
-                suffix=output_suffix,
-            )
-            plan = RenderPlan(
-                video=videos[match.video_path],
-                session=sessions[match.session_id],
-                output_path=output_path,
-                external_start_seconds=match.external_start_seconds,
-                tempo_ratio=match.tempo_ratio,
-                mode=mode,
-                camera_audio_volume=camera_audio_volume,
-                external_audio_volume=external_audio_volume,
-                overwrite=overwrite,
-            )
             try:
+                render_segments = (
+                    tuple(
+                        RenderSegment(
+                            session=sessions[segment.session_id],
+                            video_start_seconds=segment.video_start_seconds,
+                            external_start_seconds=segment.external_start_seconds,
+                            duration_seconds=segment.duration_seconds,
+                            tempo_ratio=segment.tempo_ratio,
+                        )
+                        for segment in match.segments
+                    )
+                    if mode is RenderMode.FALLBACK
+                    else ()
+                )
+                primary_session = (
+                    render_segments[0].session
+                    if render_segments
+                    else sessions[match.session_id or ""]
+                )
+                primary_external_start = (
+                    render_segments[0].external_start_seconds
+                    if render_segments
+                    else match.external_start_seconds or 0.0
+                )
+                primary_tempo_ratio = (
+                    render_segments[0].tempo_ratio if render_segments else match.tempo_ratio
+                )
+                output_path = resolve_output_path(
+                    match.video_path,
+                    output_dir,
+                    prefix=output_prefix,
+                    suffix=output_suffix,
+                )
+                plan = RenderPlan(
+                    video=videos[match.video_path],
+                    session=primary_session,
+                    output_path=output_path,
+                    external_start_seconds=primary_external_start,
+                    tempo_ratio=primary_tempo_ratio,
+                    mode=mode,
+                    camera_audio_volume=resolved_camera_volume,
+                    external_audio_volume=external_audio_volume,
+                    overwrite=overwrite,
+                    segments=render_segments,
+                )
                 rendered = self.renderer.render(plan)
             except (FileExistsError, ValueError, RuntimeError) as exc:
                 processed.append(
@@ -196,6 +248,8 @@ class RecorderSyncPipeline:
                         match,
                         status=MatchStatus.ERROR,
                         reason=str(exc),
+                        output_path=None,
+                        segments=(),
                     )
                 )
             else:

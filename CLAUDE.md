@@ -29,8 +29,9 @@
 
 - `--audio-dir` 생략 시 `VIDEO_DIR`에서 레코더 오디오도 찾는다.
 - 원본 미디어를 수정·이동·삭제하지 않는다.
-- `ambiguous`, `unmatched`, `error` 결과는 렌더하지 않는다.
-- 사용자가 명시하지 않은 mix나 overwrite를 자동 선택하지 않는다.
+- `ambiguous`, `unmatched`, `error` 결과는 렌더하지 않는다. `partial`은 사용자가
+  `fallback`을 명시한 경우에만 렌더한다.
+- 사용자가 명시하지 않은 mix, fallback, overwrite를 자동 선택하지 않는다.
 - 레코더 조각은 중간 대용량 파일로 합치지 않고 논리 세션과 concat 입력으로 다룬다.
 - 여러 영상이 같은 외부 오디오 구간에 매칭되는 것을 허용한다.
 - 렌더는 임시 출력 성공 후 최종 경로로 원자 이동한다.
@@ -38,7 +39,8 @@
 - subprocess는 인자 배열과 `shell=False`를 유지한다.
 - 선택 파일과 진행률은 stderr에 출력한다. `analyze` stdout은 기본 사람용 목록이고
   `--json`에서만 전체 JSON이며, `process` stdout과 `--report` 파일은 JSON을 유지한다.
-- 원본/외부 오디오 볼륨은 각각 0.0~1.0이며 원본 볼륨은 mix에서만 적용한다.
+- 원본/외부 오디오 볼륨은 각각 0.0~1.0이다. 원본 볼륨 기본값은 mix 0.1,
+  fallback 1.0이며 replace에서는 적용하지 않는다.
 
 ## 목표 프로파일
 
@@ -51,6 +53,11 @@
 세로 픽셀 배열로 출력하고, 가로·세로 모두 원본 표시 해상도를 보존한다. 고정 `-r`을
 추가하지 않고 `-fps_mode:v passthrough`를 유지한다. JSON 필드와 상태값은 번역하지 않고
 `reason`만 `ko/en`으로 직렬화하며 CLI 기본값은 `ko`다.
+
+부분 매칭은 opt-in이다. `analyze --partial`은 부분 구간을 진단만 하고,
+`process --mode fallback`은 일치 구간에 레코더음을 쓰고 나머지 구간에 카메라음을 쓴다.
+승인 구간은 영상 타임라인에서 정렬되고 겹치지 않아야 하며, 기본 50ms crossfade로
+경계 클릭을 완화한다. JSON 리포트 v2는 `partial`, `coverage_ratio`, `segments`를 제공한다.
 
 기본 출력 파일명은 `<원본 stem>.mp4`이며 자동 접두사·접미사를 붙이지 않는다. 사용자가
 명시한 `--output-prefix/--output-suffix`만 적용하고 경로 구분자를 거부한다. 어떤

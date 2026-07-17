@@ -6,10 +6,17 @@ from pathlib import Path
 from unittest.mock import MagicMock, call
 
 import numpy as np
+import pytest
 
 from recordersync.matching import FeatureTimeline, MatchOptions
 from recordersync.media import FFmpegTools, VideoInfo
-from recordersync.models import AudioChunk, AudioMatch, MatchStatus, RecordingSession
+from recordersync.models import (
+    AudioChunk,
+    AudioMatch,
+    AudioMatchSegment,
+    MatchStatus,
+    RecordingSession,
+)
 from recordersync.pipeline import AnalysisBundle, RecorderSyncPipeline
 from recordersync.render import FFmpegRenderer, RenderMode
 
@@ -139,3 +146,93 @@ def test_파이프라인_처리는_매칭된_영상만_렌더링한다(tmp_path:
         call("render", 0, 1, ""),
         call("render", 1, 1, "clip.mov"),
     ]
+
+
+def test_파이프라인_폴백은_부분_매칭의_다중_구간을_렌더링한다(tmp_path: Path) -> None:
+    video = VideoInfo(Path("clip.mov"), 10, 1920, 1080, True)
+    first_session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("first.wav"), 20, 48_000, 2, "pcm_s24le", None),),
+    )
+    second_session = RecordingSession(
+        "session-002",
+        (AudioChunk(Path("second.wav"), 20, 48_000, 2, "pcm_s24le", None),),
+    )
+    match = AudioMatch(
+        video.path,
+        10,
+        MatchStatus.PARTIAL,
+        segments=(
+            AudioMatchSegment(first_session.id, 1, 3, 3, confidence=0.9),
+            AudioMatchSegment(second_session.id, 7, 4, 2, confidence=0.85),
+        ),
+    )
+    bundle = AnalysisBundle((first_session, second_session), (video,), (match,))
+    renderer = MagicMock(spec=FFmpegRenderer)
+    renderer.render.return_value = tmp_path / "clip.mp4"
+
+    report = RecorderSyncPipeline(renderer=renderer).process(
+        bundle,
+        tmp_path,
+        mode=RenderMode.FALLBACK,
+        camera_audio_volume=None,
+    )
+
+    plan = renderer.render.call_args.args[0]
+    assert plan.camera_audio_volume == pytest.approx(1.0)
+    assert [segment.session.id for segment in plan.segments] == ["session-001", "session-002"]
+    assert report.matches[0].status is MatchStatus.PARTIAL
+    assert report.matches[0].output_path == tmp_path / "clip.mp4"
+
+
+def test_파이프라인은_폴백_모드가_아니면_부분_매칭을_렌더링하지_않는다(
+    tmp_path: Path,
+) -> None:
+    video = VideoInfo(Path("clip.mov"), 10, 1920, 1080, True)
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("first.wav"), 20, 48_000, 2, "pcm_s24le", None),),
+    )
+    match = AudioMatch(
+        video.path,
+        10,
+        MatchStatus.PARTIAL,
+        segments=(AudioMatchSegment(session.id, 1, 3, 3, confidence=0.9),),
+    )
+    renderer = MagicMock(spec=FFmpegRenderer)
+
+    report = RecorderSyncPipeline(renderer=renderer).process(
+        AnalysisBundle((session,), (video,), (match,)),
+        tmp_path,
+        mode=RenderMode.REPLACE,
+    )
+
+    renderer.render.assert_not_called()
+    assert report.matches[0].output_path is None
+
+
+def test_파이프라인은_세션_범위를_넘는_부분_구간을_영상별_오류로_기록한다(
+    tmp_path: Path,
+) -> None:
+    video = VideoInfo(Path("clip.mov"), 10, 1920, 1080, True)
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("first.wav"), 20, 48_000, 2, "pcm_s24le", None),),
+    )
+    match = AudioMatch(
+        video.path,
+        10,
+        MatchStatus.PARTIAL,
+        segments=(AudioMatchSegment(session.id, 1, 18, 5, confidence=0.9),),
+    )
+    renderer = MagicMock(spec=FFmpegRenderer)
+
+    report = RecorderSyncPipeline(renderer=renderer).process(
+        AnalysisBundle((session,), (video,), (match,)),
+        tmp_path,
+        mode=RenderMode.FALLBACK,
+    )
+
+    renderer.render.assert_not_called()
+    assert report.matches[0].status is MatchStatus.ERROR
+    assert report.matches[0].reason == "render segment exceeds recording session duration"

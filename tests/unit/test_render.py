@@ -15,6 +15,7 @@ from recordersync.render import (
     FFmpegRenderer,
     RenderMode,
     RenderPlan,
+    RenderSegment,
     build_concat_manifest,
     resolve_output_path,
 )
@@ -219,3 +220,75 @@ def test_렌더러는_원본_영상을_절대_덮어쓰지_않는다() -> None:
         renderer.render(plan)
 
     run.assert_not_called()
+
+
+def test_폴백_명령은_다중_일치_구간_사이에_카메라음을_사용한다() -> None:
+    second_session = RecordingSession(
+        "session-002",
+        (AudioChunk(Path("second.wav"), 60, 48_000, 2, "pcm_f32le", None),),
+    )
+    plan = RenderPlan(
+        video=_video(),
+        session=_session(),
+        output_path=Path("out.mp4"),
+        external_start_seconds=10.0,
+        tempo_ratio=1.0,
+        mode=RenderMode.FALLBACK,
+        camera_audio_volume=0.4,
+        external_audio_volume=0.9,
+        segments=(
+            RenderSegment(_session(), 2.0, 10.0, 3.0, 1.0),
+            RenderSegment(second_session, 8.0, 5.0, 2.0, 1.0),
+        ),
+        crossfade_seconds=0.05,
+    )
+
+    command = FFmpegCommandBuilder().build(
+        plan,
+        {
+            "session-001": Path("first.txt"),
+            "session-002": Path("second.txt"),
+        },
+    )
+    joined = " ".join(command)
+
+    assert "-ss 10 -f concat -safe 0 -i first.txt" in joined
+    assert "-ss 5 -f concat -safe 0 -i second.txt" in joined
+    assert "atrim=start=0:end=2.05" in joined
+    assert "atrim=start=4.95:end=8.05" in joined
+    assert "atrim=start=9.95:end=30" in joined
+    assert "volume=0.4" in joined
+    assert "aresample=48000,aformat=channel_layouts=stereo,volume=0.4" in joined
+    assert (
+        "volume=0.9,aresample=48000,aformat=channel_layouts=stereo,atempo=1,atrim=duration=3"
+    ) in joined
+    assert joined.count("aformat=channel_layouts=stereo") == 5
+    assert joined.count("acrossfade=d=0.05") == 4
+    assert "amix" not in joined
+    assert "atrim=duration=30" in joined
+
+
+def test_폴백_렌더_계획은_카메라_오디오와_겹치지_않는_구간을_요구한다() -> None:
+    with pytest.raises(ValueError, match="camera audio"):
+        RenderPlan(
+            video=VideoInfo(Path("silent.mov"), 10, 1920, 1080, False),
+            session=_session(),
+            output_path=Path("out.mp4"),
+            external_start_seconds=0,
+            tempo_ratio=1,
+            mode=RenderMode.FALLBACK,
+        )
+
+    with pytest.raises(ValueError, match="must not overlap"):
+        RenderPlan(
+            video=_video(),
+            session=_session(),
+            output_path=Path("out.mp4"),
+            external_start_seconds=0,
+            tempo_ratio=1,
+            mode=RenderMode.FALLBACK,
+            segments=(
+                RenderSegment(_session(), 1.0, 1.0, 4.0, 1.0),
+                RenderSegment(_session(), 4.0, 8.0, 2.0, 1.0),
+            ),
+        )

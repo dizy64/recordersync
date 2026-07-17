@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -10,7 +11,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.signal import correlate
 
-from recordersync.models import AudioMatch, MatchStatus
+from recordersync.models import AudioMatch, AudioMatchSegment, MatchStatus
 
 FloatArray = NDArray[np.float32]
 
@@ -40,6 +41,10 @@ class MatchOptions:
     min_peak_margin: float = 0.05
     peak_margin_full_scale: float = 0.15
     exclusion_seconds: float = 1.0
+    enable_partial: bool = False
+    partial_window_seconds: float = 5.0
+    min_partial_duration_seconds: float = 5.0
+    partial_alignment_tolerance_seconds: float = 1.0
 
     def __post_init__(self) -> None:
         if not 0 < self.min_confidence <= 1:
@@ -50,6 +55,18 @@ class MatchOptions:
             raise ValueError("peak_margin_full_scale must be > 0")
         if self.exclusion_seconds < 0:
             raise ValueError("exclusion_seconds must be >= 0")
+        if not math.isfinite(self.partial_window_seconds):
+            raise ValueError("partial_window_seconds must be finite")
+        if self.partial_window_seconds <= 0:
+            raise ValueError("partial_window_seconds must be > 0")
+        if not math.isfinite(self.min_partial_duration_seconds):
+            raise ValueError("min_partial_duration_seconds must be finite")
+        if self.min_partial_duration_seconds <= 0:
+            raise ValueError("min_partial_duration_seconds must be > 0")
+        if not math.isfinite(self.partial_alignment_tolerance_seconds):
+            raise ValueError("partial_alignment_tolerance_seconds must be finite")
+        if self.partial_alignment_tolerance_seconds < 0:
+            raise ValueError("partial_alignment_tolerance_seconds must be >= 0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +75,26 @@ class _Candidate:
     frame_index: int
     correlation: float
     hop_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class _ReferenceScore:
+    status: MatchStatus
+    best: _Candidate | None
+    correlation: float
+    peak_margin: float
+    confidence: float
+    reason: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class _WindowMatch:
+    video_start_frame: int
+    video_end_frame: int
+    candidate: _Candidate
+    correlation: float
+    peak_margin: float
+    confidence: float
 
 
 def _normalize_bands(features: NDArray[np.floating]) -> FloatArray:
@@ -251,36 +288,28 @@ def refine_feature_alignment(
     return head_start, tempo_ratio
 
 
-def match_video_features(
-    video_path: Path,
-    duration_seconds: float,
-    video_features: FloatArray,
+def _score_reference(
+    reference_features: FloatArray,
     sessions: list[FeatureTimeline],
-    options: MatchOptions | None = None,
-) -> AudioMatch:
-    """모든 세션을 독립 탐색하고 유일하며 신뢰도 높은 최상위 구간만 승인한다."""
-
-    resolved_options = options or MatchOptions()
-    if duration_seconds <= 0:
-        raise ValueError("duration_seconds must be > 0")
-    if video_features.ndim != 2:
-        raise ValueError("video_features must be a 2-D band x frame array")
-
+    options: MatchOptions,
+) -> _ReferenceScore:
     candidates: list[_Candidate] = []
     for timeline in sessions:
         candidates.extend(
             _top_candidates(
                 timeline,
-                video_features,
-                resolved_options.exclusion_seconds,
+                reference_features,
+                options.exclusion_seconds,
             )
         )
     if not candidates:
-        return AudioMatch(
-            video_path=video_path,
-            duration_seconds=duration_seconds,
-            status=MatchStatus.UNMATCHED,
-            reason="All recording sessions are shorter than the video feature",
+        return _ReferenceScore(
+            MatchStatus.UNMATCHED,
+            None,
+            0.0,
+            0.0,
+            0.0,
+            "All recording sessions are shorter than the video feature",
         )
 
     ordered = sorted(candidates, key=lambda item: item.correlation, reverse=True)
@@ -290,60 +319,392 @@ def match_video_features(
     correlation_score = max(0.0, min(1.0, (best.correlation + 1.0) / 2.0))
     margin_score = max(
         0.0,
-        min(1.0, peak_margin / resolved_options.peak_margin_full_scale),
+        min(1.0, peak_margin / options.peak_margin_full_scale),
     )
     confidence = 0.7 * correlation_score + 0.3 * margin_score
 
-    if confidence < resolved_options.min_confidence and correlation_score < (
-        resolved_options.min_confidence
-    ):
-        return AudioMatch(
-            video_path=video_path,
-            duration_seconds=duration_seconds,
-            status=MatchStatus.UNMATCHED,
-            correlation=best.correlation,
-            peak_margin=peak_margin,
-            confidence=confidence,
-            reason="Match confidence is below the configured threshold",
+    if confidence < options.min_confidence and correlation_score < options.min_confidence:
+        return _ReferenceScore(
+            MatchStatus.UNMATCHED,
+            best,
+            best.correlation,
+            peak_margin,
+            confidence,
+            "Match confidence is below the configured threshold",
         )
-    if peak_margin < resolved_options.min_peak_margin:
-        return AudioMatch(
-            video_path=video_path,
-            duration_seconds=duration_seconds,
-            status=MatchStatus.AMBIGUOUS,
-            correlation=best.correlation,
-            peak_margin=peak_margin,
-            confidence=confidence,
-            reason="Best match is not sufficiently distinct from the runner-up",
+    if peak_margin < options.min_peak_margin:
+        return _ReferenceScore(
+            MatchStatus.AMBIGUOUS,
+            best,
+            best.correlation,
+            peak_margin,
+            confidence,
+            "Best match is not sufficiently distinct from the runner-up",
         )
-    if confidence < resolved_options.min_confidence:
-        return AudioMatch(
-            video_path=video_path,
-            duration_seconds=duration_seconds,
-            status=MatchStatus.UNMATCHED,
-            correlation=best.correlation,
-            peak_margin=peak_margin,
-            confidence=confidence,
-            reason="Match confidence is below the configured threshold",
+    if confidence < options.min_confidence:
+        return _ReferenceScore(
+            MatchStatus.UNMATCHED,
+            best,
+            best.correlation,
+            peak_margin,
+            confidence,
+            "Match confidence is below the configured threshold",
         )
+    return _ReferenceScore(
+        MatchStatus.MATCHED,
+        best,
+        best.correlation,
+        peak_margin,
+        confidence,
+        None,
+    )
 
-    best_timeline = next(
-        timeline for timeline in sessions if timeline.session_id == best.session_id
+
+def _window_ranges(
+    total_frames: int,
+    hop_seconds: float,
+    options: MatchOptions,
+) -> list[tuple[int, int]]:
+    minimum_frames = max(2, round(options.min_partial_duration_seconds / hop_seconds))
+    if total_frames < minimum_frames:
+        return []
+    window_frames = max(
+        minimum_frames,
+        round(options.partial_window_seconds / hop_seconds),
     )
+    ranges = [
+        (start, min(total_frames, start + window_frames))
+        for start in range(0, total_frames, window_frames)
+    ]
+    if ranges[-1][1] - ranges[-1][0] < minimum_frames:
+        final_range = (total_frames - minimum_frames, total_frames)
+        ranges[-1] = final_range
+    return list(dict.fromkeys(ranges))
+
+
+def _local_window_match(
+    reference_features: FloatArray,
+    *,
+    video_start_frame: int,
+    video_end_frame: int,
+    timeline: FeatureTimeline,
+    expected_start_frame: int,
+    fallback_score: _ReferenceScore,
+    options: MatchOptions,
+) -> _WindowMatch | None:
+    search_frames = max(
+        1,
+        round(options.partial_alignment_tolerance_seconds / timeline.hop_seconds),
+    )
+    found_start = _find_local_start(
+        timeline.features,
+        reference_features,
+        expected_start=expected_start_frame,
+        search_frames=search_frames,
+    )
+    found_end = found_start + reference_features.shape[1]
+    if found_start < 0 or found_end > timeline.features.shape[1]:
+        return None
+    correlation = float(
+        _correlation_curve(timeline.features[:, found_start:found_end], reference_features)[0]
+    )
+    correlation_score = max(0.0, min(1.0, (correlation + 1.0) / 2.0))
+    if correlation_score < options.min_confidence:
+        return None
+    return _WindowMatch(
+        video_start_frame,
+        video_end_frame,
+        _Candidate(timeline.session_id, found_start, correlation, timeline.hop_seconds),
+        correlation,
+        fallback_score.peak_margin,
+        correlation_score,
+    )
+
+
+def _global_window_match(
+    reference_features: FloatArray,
+    *,
+    video_start_frame: int,
+    video_end_frame: int,
+    sessions: list[FeatureTimeline],
+    options: MatchOptions,
+) -> _WindowMatch | None:
+    score = _score_reference(reference_features, sessions, options)
+    if score.status is not MatchStatus.MATCHED or score.best is None:
+        return None
+    return _WindowMatch(
+        video_start_frame,
+        video_end_frame,
+        score.best,
+        score.correlation,
+        score.peak_margin,
+        score.confidence,
+    )
+
+
+def _group_window_matches(
+    windows: list[_WindowMatch],
+    *,
+    tolerance_seconds: float,
+) -> list[list[_WindowMatch]]:
+    groups: list[list[_WindowMatch]] = []
+    for window in windows:
+        if not groups:
+            groups.append([window])
+            continue
+        previous = groups[-1][-1]
+        frame_tolerance = round(tolerance_seconds / window.candidate.hop_seconds)
+        expected_external_start = previous.candidate.frame_index + (
+            window.video_start_frame - previous.video_start_frame
+        )
+        is_contiguous = window.video_start_frame <= previous.video_end_frame
+        is_aligned = (
+            window.candidate.session_id == previous.candidate.session_id
+            and abs(window.candidate.frame_index - expected_external_start) <= frame_tolerance
+        )
+        if is_contiguous and is_aligned:
+            groups[-1].append(window)
+        else:
+            groups.append([window])
+    return groups
+
+
+def _segment_from_group(
+    group: list[_WindowMatch],
+    *,
+    video_features: FloatArray,
+    duration_seconds: float,
+    timelines: dict[str, FeatureTimeline],
+    options: MatchOptions,
+) -> AudioMatchSegment | None:
+    first = group[0]
+    last = group[-1]
+    timeline = timelines[first.candidate.session_id]
+    video_start = first.video_start_frame * timeline.hop_seconds
+    video_end = (
+        duration_seconds
+        if last.video_end_frame >= video_features.shape[1]
+        else last.video_end_frame * timeline.hop_seconds
+    )
+    segment_features = video_features[:, first.video_start_frame : last.video_end_frame]
     refined_start, tempo_ratio = refine_feature_alignment(
-        best_timeline.features,
-        video_features,
-        coarse_start_frame=best.frame_index,
-        hop_seconds=best.hop_seconds,
+        timeline.features,
+        segment_features,
+        coarse_start_frame=first.candidate.frame_index,
+        hop_seconds=timeline.hop_seconds,
     )
+    available_seconds = (
+        (timeline.features.shape[1] - refined_start) * timeline.hop_seconds / tempo_ratio
+    )
+    segment_duration = min(video_end - video_start, available_seconds)
+    if segment_duration + 1e-6 < options.min_partial_duration_seconds:
+        return None
+    return AudioMatchSegment(
+        session_id=first.candidate.session_id,
+        video_start_seconds=video_start,
+        external_start_seconds=refined_start * timeline.hop_seconds,
+        duration_seconds=segment_duration,
+        tempo_ratio=tempo_ratio,
+        correlation=sum(window.correlation for window in group) / len(group),
+        peak_margin=min(window.peak_margin for window in group),
+        confidence=sum(window.confidence for window in group) / len(group),
+    )
+
+
+def _find_partial_segments(
+    video_features: FloatArray,
+    duration_seconds: float,
+    sessions: list[FeatureTimeline],
+    options: MatchOptions,
+    *,
+    full_score: _ReferenceScore,
+    full_start_frame: int | None,
+    full_tempo_ratio: float,
+) -> tuple[AudioMatchSegment, ...]:
+    if not sessions:
+        return ()
+    hop_seconds = sessions[0].hop_seconds
+    if any(abs(timeline.hop_seconds - hop_seconds) > 1e-9 for timeline in sessions):
+        raise ValueError("all session feature timelines must use the same hop_seconds")
+    timelines = {timeline.session_id: timeline for timeline in sessions}
+    anchor_timeline = (
+        timelines.get(full_score.best.session_id)
+        if full_score.best is not None and full_start_frame is not None
+        else None
+    )
+    anchor_start_frame = full_start_frame
+    anchor_video_start_frame = 0
+    anchor_tempo_ratio = full_tempo_ratio
+    anchor_score = full_score
+
+    windows: list[_WindowMatch] = []
+    for video_start, video_end in _window_ranges(video_features.shape[1], hop_seconds, options):
+        reference = video_features[:, video_start:video_end]
+        matched: _WindowMatch | None = None
+        if anchor_timeline is not None and anchor_start_frame is not None:
+            expected_start = anchor_start_frame + round(
+                (video_start - anchor_video_start_frame) * anchor_tempo_ratio
+            )
+            matched = _local_window_match(
+                reference,
+                video_start_frame=video_start,
+                video_end_frame=video_end,
+                timeline=anchor_timeline,
+                expected_start_frame=expected_start,
+                fallback_score=anchor_score,
+                options=options,
+            )
+        if matched is None:
+            matched = _global_window_match(
+                reference,
+                video_start_frame=video_start,
+                video_end_frame=video_end,
+                sessions=sessions,
+                options=options,
+            )
+        if matched is not None:
+            windows.append(matched)
+            anchor_timeline = timelines[matched.candidate.session_id]
+            anchor_start_frame = matched.candidate.frame_index
+            anchor_video_start_frame = video_start
+            anchor_tempo_ratio = 1.0
+            anchor_score = _ReferenceScore(
+                MatchStatus.MATCHED,
+                matched.candidate,
+                matched.correlation,
+                matched.peak_margin,
+                matched.confidence,
+                None,
+            )
+
+    groups = _group_window_matches(
+        windows,
+        tolerance_seconds=options.partial_alignment_tolerance_seconds,
+    )
+    segments = [
+        _segment_from_group(
+            group,
+            video_features=video_features,
+            duration_seconds=duration_seconds,
+            timelines=timelines,
+            options=options,
+        )
+        for group in groups
+    ]
+    return tuple(segment for segment in segments if segment is not None)
+
+
+def _failed_match(video_path: Path, duration_seconds: float, score: _ReferenceScore) -> AudioMatch:
     return AudioMatch(
         video_path=video_path,
         duration_seconds=duration_seconds,
-        status=MatchStatus.MATCHED,
-        session_id=best.session_id,
-        external_start_seconds=refined_start * best.hop_seconds,
-        tempo_ratio=tempo_ratio,
-        correlation=best.correlation,
-        peak_margin=peak_margin,
-        confidence=confidence,
+        status=score.status,
+        correlation=score.correlation,
+        peak_margin=score.peak_margin,
+        confidence=score.confidence,
+        reason=score.reason,
+    )
+
+
+def match_video_features(
+    video_path: Path,
+    duration_seconds: float,
+    video_features: FloatArray,
+    sessions: list[FeatureTimeline],
+    options: MatchOptions | None = None,
+) -> AudioMatch:
+    """전체 또는 승인된 부분 구간을 세션에서 찾아 보수적으로 반환한다."""
+
+    resolved_options = options or MatchOptions()
+    if duration_seconds <= 0:
+        raise ValueError("duration_seconds must be > 0")
+    if video_features.ndim != 2:
+        raise ValueError("video_features must be a 2-D band x frame array")
+
+    full_score = _score_reference(video_features, sessions, resolved_options)
+    full_start: int | None = None
+    full_tempo_ratio = 1.0
+    full_match: AudioMatch | None = None
+    if full_score.status is MatchStatus.MATCHED and full_score.best is not None:
+        best_timeline = next(
+            timeline for timeline in sessions if timeline.session_id == full_score.best.session_id
+        )
+        full_start, full_tempo_ratio = refine_feature_alignment(
+            best_timeline.features,
+            video_features,
+            coarse_start_frame=full_score.best.frame_index,
+            hop_seconds=full_score.best.hop_seconds,
+        )
+        full_segment = AudioMatchSegment(
+            session_id=full_score.best.session_id,
+            video_start_seconds=0.0,
+            external_start_seconds=full_start * full_score.best.hop_seconds,
+            duration_seconds=duration_seconds,
+            tempo_ratio=full_tempo_ratio,
+            correlation=full_score.correlation,
+            peak_margin=full_score.peak_margin,
+            confidence=full_score.confidence,
+        )
+        full_match = AudioMatch(
+            video_path=video_path,
+            duration_seconds=duration_seconds,
+            status=MatchStatus.MATCHED,
+            session_id=full_score.best.session_id,
+            external_start_seconds=full_segment.external_start_seconds,
+            tempo_ratio=full_tempo_ratio,
+            correlation=full_score.correlation,
+            peak_margin=full_score.peak_margin,
+            confidence=full_score.confidence,
+            segments=(full_segment,),
+        )
+
+    if not resolved_options.enable_partial:
+        return full_match or _failed_match(video_path, duration_seconds, full_score)
+
+    segments = _find_partial_segments(
+        video_features,
+        duration_seconds,
+        sessions,
+        resolved_options,
+        full_score=full_score,
+        full_start_frame=full_start,
+        full_tempo_ratio=full_tempo_ratio,
+    )
+    if not segments:
+        return full_match or _failed_match(video_path, duration_seconds, full_score)
+    if (
+        full_match is not None
+        and len(segments) == 1
+        and segments[0].video_start_seconds <= 1e-6
+        and segments[0].video_end_seconds >= duration_seconds - 1e-6
+    ):
+        return full_match
+
+    matched_duration = sum(segment.duration_seconds for segment in segments)
+    status = (
+        MatchStatus.MATCHED
+        if len(segments) == 1
+        and segments[0].video_start_seconds <= 1e-6
+        and matched_duration >= duration_seconds - 1e-6
+        else MatchStatus.PARTIAL
+    )
+    session_ids = {segment.session_id for segment in segments}
+    return AudioMatch(
+        video_path=video_path,
+        duration_seconds=duration_seconds,
+        status=status,
+        session_id=segments[0].session_id if len(session_ids) == 1 else None,
+        external_start_seconds=segments[0].external_start_seconds,
+        tempo_ratio=segments[0].tempo_ratio,
+        correlation=sum(segment.correlation * segment.duration_seconds for segment in segments)
+        / matched_duration,
+        peak_margin=min(segment.peak_margin for segment in segments),
+        confidence=sum(segment.confidence * segment.duration_seconds for segment in segments)
+        / matched_duration,
+        reason=(
+            "Only part of the camera audio matched the external recording"
+            if status is MatchStatus.PARTIAL
+            else None
+        ),
+        segments=segments,
     )

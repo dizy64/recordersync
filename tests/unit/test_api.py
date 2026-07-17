@@ -10,7 +10,13 @@ import numpy as np
 from recordersync.api import build_render_plan, discover_sessions, match_videos
 from recordersync.matching import FeatureTimeline, MatchOptions
 from recordersync.media import FFmpegTools, VideoInfo
-from recordersync.models import AudioChunk, AudioMatch, MatchStatus, RecordingSession
+from recordersync.models import (
+    AudioChunk,
+    AudioMatch,
+    AudioMatchSegment,
+    MatchStatus,
+    RecordingSession,
+)
 from recordersync.render import RenderMode
 
 
@@ -93,3 +99,40 @@ def test_렌더_계획_생성은_승인된_매칭을_연결한다() -> None:
     assert plan.output_path == Path("replace/final_clip_synced.mp4")
     assert plan.mode is RenderMode.MIX
     assert plan.external_audio_volume == 0.8
+
+
+def test_렌더_계획_생성은_부분_매칭의_여러_세션을_연결한다() -> None:
+    sessions = (
+        RecordingSession(
+            "session-001",
+            (AudioChunk(Path("first.wav"), 20, 48_000, 2, "pcm_f32le", None),),
+        ),
+        RecordingSession(
+            "session-002",
+            (AudioChunk(Path("second.wav"), 20, 48_000, 2, "pcm_f32le", None),),
+        ),
+    )
+    video = VideoInfo(Path("clip.mov"), 10, 1920, 1080, True)
+    match = AudioMatch(
+        video.path,
+        10,
+        MatchStatus.PARTIAL,
+        segments=(
+            AudioMatchSegment("session-001", 1, 2, 3),
+            AudioMatchSegment("session-002", 7, 4, 2),
+        ),
+    )
+
+    plan = build_render_plan(
+        match,
+        video,
+        sessions,
+        Path("replace"),
+        mode=RenderMode.FALLBACK,
+        camera_audio_volume=1.0,
+    )
+
+    assert [segment.session.id for segment in plan.segments] == [
+        "session-001",
+        "session-002",
+    ]

@@ -54,9 +54,46 @@ class MatchStatus(StrEnum):
     """영상별 매칭 결과 상태."""
 
     MATCHED = "matched"
+    PARTIAL = "partial"
     UNMATCHED = "unmatched"
     AMBIGUOUS = "ambiguous"
     ERROR = "error"
+
+
+@dataclass(frozen=True, slots=True)
+class AudioMatchSegment:
+    """영상 시간축과 외부 녹음 시간축이 신뢰 가능하게 일치하는 연속 구간."""
+
+    session_id: str
+    video_start_seconds: float
+    external_start_seconds: float
+    duration_seconds: float
+    tempo_ratio: float = 1.0
+    correlation: float = 0.0
+    peak_margin: float = 0.0
+    confidence: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not self.session_id:
+            raise ValueError("session_id must not be empty")
+        if self.video_start_seconds < 0:
+            raise ValueError("video_start_seconds must be >= 0")
+        if self.external_start_seconds < 0:
+            raise ValueError("external_start_seconds must be >= 0")
+        if self.duration_seconds <= 0:
+            raise ValueError("duration_seconds must be > 0")
+        if not 0.5 <= self.tempo_ratio <= 2.0:
+            raise ValueError("tempo_ratio must be in [0.5, 2.0]")
+        if not -1.0 <= self.correlation <= 1.0:
+            raise ValueError("correlation must be in [-1, 1]")
+        if not 0.0 <= self.peak_margin <= 2.0:
+            raise ValueError("peak_margin must be in [0, 2]")
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("confidence must be in [0, 1]")
+
+    @property
+    def video_end_seconds(self) -> float:
+        return self.video_start_seconds + self.duration_seconds
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,3 +111,43 @@ class AudioMatch:
     confidence: float = 0.0
     reason: str | None = None
     output_path: Path | None = None
+    segments: tuple[AudioMatchSegment, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.duration_seconds < 0:
+            raise ValueError("duration_seconds must be >= 0")
+        if self.status is MatchStatus.PARTIAL and not self.segments:
+            raise ValueError("partial match requires at least one segment")
+        if self.segments and self.status not in {MatchStatus.MATCHED, MatchStatus.PARTIAL}:
+            raise ValueError("segments require matched or partial status")
+
+        previous_end = 0.0
+        for index, segment in enumerate(self.segments):
+            if index and segment.video_start_seconds < previous_end - 1e-6:
+                raise ValueError("match segments must not overlap")
+            if segment.video_end_seconds > self.duration_seconds + 1e-6:
+                raise ValueError("match segment exceeds video duration")
+            previous_end = segment.video_end_seconds
+
+        if self.status is MatchStatus.MATCHED and self.segments:
+            segment = self.segments[0]
+            if (
+                len(self.segments) != 1
+                or segment.video_start_seconds > 1e-6
+                or segment.video_end_seconds < self.duration_seconds - 1e-6
+            ):
+                raise ValueError("matched segments must cover the full video")
+
+    @property
+    def matched_duration_seconds(self) -> float:
+        if self.segments:
+            return sum(segment.duration_seconds for segment in self.segments)
+        if self.status is MatchStatus.MATCHED:
+            return self.duration_seconds
+        return 0.0
+
+    @property
+    def coverage_ratio(self) -> float:
+        if self.duration_seconds <= 0:
+            return 0.0
+        return min(1.0, self.matched_duration_seconds / self.duration_seconds)

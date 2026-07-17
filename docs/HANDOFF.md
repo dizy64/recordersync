@@ -4,17 +4,19 @@
 
 - 저장소: `git@github.com:dizy64/recordersync.git`
 - 기본 브랜치: `main`
-- 패키지/CLI 버전: `0.2.0`
+- 패키지/CLI 버전: `0.3.0`
 - 최초 기능 완료 커밋: `3873f62`
 - Python: 3.14+
 - 플랫폼: macOS
-- 자동 테스트: 단위 테스트 68개(기준 커버리지 90%), 합성 FFmpeg E2E 2개
-- 성능 기준: 12시간·영상 200개, 총 31.645초, p95 0.159초, p99 0.161초,
-  peak RSS 287.9MB(2026-07-17 Apple Silicon)
+- 자동 테스트: 단위 테스트 84개(기준 커버리지 90%), 합성 FFmpeg E2E 3개
+- 성능 기준: 12시간·영상 200개, 일반 31.623초/실제 부분 160.084초, p95
+  0.159초/0.805초, p99 0.160초/0.810초, peak RSS 288.3MB/288.5MB
+  (2026-07-17 Apple Silicon)
 
-현재 main은 분할 녹음 세션 구성, 영상별 FFT NCC 매칭, 반복 후보 거부, clock drift,
-replace/mix와 두 오디오 볼륨, VideoToolbox/libx265 렌더, 선택 파일/진행률, 기본 사람용
-분석 목록과 opt-in JSON 리포트, 공개 Python API를 포함한다.
+현재 구현은 분할 녹음 세션 구성, 영상별 FFT NCC 전체/부분/다중 구간 매칭, 반복 후보
+거부, 구간별 clock drift, replace/mix/fallback과 두 오디오 볼륨,
+VideoToolbox/libx265 렌더, 선택 파일/진행률, 기본 사람용 분석 목록과 opt-in JSON v2
+리포트, 공개 Python API를 포함한다.
 TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 
 ## 먼저 읽을 문서
@@ -30,8 +32,9 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 ## 변경하면 안 되는 핵심 불변식
 
 - 원본 영상과 오디오를 수정·이동·삭제하지 않는다.
-- `ambiguous`, `unmatched`, `error`에는 결과 영상을 만들지 않는다.
-- 사용자가 요청하지 않은 mix 또는 overwrite를 자동 선택하지 않는다.
+- `ambiguous`, `unmatched`, `error`에는 결과 영상을 만들지 않는다. `partial`은 명시적
+  fallback에서만 렌더한다.
+- 사용자가 요청하지 않은 mix, fallback, overwrite를 자동 선택하지 않는다.
 - 기본 출력명은 `<원본 stem>.mp4`이고, 명시된 prefix/suffix만 적용한다.
 - 출력 경로와 원본 경로가 같으면 overwrite가 있어도 거부한다.
 - 서로 다른 영상이 같은 외부 구간에 매칭되는 것을 허용한다.
@@ -66,6 +69,8 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 - 특징과 ffprobe 결과를 캐시하지 않아 재실행할 때 모든 오디오를 다시 디코딩한다.
 - drift는 클립 앞뒤 특징 위치의 선형 비율 하나로 보정하며 구간별 비선형 drift는 다루지
   않는다.
+- 부분 탐색은 기본 5초 창이므로 그보다 짧은 실제 일치 구간과 급격한 구간 내부 drift를
+  놓칠 수 있다. `--min-partial-seconds`를 낮추면 오탐 위험도 함께 커진다.
 
 ### 렌더와 운영
 
@@ -73,7 +78,7 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
   10-bit/AAC 프로파일과 영상 bitrate는 고정되어 있다.
 - 진행률은 완료 개수/비율만 제공하며 ETA·취소 후 resume·디스크 사전 용량 검사는 없다.
 - macOS 외 플랫폼은 지원 대상으로 검증하지 않았다.
-- JSON은 `version: 1`이지만 JSON Schema 파일은 아직 없다.
+- JSON은 `version: 2`지만 JSON Schema 파일은 아직 없다.
 - release tag와 자동 배포 파이프라인이 없다.
 
 ## 다음 우선순위
@@ -100,9 +105,10 @@ TubeArchive가 `match_videos()` 결과를 직접 받아 기존 Transcoder에서 
 
 - `session_id`에서 `RecordingSession.chunks`로 해석하는 경계
 - 다중 조각 concat 매니페스트를 외부 audio input으로 받는 FFmpeg executor
-- `external_start_seconds`, 영상 duration, `tempo_ratio` 전달
+- 전체 일치의 `external_start_seconds`, 영상 duration, `tempo_ratio` 전달
+- 부분 일치의 다중 `segments`와 구간별 session/영상 시작/외부 시작/drift 전달
 - 조각 경계를 넘는 영상의 회귀 테스트
-- `ambiguous/unmatched/error`를 TubeArchive 병합에서 제외하는 정책
+- `partial`을 fallback 결과로만 허용하고 `ambiguous/unmatched/error`를 제외하는 정책
 - RecorderSync REPORT_VERSION과 TubeArchive 저장 모델 호환성
 
 첫 오디오 조각만 `external_audio_path`로 넘기는 구현은 금지한다.
