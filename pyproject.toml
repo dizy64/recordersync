@@ -1,6 +1,6 @@
 [project]
 name = "recordersync"
-version = "0.1.3"
+version = "0.1.4"
 description = "Match split recorder audio to camera clips and replace their audio"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -24,12 +24,14 @@ dev = [
     "pip-audit>=2.10",
     "pytest>=9.0",
     "pytest-cov>=7.0",
+    "radon>=6.0",
     "ruff>=0.14",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=recordersync --cov-report=term-missing"
+markers = ["e2e: 실제 FFmpeg와 CLI를 사용하는 합성 미디어 통합 테스트"]
 
 [tool.mypy]
 python_version = "3.14"

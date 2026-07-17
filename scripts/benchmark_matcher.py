@@ -57,10 +57,12 @@ def main() -> int:
 
     elapsed = time.perf_counter() - started
     p95 = float(np.percentile(np.asarray(timings), 95))
+    p99 = float(np.percentile(np.asarray(timings), 99))
     peak_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1024 * 1024)
     print(
         f"timeline_hours={args.hours:g} videos={args.videos} "
         f"elapsed_seconds={elapsed:.3f} per_video_p95_seconds={p95:.3f} "
+        f"per_video_p99_seconds={p99:.3f} "
         f"peak_rss_mb={peak_rss:.1f}"
     )
     return 0 if elapsed <= args.max_seconds and peak_rss <= args.max_rss_mb else 1

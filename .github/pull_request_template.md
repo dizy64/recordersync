@@ -13,13 +13,10 @@
 
 ## 검증
 
-- [ ] 관련 단위 테스트 통과
-- [ ] 전체 `tests/unit` 통과
-- [ ] ruff lint/format 통과
-- [ ] strict mypy 통과
-- [ ] `pip-audit` 통과 또는 영향 분석 기록
-- [ ] 패키지 빌드 통과
-- [ ] 성능 경로 변경 시 12시간·200영상 벤치와 p95/p99 기록
+- [ ] `bash scripts/check.sh`
+- [ ] `bash scripts/test-e2e.sh` 또는 미실행 사유 기록
+- [ ] 성능 경로 변경 시 benchmark 전후 p95/p99/RSS 기록
+- [ ] 원본 미디어와 기존 출력 보존 확인
 
 결과:
 

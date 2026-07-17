@@ -47,8 +47,12 @@ uv run recordersync process ~/Videos/day1 --audio-dir ~/Recordings/day1
 uv run recordersync process ~/Videos/day1 \
   --audio-dir ~/Recordings/day1 \
   --mode mix \
-  --camera-audio-volume 0.10
+  --camera-audio-volume 0.20 \
+  --external-audio-volume 0.80
 ```
+
+두 볼륨은 각각 0.0~1.0 범위입니다. `replace`에서도 외부 음량을 줄일 수 있고,
+원본 영상 음량은 `mix`에서만 사용됩니다.
 
 출력 위치와 리포트 위치를 지정할 수 있습니다.
 
@@ -90,6 +94,9 @@ uv run recordersync process ~/Videos/day1 \
 치명적 실패 `1`입니다. `process`는 기본적으로 출력 디렉터리에
 `recordersync-report.json`을 저장합니다.
 
+선택된 오디오·영상 파일과 오디오 분석/영상 매칭/렌더 진행률은 표준 오류에 표시합니다.
+JSON 결과는 표준 출력에만 기록하므로 파이프나 자동화에서 분리해 사용할 수 있습니다.
+
 ## 주요 옵션
 
 ```text
@@ -104,8 +111,16 @@ uv run recordersync process ~/Videos/day1 \
 --session-gap-seconds 10      새 녹음 세션으로 나눌 시간 공백
 --mode replace|mix            외부 음원 교체 또는 카메라음 혼합
 --camera-audio-volume 0.10    mix 모드의 카메라 음량(0.0~1.0)
+--external-audio-volume 1.0   외부 레코더 음량(0.0~1.0)
 --dry-run                     process 계획만 출력
 --overwrite                   기존 결과 덮어쓰기 허용
+```
+
+인자 없이 실행하면 대표 사용법을 표시합니다. 전체/하위 명령 도움말은 다음과 같습니다.
+
+```bash
+recordersync --help
+recordersync process --help
 ```
 
 JSON 키와 `matched` 같은 상태값은 자동화 호환성을 위해 영어로 고정되며, 사람이 읽는
@@ -162,17 +177,16 @@ GitHub main 직접 설치, editable 개발 설치, 제거 방법은
 ## 개발 및 검증
 
 ```bash
-uv run pytest tests/unit -q
-uv run mypy recordersync
-uv run ruff check recordersync tests
-uv run ruff format --check recordersync tests
-uv run pip-audit
+bash scripts/format.sh    # Ruff 자동 수정·포맷
+bash scripts/check.sh     # lint, format, mypy, 단위 테스트, 감사, 복잡도, build
+bash scripts/test-e2e.sh  # 실제 FFmpeg 합성 E2E
 uv run python scripts/benchmark_matcher.py
+bash scripts/install-hooks.sh
 ```
 
 비즈니스 로직 테스트는 FFmpeg와 파일 I/O를 목/스텁으로 격리한 단위 테스트입니다.
-실제 운영 전에는 대표 보이스레코더 파일로 `analyze`를 먼저 실행하고, 결과 영상의
-초반·중간·후반 싱크를 확인하는 것을 권장합니다.
+별도 E2E는 임시 디렉터리에 공개 가능한 합성 미디어만 만들며 실제 CLI와 FFmpeg로
+분할 오디오 매칭, 세로 해상도/FPS, 렌더와 리포트를 검증합니다.
 
 ## 문서
 

@@ -2,11 +2,11 @@
 
 ## 원칙
 
-RecorderSync의 자동 테스트는 단위 테스트다. FFmpeg·ffprobe·파일 시스템·네트워크는
-도메인 정책과 분리하고 목/스텁으로 대체한다. 실제 코덱 동작은 공개 가능한 합성
-미디어를 임시 디렉터리에 생성해 수동 smoke로 확인한다.
+RecorderSync의 비즈니스 정책은 단위 테스트로 검증한다. FFmpeg·ffprobe·파일 시스템·
+네트워크는 도메인 정책과 분리하고 목/스텁으로 대체한다. 별도의 E2E는 공개 가능한
+합성 미디어를 임시 디렉터리에 만들고 실제 CLI와 FFmpeg 경계만 확인한다.
 
-현재 기준은 56개 테스트, 전체 커버리지 88%다. 새 변경은 전체 커버리지를 85% 아래로
+현재 기준은 단위 테스트 61개, E2E 1개, 단위 커버리지 88%다. 새 변경은 커버리지를 85% 아래로
 떨어뜨리지 않고, 변경된 비즈니스 분기의 정상·경계·오류를 직접 검증해야 한다.
 
 ## 현재 테스트 지도
@@ -16,11 +16,12 @@ RecorderSync의 자동 테스트는 단위 테스트다. FFmpeg·ffprobe·파일
 | `test_sessions.py` | 7 | 자연 정렬, 연속 조각, gap, 스트림 불일치, 복사 시각 |
 | `test_matching.py` | 8 | 특징, 정확한 구간, 반복/겹침, 무관 음원, drift, 다중 카메라 |
 | `test_media.py` | 7 | 탐색, ffprobe 파싱, PCM, 실패, 조각 frame padding |
-| `test_render.py` | 13 | 출력명·경로 안전, 해상도, concat, 프로파일, mix, 폴백, 원자 출력 |
+| `test_render.py` | 14 | 출력명·경로 안전, 해상도, concat, 프로파일, 두 음량, 폴백, 원자 출력 |
 | `test_pipeline.py` | 3 | 배치 분석, 카메라음 없음, matched만 렌더 |
-| `test_cli.py` | 12 | 기본값, 경로·출력명, 언어 검증, JSON 출력, 종료 코드, fatal 오류 |
+| `test_cli.py` | 15 | 도움말, 기본값, 경로·음량·출력명, 진행률, JSON, 종료 코드, fatal 오류 |
 | `test_api.py` | 3 | 외부 소비자용 세션·매칭·렌더 계획 API |
 | `test_report.py` | 3 | JSON 버전, 상태 요약, 한국어·영어 사유와 진단 보존 |
+| `e2e/test_cli_pipeline.py` | 1 | 합성 분할 WAV 매칭, CLI, 세로 해상도/FPS, mix 렌더, 리포트 |
 
 개수는 구현 기준선이며 새 테스트가 추가되면 표도 갱신한다.
 
@@ -53,7 +54,7 @@ RecorderSync의 자동 테스트는 단위 테스트다. FFmpeg·ffprobe·파일
 
 - concat 경로에 공백과 작은따옴표가 있어도 escaping되는가
 - 매니페스트 경로가 임시 디렉터리가 아닌 절대 원본 경로인가
-- replace에 `amix`가 없고 mix에는 요청한 카메라 볼륨이 있는가
+- replace에 `amix`가 없고 mix에는 요청한 카메라/외부 볼륨이 있는가
 - VideoToolbox 실패 후 libx265 명령을 만드는가
 - 소프트웨어 폴백도 실패하면 최종 파일이 남지 않는가
 - 기존 출력이 `--overwrite` 없이 보존되는가
@@ -74,6 +75,8 @@ RecorderSync의 자동 테스트는 단위 테스트다. FFmpeg·ffprobe·파일
 - 기본 한국어와 명시적 영어 사유가 출력되고 미지원 언어는 거부되는가
 - 알 수 없는 코덱·FFmpeg 진단이 번역 과정에서 손실되지 않는가
 - 사용자 입력 오류에 비밀값이나 전체 subprocess 환경을 출력하지 않는가
+- 인자 없는 실행과 `--help`가 대표 명령과 두 오디오 볼륨을 안내하는가
+- 선택 파일·진행률은 stderr에, JSON은 stdout에 유지되는가
 
 ## 목과 fixture 작성 규칙
 
@@ -102,6 +105,9 @@ uv run pytest tests/unit/test_matching.py -q
 # 전체 회귀
 uv run pytest tests/unit -q
 
+# 실제 CLI/FFmpeg 합성 회귀(coverage 계측 제외)
+bash scripts/test-e2e.sh
+
 # 커버리지 상세
 uv run pytest tests/unit --cov=recordersync --cov-report=term-missing
 ```
@@ -115,29 +121,31 @@ uv run python scripts/benchmark_matcher.py
 기본 입력은 50ms hop의 12시간 특징과 60초 영상 200개다. 결과에는 총시간,
 영상당 p95, peak RSS가 나온다. 알고리즘 변경 검토 시 별도 계측으로 p99도 기록한다.
 
-2026-07-17 Apple Silicon 기준:
+2026-07-17 Apple Silicon 재측정 기준:
 
 ```text
-total        31.675 s
+total        31.645 s
 per-video p95 0.159 s
-per-video p99 0.160 s
-peak RSS      322 MB
+per-video p99 0.161 s
+peak RSS      287.9 MB
 ```
 
 CI 환경 차이 때문에 엄격한 wall-clock 단위 테스트로 만들지 않는다. 대신 알고리즘 변경
 PR에 동일 하드웨어 전후 수치를 기록한다.
 
-## 수동 FFmpeg smoke
+## 합성 FFmpeg E2E
 
 실제 파일을 저장소에 넣지 않는다. `mktemp -d` 아래에서 결정론적 합성 noise를 12초
 만들고 4초 조각으로 나눈 뒤, 3~7초 구간을 카메라 영상 오디오로 사용한다.
 
-검증 항목:
+`bash scripts/test-e2e.sh`가 다음을 자동 검증한다.
 
-- 세 조각이 한 세션이 되는가
+- 두 조각이 한 세션이 되는가
 - 시작점이 약 3.00초인가
 - 기본 임계값에서 `matched`인가
-- process 결과가 원본 표시 해상도와 방향, HEVC 10-bit, AAC 48kHz를 유지하는가
+- process 결과가 180×320 세로, 24fps, HEVC 10-bit, AAC 48kHz를 유지하는가
+- 원본/외부 볼륨 0.2/0.8 mix가 실제 렌더되는가
+- 선택 파일과 세 단계 진행률, 한국어 JSON 리포트가 분리 출력되는가
 - 임시 디렉터리 삭제 후 저장소에 미디어가 남지 않는가
 
-명령 예시는 [docs/OPERATIONS.md](OPERATIONS.md)의 smoke 절을 사용한다.
+수동으로 매체를 살펴볼 때만 [OPERATIONS.md](OPERATIONS.md)의 smoke 절을 사용한다.

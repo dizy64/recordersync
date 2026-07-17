@@ -130,6 +130,14 @@ uv tool uninstall recordersync
 영상과 레코더 파일이 같은 디렉터리에 있으면 `--audio-dir`를 생략한다. 별도
 디렉터리인 경우에만 `--audio-dir /path/to/recorder-files`를 추가한다.
 
+```bash
+recordersync
+recordersync --help
+recordersync process --help
+```
+
+인자 없이 호출하면 대표 명령을 안내하고 종료 코드 0으로 끝난다.
+
 ### 1. 분석
 
 ```bash
@@ -186,7 +194,19 @@ recordersync process /path/to/media \
 ```bash
 recordersync process /path/to/media \
   --mode mix \
-  --camera-audio-volume 0.10
+  --camera-audio-volume 0.20 \
+  --external-audio-volume 0.80
+```
+
+두 값은 0.0~1.0 범위의 독립적인 FFmpeg 볼륨 배수다. 외부 음량은 replace와 mix 모두에
+적용되고, 카메라 음량은 mix에서만 적용된다. 합이 1일 필요는 없으며 큰 합은 clipping을
+유발할 수 있으므로 결과를 청취한다.
+
+실행 중 선택된 파일 목록과 `[오디오 분석]`, `[영상 매칭]`, `[영상 렌더]` 진행률은
+stderr로 출력된다. stdout JSON만 저장하려면 다음처럼 분리한다.
+
+```bash
+recordersync process /path/to/media >result.json 2>progress.log
 ```
 
 `--overwrite`는 기존 결과를 교체해도 되는 경우에만 사용한다. 50Mbps 영상은 이론상
@@ -236,6 +256,12 @@ esac
 | 전역 명령이 없음 | `uv tool dir --bin`, `uv tool update-shell`, `type -a` 확인 |
 
 ## 공개 합성 smoke
+
+자동 회귀 검증은 저장소 루트에서 다음 한 줄로 실행한다.
+
+```bash
+bash scripts/test-e2e.sh
+```
 
 아래 절차는 임시 디렉터리에서만 공개 가능한 pink noise를 만든다. 실제 사용자
 미디어를 복사하거나 커밋하지 않는다.

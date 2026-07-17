@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+export HOOK_NAME="pre-commit"
+source "${REPO_ROOT}/scripts/hook-helpers.sh"
+cd "$REPO_ROOT"
+
+staged_python_files=()
+while IFS= read -r file; do
+    staged_python_files+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.py$' || true)
+
+if [ "${#staged_python_files[@]}" -eq 0 ]; then
+    info "스테이징된 Python 파일이 없어 전체 Python 경로를 검사합니다."
+    staged_python_files=(recordersync tests scripts)
+fi
+
+info "Ruff lint 검사 중..."
+uv run ruff check "${staged_python_files[@]}" || fail "Ruff lint 실패"
+
+info "Ruff format 검사 중..."
+uv run ruff format --check "${staged_python_files[@]}" || fail "Ruff format 실패"
+
+info "mypy strict 검사 중..."
+uv run mypy recordersync || fail "mypy 실패"
+
+info "단위 테스트 실행 중..."
+uv run pytest tests/unit -q || fail "단위 테스트 실패"
+
+dependency_changes="$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^(uv\.lock|pyproject\.toml)$' || true)"
+if [ -n "$dependency_changes" ]; then
+    info "의존성 보안 감사 중..."
+    uv run pip-audit || fail "pip-audit 실패"
+fi
+
+info "커밋 전 검사를 모두 통과했습니다."

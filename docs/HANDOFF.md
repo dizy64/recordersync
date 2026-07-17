@@ -4,16 +4,17 @@
 
 - 저장소: `git@github.com:dizy64/recordersync.git`
 - 기본 브랜치: `main`
-- 패키지/CLI 버전: `0.1.3`
+- 패키지/CLI 버전: `0.1.4`
 - 최초 기능 완료 커밋: `3873f62`
 - Python: 3.14+
 - 플랫폼: macOS
-- 자동 테스트: 단위 테스트 56개, 기준 커버리지 88%
-- 성능 기준: 12시간·영상 200개, 총 약 31.7초, p95 0.159초, p99 0.160초,
-  peak RSS 약 322MB(2026-07-17 Apple Silicon)
+- 자동 테스트: 단위 테스트 61개(기준 커버리지 88%), 합성 FFmpeg E2E 1개
+- 성능 기준: 12시간·영상 200개, 총 31.645초, p95 0.159초, p99 0.161초,
+  peak RSS 287.9MB(2026-07-17 Apple Silicon)
 
 현재 main은 분할 녹음 세션 구성, 영상별 FFT NCC 매칭, 반복 후보 거부, clock drift,
-replace/mix, VideoToolbox/libx265 렌더, JSON 리포트, 공개 Python API를 포함한다.
+replace/mix와 두 오디오 볼륨, VideoToolbox/libx265 렌더, 선택 파일/진행률, JSON 리포트,
+공개 Python API를 포함한다.
 TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 
 ## 먼저 읽을 문서
@@ -40,6 +41,7 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 - 렌더는 임시 파일 성공 후 최종 경로로 원자 이동한다.
 - subprocess는 인자 배열과 `shell=False`를 사용한다.
 - 자동 테스트에 실제 사용자 미디어나 네트워크를 넣지 않는다.
+- 선택 파일/진행률은 stderr, JSON은 stdout으로 분리한다.
 
 이 불변식을 바꾸는 요구는 단순 리팩터가 아니라 제품 정책 변경이다. 별도 합의, RED
 테스트, 문서와 REPORT_VERSION 영향을 먼저 정리한다.
@@ -68,7 +70,7 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 
 - 출력 해상도·방향·프레임 타임스탬프/VFR은 원본을 유지하지만 BT.709 HEVC
   10-bit/AAC 프로파일과 영상 bitrate는 고정되어 있다.
-- 실시간 진행률·취소 후 resume·디스크 사전 용량 검사는 없다.
+- 진행률은 완료 개수/비율만 제공하며 ETA·취소 후 resume·디스크 사전 용량 검사는 없다.
 - macOS 외 플랫폼은 지원 대상으로 검증하지 않았다.
 - JSON은 `version: 1`이지만 JSON Schema 파일은 아직 없다.
 - release tag와 자동 배포 파이프라인이 없다.
@@ -133,7 +135,9 @@ uv run pytest tests/unit -q
 ```
 
 그다음 관련 테스트 파일에서 RED를 만들고 구현한다. 완료 시 전체 검사, 벤치 필요 여부,
-비밀정보·미디어 추적 여부, 문서 갱신 여부를 확인한다.
+비밀정보·미디어 추적 여부, 문서 갱신 여부를 확인한 뒤 작업 브랜치 PR을 만든다. `main`
+직접 commit/push/merge는 금지하며 Unit Tests, Synthetic FFmpeg E2E, Quality 통과 후
+GitHub PR에서 병합한다.
 
 ## 배포·전역 설치 인수인계
 

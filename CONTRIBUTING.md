@@ -27,13 +27,18 @@ git worktree add -b feat/short-name \
 cd ../.worktrees/recordersync/short-name
 ```
 
-완료 후 main에 병합하고 worktree를 제거한다.
+완료 후 브랜치를 push하고 PR의 필수 CI가 통과한 뒤 GitHub에서 병합한다. 로컬에서
+`main`으로 직접 병합하거나 push하지 않는다.
 
 ```bash
+git push -u origin feat/short-name
+gh pr create --fill
+gh pr checks --watch
+gh pr merge --delete-branch
+
 cd /path/to/recordersync
-git merge --ff-only feat/short-name
+git pull --ff-only origin main
 git worktree remove ../.worktrees/recordersync/short-name
-git branch -d feat/short-name
 git worktree prune
 ```
 
@@ -54,8 +59,9 @@ worktree로 복사하지 않는다.
 
 ## 테스트 케이스 작성
 
-자동 테스트는 `tests/unit/`에 둔다. 실제 FFmpeg, ffprobe, 네트워크, 사용자의 미디어를
-호출하지 않는다.
+비즈니스 정책 테스트는 `tests/unit/`에 두고 실제 FFmpeg, ffprobe, 네트워크를
+호출하지 않는다. 실제 CLI/코덱 경계는 `tests/e2e/`에서 공개 합성 미디어로만 검증하며
+사용자의 미디어와 네트워크는 사용하지 않는다.
 
 - 순수 정책은 작은 dataclass와 NumPy 배열로 검증한다.
 - 파일 경계는 `tmp_path`를 사용한다.
@@ -81,14 +87,15 @@ uv run pytest tests/unit/test_matching.py::test_name -q
 커밋 전에는 다음을 모두 실행한다.
 
 ```bash
-uv run ruff check recordersync tests scripts
-uv run ruff format --check recordersync tests scripts
-uv run mypy recordersync
-uv run pytest tests/unit -q
-uv run pip-audit
-uv build
+bash scripts/check.sh
+bash scripts/test-e2e.sh
 git diff --check
 ```
+
+`bash scripts/format.sh`는 Ruff 위반을 안전하게 자동 수정하고 포맷합니다. 최초 clone 뒤
+`bash scripts/install-hooks.sh`를 실행하면 pre-commit에 lint/type/unit/audit 검사를,
+pre-push에 단위 테스트를 연결합니다. E2E는 실행 시간이 길고 FFmpeg가 필요하므로
+명시적 스크립트와 CI에서 수행합니다.
 
 매칭 알고리즘·특징·성능 경로를 바꾼 경우 벤치도 실행한다.
 
@@ -130,10 +137,12 @@ Document global uv tool installation workflow
 
 PR에는 문제와 범위, RED 재현, 테스트 결과, 성능·보안·데이터 영향, 남은 위험을 적는다.
 `.github/pull_request_template.md` 체크리스트를 모두 확인한다.
+`main` 보호 규칙은 PR, 최신 main 기준 필수 CI, 미해결 대화 해소를 요구한다.
 
 ## 완료 정의
 
-- 요청한 동작과 실패 정책이 단위 테스트로 고정됨
+- 요청한 비즈니스 동작과 실패 정책이 단위 테스트로 고정됨
+- CLI/FFmpeg 경계 변경은 공개 합성 E2E로 검증됨
 - 전체 품질·보안 검증 통과
 - 원본 미디어와 기존 출력의 안전성 유지
 - 공개 API/JSON/CLI 변경 시 관련 문서 갱신

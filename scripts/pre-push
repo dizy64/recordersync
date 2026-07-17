@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+export HOOK_NAME="pre-push"
+source "${REPO_ROOT}/scripts/hook-helpers.sh"
+cd "$REPO_ROOT"
+
+info "단위 테스트 실행 중..."
+uv run pytest tests/unit -q || fail "단위 테스트 실패"
+info "push 전 검사를 모두 통과했습니다."

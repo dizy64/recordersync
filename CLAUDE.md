@@ -11,6 +11,7 @@
 - Plan -> Test(RED) -> Code(GREEN) -> Refactor 순서 준수
 - 최소 변경, strict mypy, ruff, pytest, pip-audit 통과
 - 코드 변경은 `../.worktrees/recordersync/{name}` worktree에서 수행
+- `main`에 직접 commit/push/merge하지 않고 작업 브랜치의 PR과 필수 CI를 통해 병합
 - `AGENTS.md`는 이 파일을 가리키는 심볼릭 링크로 유지
 
 ## 작업 전 읽기 순서
@@ -35,6 +36,8 @@
 - 렌더는 임시 출력 성공 후 최종 경로로 원자 이동한다.
 - 사용자 미디어·리포트·절대 경로·비밀정보를 저장소나 테스트 fixture에 넣지 않는다.
 - subprocess는 인자 배열과 `shell=False`를 유지한다.
+- 선택 파일과 진행률은 stderr, 기계 판독 JSON은 stdout에만 출력한다.
+- 원본/외부 오디오 볼륨은 각각 0.0~1.0이며 원본 볼륨은 mix에서만 적용한다.
 
 ## 목표 프로파일
 
@@ -55,11 +58,8 @@
 ## 검증 명령
 
 ```bash
-uv run pytest tests/unit -q
-uv run mypy recordersync
-uv run ruff check recordersync tests
-uv run ruff format --check recordersync tests
-uv run pip-audit
+bash scripts/check.sh
+bash scripts/test-e2e.sh
 uv run python scripts/benchmark_matcher.py
 ```
 
@@ -67,3 +67,17 @@ uv run python scripts/benchmark_matcher.py
 만든다. 알고리즘 변경은 전체 테스트와 벤치를 함께 실행하고, 단순 CLI·문서 변경은
 영향받는 단위 테스트와 전체 정적 검사를 실행한다. 작업 종료 시 변경·테스트·성능·보안,
 남은 위험, 문서 개선 제안을 보고한다.
+
+E2E는 사용자가 명시적으로 요청한 실제 도구 경계 검증이다. `tests/e2e/`는 고정 seed의
+합성 미디어만 임시 디렉터리에 생성하고 네트워크·사용자 파일을 금지한다.
+
+## PR 병합 절차
+
+1. 최신 `main`에서 worktree 작업 브랜치를 만든다.
+2. RED→GREEN→Refactor와 로컬 검증을 완료하고 push한다.
+3. `gh pr create`로 PR을 만들고 변경·테스트·성능·보안 영향을 기록한다.
+4. GitHub Actions의 Unit Tests, Synthetic FFmpeg E2E, Quality가 모두 통과해야 한다.
+5. 미해결 리뷰 대화를 정리한 뒤 GitHub PR을 통해 병합하고 작업 브랜치를 삭제한다.
+
+긴급 상황에서도 branch protection을 우회하지 않는다. 보호 규칙 변경이 필요하면 이유와
+복구 시점을 먼저 기록하고 별도 승인을 받는다.
