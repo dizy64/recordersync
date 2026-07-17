@@ -128,6 +128,27 @@ def test_매칭_리포트는_영문_사유를_렌더링할_수_있다() -> None:
     assert payload["matches"][0]["reason"] == ("Match confidence is below the configured threshold")
 
 
+def test_부분_매칭의_영문_목록은_한국어_단위를_포함하지_않는다() -> None:
+    report = MatchReport(
+        sessions=(),
+        matches=(
+            AudioMatch(
+                Path("partial.mov"),
+                10,
+                MatchStatus.PARTIAL,
+                confidence=0.8,
+                segments=(AudioMatchSegment("session-001", 2, 4, 5, confidence=0.8),),
+            ),
+        ),
+        created_at=datetime(2026, 7, 17, tzinfo=UTC),
+    )
+
+    rendered = report.to_text(language=ReportLanguage.EN)
+
+    assert "segments: 1" in rendered
+    assert "개" not in rendered
+
+
 def test_매칭_리포트는_알려진_접두사를_번역하고_알_수_없는_사유는_보존한다() -> None:
     report = MatchReport(
         sessions=(),

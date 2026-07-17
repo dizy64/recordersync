@@ -184,9 +184,14 @@ class MatchReport:
                 f"{confidence_label}: {match.confidence * 100:.1f}%"
             )
             if is_partial:
+                segment_count = (
+                    f"{len(match.segments)}개"
+                    if language is ReportLanguage.KO
+                    else str(len(match.segments))
+                )
                 line = (
                     f"{line} | {coverage_label}: {match.coverage_ratio * 100:.1f}% | "
-                    f"{segment_label}: {len(match.segments)}개"
+                    f"{segment_label}: {segment_count}"
                 )
             elif not is_matched:
                 reason = _translate_reason(match.reason, language) or missing_reason

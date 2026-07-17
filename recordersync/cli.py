@@ -64,8 +64,10 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="""사용 예시:
   recordersync analyze VIDEO_DIR
   recordersync analyze VIDEO_DIR --json
+  recordersync analyze VIDEO_DIR --partial
   recordersync process VIDEO_DIR
   recordersync process VIDEO_DIR --audio-dir AUDIO_DIR --mode mix
+  recordersync process VIDEO_DIR --mode fallback
 
 세부 옵션은 `recordersync analyze --help` 또는 `recordersync process --help`로 확인합니다.""",
     )

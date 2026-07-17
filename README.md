@@ -35,6 +35,12 @@ uv run recordersync analyze ~/Capture/day1
 uv run recordersync analyze ~/Capture/day1 --json
 ```
 
+영상 전체가 아닌 일부 구간의 일치 여부도 확인하려면 부분 분석을 명시합니다.
+
+```bash
+uv run recordersync analyze ~/Capture/day1 --partial
+```
+
 매칭이 확실한 영상만 `~/Capture/day1/replace`에 생성합니다.
 
 ```bash
@@ -59,7 +65,21 @@ uv run recordersync process ~/Videos/day1 \
 ```
 
 두 볼륨은 각각 0.0~1.0 범위입니다. `replace`에서도 외부 음량을 줄일 수 있고,
-원본 영상 음량은 `mix`에서만 사용됩니다.
+원본 영상 음량은 `mix`와 `fallback`에서 사용됩니다.
+
+레코더가 중간에 멈췄거나 영상과 녹음 길이가 다르면 `fallback`을 명시합니다. 일치하는
+구간은 레코더음으로 교체하고, 영상 앞뒤와 중간의 불일치 구간은 카메라음을 유지합니다.
+
+```bash
+uv run recordersync process ~/Videos/day1 \
+  --audio-dir ~/Recordings/day1 \
+  --mode fallback \
+  --min-partial-seconds 5
+```
+
+fallback의 기본 카메라/외부 음량은 각각 1.0이며, 경계를 기본 50ms crossfade로
+연결합니다. `--camera-audio-volume`과 `--external-audio-volume`으로 비율을 바꿀 수
+있습니다. 후보가 애매하거나 최소 길이보다 짧은 구간은 레코더음을 쓰지 않습니다.
 
 출력 위치와 리포트 위치를 지정할 수 있습니다.
 
@@ -80,7 +100,9 @@ uv run recordersync process ~/Videos/day1 \
 4. FFT 기반 normalized cross-correlation으로 후보 구간을 찾고, 시작·끝 특징으로
    offset과 recorder clock drift를 보정합니다.
 5. confidence 0.75 이상이고 차순위 peak와 0.05 이상 차이 나는 결과만 승인합니다.
-6. 승인된 영상은 원본 표시 해상도, 가로·세로 방향, 프레임 타임스탬프를 유지한 HEVC
+6. 부분 모드에서는 5초 창을 검증하고 연속된 창을 구간으로 묶습니다. 중간 단절이나
+   다른 녹음 세션 재시작은 별도 구간으로 유지합니다.
+7. 승인된 영상은 원본 표시 해상도, 가로·세로 방향, 프레임 타임스탬프를 유지한 HEVC
    10-bit/AAC MP4로 출력합니다. 스마트폰 회전 메타데이터와 VFR도 보존합니다.
 
 기본 출력 이름은 `replace/<원본명>.mp4`입니다. 접두사·접미사가 필요할 때만
@@ -93,12 +115,14 @@ uv run recordersync process ~/Videos/day1 \
 | 상태 | 의미 | 출력 생성 |
 |---|---|---|
 | `matched` | 신뢰도와 peak 유일성 기준 통과 | 예 |
+| `partial` | 영상 일부에 하나 이상의 신뢰 가능한 구간 | `--mode fallback`에서만 예 |
 | `unmatched` | 상관도 또는 confidence 부족 | 아니요 |
 | `ambiguous` | 비슷한 후보가 둘 이상 존재 | 아니요 |
 | `error` | 오디오 스트림 없음, probe/렌더 실패 등 | 아니요 |
 
 종료 코드는 전체 성공 `0`, 일부 미매칭·애매함·오류 `2`, 입력이나 세션 분석의
-치명적 실패 `1`입니다. `process`는 기본적으로 출력 디렉터리에
+치명적 실패 `1`입니다. fallback process에서 렌더된 `partial`은 성공에 포함되지만
+analyze의 부분 진단은 종료 코드 2입니다. `process`는 기본적으로 출력 디렉터리에
 `recordersync-report.json`을 저장합니다.
 
 선택된 오디오·영상 파일과 오디오 분석/영상 매칭/렌더 진행률은 표준 오류에 표시합니다.
@@ -115,11 +139,13 @@ uv run recordersync process ~/Videos/day1 \
 --report PATH                 JSON 리포트 저장 경로
 --report-language ko|en       리포트 사유 언어(기본: ko)
 --json                        analyze 전체 JSON을 stdout에 출력
+--partial                     analyze에서 부분 구간 분석 활성화
 --min-confidence 0.75         최소 종합 신뢰도
 --min-peak-margin 0.05        최고/차순위 상관 peak 최소 차이
+--min-partial-seconds 5       승인할 최소 연속 부분 구간 길이
 --session-gap-seconds 10      새 녹음 세션으로 나눌 시간 공백
---mode replace|mix            외부 음원 교체 또는 카메라음 혼합
---camera-audio-volume 0.10    mix 모드의 카메라 음량(0.0~1.0)
+--mode replace|mix|fallback   전체 교체, 혼합, 부분 구간 폴백
+--camera-audio-volume NUMBER  카메라 음량(기본: mix 0.1, fallback 1.0)
 --external-audio-volume 1.0   외부 레코더 음량(0.0~1.0)
 --dry-run                     process 계획만 출력
 --overwrite                   기존 결과 덮어쓰기 허용
@@ -135,6 +161,9 @@ recordersync process --help
 JSON 키와 `matched` 같은 상태값은 자동화 호환성을 위해 영어로 고정되며, 사람이 읽는
 `reason`만 기본 한국어 또는 `--report-language en`의 영어로 출력됩니다. JSON 소비자는
 `analyze --json`을 사용해야 합니다.
+
+JSON 리포트 v2는 상태별 `partial` 개수와 영상별 `coverage_ratio`, 시간순 `segments`를
+제공합니다. 각 구간에는 세션 ID, 영상/외부 시작점, 길이, drift와 신뢰도 수치가 있습니다.
 
 예를 들어 `clip.mov`를 `final_clip_synced.mp4`로 만들려면 다음처럼 실행합니다.
 
@@ -161,8 +190,9 @@ matches = match_videos(video_paths, sessions)
 
 가장 단순한 연동은 RecorderSync가 만든 표준 개별 MP4 목록을 TubeArchive의 기존
 병합·업로드 경로에 전달하는 것입니다. 매칭 결과를 Transcoder가 직접 소비하려면
-`session_id`, `external_start_seconds`, `tempo_ratio`와 함께 여러 레코더 조각을 concat
-입력으로 처리해야 합니다. 첫 오디오 조각만 전달하면 조각 경계를 넘는 영상이 깨집니다.
+전체 매칭의 `session_id`, `external_start_seconds`, `tempo_ratio`뿐 아니라 부분 매칭의
+`segments`와 각 구간의 세션 ID도 처리해야 합니다. 각 세션은 여러 레코더 조각을 concat
+입력으로 다뤄야 하며, 첫 오디오 조각만 전달하면 조각 경계를 넘는 영상이 깨집니다.
 
 ## 전역 설치와 업데이트
 
@@ -191,6 +221,7 @@ bash scripts/format.sh    # Ruff 자동 수정·포맷
 bash scripts/check.sh     # lint, format, mypy, 단위 테스트, 감사, 복잡도, build
 bash scripts/test-e2e.sh  # 실제 FFmpeg 합성 E2E
 uv run python scripts/benchmark_matcher.py
+uv run python scripts/benchmark_matcher.py --partial
 bash scripts/install-hooks.sh
 ```
 
