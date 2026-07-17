@@ -115,7 +115,7 @@ uv run recordersync process ~/Videos/day1 \
 
 ### 매칭 상태
 
-| 상태 | 의미 | 기본 추천 | 출력 생성 |
+| 상태 | 의미 | 기본 추천 | process 출력 가능 여부 |
 |---|---|---|---|
 | `matched` | 신뢰도와 peak 유일성 기준 통과 | `replace` | 예 |
 | `partial` | 영상 일부에 하나 이상의 신뢰 가능한 구간 | 안전 기준 통과 시 `fallback` | `--mode fallback`에서만 예 |
@@ -167,12 +167,13 @@ recordersync process --help
 
 JSON 키와 `matched` 같은 상태값은 자동화 호환성을 위해 영어로 고정되며, 사람이 읽는
 `reason`과 `recommendation_reason`은 기본 한국어 또는 `--report-language en`의 영어로
-출력됩니다. JSON 소비자는 `analyze --json`을 사용해야 합니다.
+출력됩니다. 상세 분석 JSON은 `analyze --json`을 사용하며, `process`의 stdout과
+`--report` 파일도 JSON 형식입니다.
 
 JSON 리포트 v2는 상태별 `partial` 개수와 영상별 `coverage_ratio`, 시간순 `segments`를
 제공합니다. 각 영상에는 `recommended_mode`, `recommendation_reason`,
 `recommended_options`도 포함됩니다. 각 구간에는 세션 ID, 영상/외부 시작점, 길이,
-drift와 신뢰도 수치가 있습니다.
+`tempo_ratio`와 신뢰도 수치가 있습니다.
 
 예를 들어 `clip.mov`를 `final_clip_synced.mp4`로 만들려면 다음처럼 실행합니다.
 
