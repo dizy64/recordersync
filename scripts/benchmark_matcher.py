@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from recordersync.matching import FeatureTimeline, MatchOptions, match_video_features
+from recordersync.models import MatchStatus
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--partial",
         action="store_true",
-        help="fallback용 부분 구간 검증 비용을 포함합니다.",
+        help="전체 매칭이 실패하는 중간 단절 구간의 전역 재탐색 비용을 측정합니다.",
     )
     return parser
 
@@ -37,6 +38,8 @@ def main() -> int:
     clip_frames = round(args.clip_seconds / hop_seconds)
     if clip_frames >= frame_count:
         raise ValueError("clip must be shorter than the recording timeline")
+    if args.partial and clip_frames * 3 >= frame_count:
+        raise ValueError("partial benchmark requires a timeline at least 3x the clip length")
 
     rng = np.random.default_rng(20260717)
     session_features = rng.normal(size=(6, frame_count)).astype(np.float32)
@@ -46,8 +49,22 @@ def main() -> int:
 
     started = time.perf_counter()
     for index in range(args.videos):
-        start = (index * (frame_count - clip_frames)) // args.videos
-        video_features = session_features[:, start : start + clip_frames].copy()
+        if args.partial:
+            segment_frames = clip_frames * 2 // 5
+            gap_frames = clip_frames - segment_frames * 2
+            start = (index * (frame_count - clip_frames * 3)) // args.videos
+            second_start = start + clip_frames * 2
+            video_features = np.concatenate(
+                (
+                    session_features[:, start : start + segment_frames],
+                    rng.normal(size=(6, gap_frames)).astype(np.float32),
+                    session_features[:, second_start : second_start + segment_frames],
+                ),
+                axis=1,
+            )
+        else:
+            start = (index * (frame_count - clip_frames)) // args.videos
+            video_features = session_features[:, start : start + clip_frames].copy()
         match_started = time.perf_counter()
         result = match_video_features(
             Path(f"clip-{index:04d}.mov"),
@@ -57,7 +74,9 @@ def main() -> int:
             options,
         )
         timings.append(time.perf_counter() - match_started)
-        if result.external_start_seconds is None:
+        if result.external_start_seconds is None or (
+            args.partial and result.status is not MatchStatus.PARTIAL
+        ):
             raise RuntimeError(f"Synthetic clip {index} did not match")
 
     elapsed = time.perf_counter() - started

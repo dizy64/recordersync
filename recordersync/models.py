@@ -129,6 +129,15 @@ class AudioMatch:
                 raise ValueError("match segment exceeds video duration")
             previous_end = segment.video_end_seconds
 
+        if self.status is MatchStatus.MATCHED and self.segments:
+            segment = self.segments[0]
+            if (
+                len(self.segments) != 1
+                or segment.video_start_seconds > 1e-6
+                or segment.video_end_seconds < self.duration_seconds - 1e-6
+            ):
+                raise ValueError("matched segments must cover the full video")
+
     @property
     def matched_duration_seconds(self) -> float:
         if self.segments:

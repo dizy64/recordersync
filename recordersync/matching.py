@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -54,10 +55,16 @@ class MatchOptions:
             raise ValueError("peak_margin_full_scale must be > 0")
         if self.exclusion_seconds < 0:
             raise ValueError("exclusion_seconds must be >= 0")
+        if not math.isfinite(self.partial_window_seconds):
+            raise ValueError("partial_window_seconds must be finite")
         if self.partial_window_seconds <= 0:
             raise ValueError("partial_window_seconds must be > 0")
+        if not math.isfinite(self.min_partial_duration_seconds):
+            raise ValueError("min_partial_duration_seconds must be finite")
         if self.min_partial_duration_seconds <= 0:
             raise ValueError("min_partial_duration_seconds must be > 0")
+        if not math.isfinite(self.partial_alignment_tolerance_seconds):
+            raise ValueError("partial_alignment_tolerance_seconds must be finite")
         if self.partial_alignment_tolerance_seconds < 0:
             raise ValueError("partial_alignment_tolerance_seconds must be >= 0")
 
@@ -520,25 +527,31 @@ def _find_partial_segments(
     if any(abs(timeline.hop_seconds - hop_seconds) > 1e-9 for timeline in sessions):
         raise ValueError("all session feature timelines must use the same hop_seconds")
     timelines = {timeline.session_id: timeline for timeline in sessions}
-    full_timeline = (
+    anchor_timeline = (
         timelines.get(full_score.best.session_id)
         if full_score.best is not None and full_start_frame is not None
         else None
     )
+    anchor_start_frame = full_start_frame
+    anchor_video_start_frame = 0
+    anchor_tempo_ratio = full_tempo_ratio
+    anchor_score = full_score
 
     windows: list[_WindowMatch] = []
     for video_start, video_end in _window_ranges(video_features.shape[1], hop_seconds, options):
         reference = video_features[:, video_start:video_end]
         matched: _WindowMatch | None = None
-        if full_timeline is not None and full_start_frame is not None:
-            expected_start = full_start_frame + round(video_start * full_tempo_ratio)
+        if anchor_timeline is not None and anchor_start_frame is not None:
+            expected_start = anchor_start_frame + round(
+                (video_start - anchor_video_start_frame) * anchor_tempo_ratio
+            )
             matched = _local_window_match(
                 reference,
                 video_start_frame=video_start,
                 video_end_frame=video_end,
-                timeline=full_timeline,
+                timeline=anchor_timeline,
                 expected_start_frame=expected_start,
-                fallback_score=full_score,
+                fallback_score=anchor_score,
                 options=options,
             )
         if matched is None:
@@ -551,6 +564,18 @@ def _find_partial_segments(
             )
         if matched is not None:
             windows.append(matched)
+            anchor_timeline = timelines[matched.candidate.session_id]
+            anchor_start_frame = matched.candidate.frame_index
+            anchor_video_start_frame = video_start
+            anchor_tempo_ratio = 1.0
+            anchor_score = _ReferenceScore(
+                MatchStatus.MATCHED,
+                matched.candidate,
+                matched.correlation,
+                matched.peak_margin,
+                matched.confidence,
+                None,
+            )
 
     groups = _group_window_matches(
         windows,
@@ -676,6 +701,10 @@ def match_video_features(
         peak_margin=min(segment.peak_margin for segment in segments),
         confidence=sum(segment.confidence * segment.duration_seconds for segment in segments)
         / matched_duration,
-        reason=("Only part of the camera audio matched the external recording"),
+        reason=(
+            "Only part of the camera audio matched the external recording"
+            if status is MatchStatus.PARTIAL
+            else None
+        ),
         segments=segments,
     )
