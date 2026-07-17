@@ -15,7 +15,7 @@ from recordersync.media import FFmpegTools, MediaError, discover_audio_files, di
 from recordersync.models import AudioChunk, RecordingSession
 
 
-def test_discover_media_files_filters_extensions_and_output(tmp_path: Path) -> None:
+def test_미디어_파일_탐색은_확장자와_출력_파일을_필터링한다(tmp_path: Path) -> None:
     audio_dir = tmp_path / "audio"
     video_dir = tmp_path / "video"
     output_dir = video_dir / "replace"
@@ -32,7 +32,7 @@ def test_discover_media_files_filters_extensions_and_output(tmp_path: Path) -> N
     assert discover_video_files(video_dir, excluded_dirs={output_dir}) == [video_dir / "clip.mov"]
 
 
-def test_probe_audio_prefers_embedded_creation_time(tmp_path: Path) -> None:
+def test_오디오_분석은_내장된_생성_시각을_우선한다(tmp_path: Path) -> None:
     audio = tmp_path / "REC_001.WAV"
     audio.touch()
     payload = {
@@ -59,7 +59,7 @@ def test_probe_audio_prefers_embedded_creation_time(tmp_path: Path) -> None:
     assert chunk.stream_signature == (48_000, 2, "pcm_f32le")
 
 
-def test_probe_video_reads_dimensions_audio_and_color(tmp_path: Path) -> None:
+def test_영상_분석은_해상도와_오디오와_색상_정보를_읽는다(tmp_path: Path) -> None:
     video = tmp_path / "clip.mov"
     video.touch()
     payload = {
@@ -84,7 +84,7 @@ def test_probe_video_reads_dimensions_audio_and_color(tmp_path: Path) -> None:
     assert info.color_transfer == "arib-std-b67"
 
 
-def test_extract_features_decodes_float_pcm() -> None:
+def test_특징_추출은_부동소수점_PCM을_디코딩한다() -> None:
     samples = np.linspace(-1, 1, 8_000, dtype=np.float32)
     completed = CompletedProcess(["ffmpeg"], 0, stdout=samples.tobytes(), stderr=b"")
 
@@ -101,7 +101,7 @@ def test_extract_features_decodes_float_pcm() -> None:
     assert build.call_args.kwargs["sample_rate"] == 8_000
 
 
-def test_probe_failure_masks_command_and_raises_media_error() -> None:
+def test_미디어_분석_실패는_명령을_가리고_미디어_오류를_발생시킨다() -> None:
     completed = CompletedProcess(["ffprobe"], 1, stdout="", stderr="invalid data")
 
     with (
@@ -111,7 +111,7 @@ def test_probe_failure_masks_command_and_raises_media_error() -> None:
         FFmpegTools().probe_audio(Path("broken.wav"))
 
 
-def test_build_session_timeline_concatenates_chunk_features() -> None:
+def test_세션_타임라인_생성은_청크_특징을_이어붙인다() -> None:
     tools = FFmpegTools()
     session = RecordingSession(
         "session-001",
@@ -130,7 +130,7 @@ def test_build_session_timeline_concatenates_chunk_features() -> None:
     assert timeline.hop_seconds == pytest.approx(0.05)
 
 
-def test_build_session_timeline_pads_each_chunk_to_preserve_logical_offsets() -> None:
+def test_세션_타임라인_생성은_논리_오프셋_보존을_위해_각_청크를_채운다() -> None:
     tools = FFmpegTools()
     session = RecordingSession(
         "session-001",

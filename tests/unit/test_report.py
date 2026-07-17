@@ -10,7 +10,7 @@ from recordersync.models import AudioChunk, AudioMatch, MatchStatus, RecordingSe
 from recordersync.report import MatchReport, ReportLanguage
 
 
-def test_match_report_serializes_sessions_matches_and_summary() -> None:
+def test_매칭_리포트는_세션과_매칭과_요약을_직렬화한다() -> None:
     session = RecordingSession(
         "session-001",
         (AudioChunk(Path("a.wav"), 60, 48_000, 2, "pcm_f32le", None),),
@@ -56,7 +56,7 @@ def test_match_report_serializes_sessions_matches_and_summary() -> None:
     )
 
 
-def test_match_report_can_render_english_reasons() -> None:
+def test_매칭_리포트는_영문_사유를_렌더링할_수_있다() -> None:
     report = MatchReport(
         sessions=(),
         matches=(
@@ -76,7 +76,7 @@ def test_match_report_can_render_english_reasons() -> None:
     assert payload["matches"][0]["reason"] == ("Match confidence is below the configured threshold")
 
 
-def test_match_report_translates_known_prefix_and_preserves_unknown_reason() -> None:
+def test_매칭_리포트는_알려진_접두사를_번역하고_알_수_없는_사유는_보존한다() -> None:
     report = MatchReport(
         sessions=(),
         matches=(
@@ -102,7 +102,7 @@ def test_match_report_translates_known_prefix_and_preserves_unknown_reason() -> 
     assert payload["matches"][1]["reason"] == "codec-specific diagnostic"
 
 
-def test_match_report_renders_compact_korean_human_summary() -> None:
+def test_매칭_리포트는_간결한_한국어_사람용_요약을_렌더링한다() -> None:
     report = MatchReport(
         sessions=(),
         matches=(
@@ -132,7 +132,7 @@ def test_match_report_renders_compact_korean_human_summary() -> None:
     assert "correlation" not in rendered
 
 
-def test_match_report_renders_empty_human_summary_without_division_error() -> None:
+def test_매칭_리포트는_나눗셈_오류_없이_빈_사람용_요약을_렌더링한다() -> None:
     report = MatchReport(
         sessions=(),
         matches=(),
@@ -142,7 +142,7 @@ def test_match_report_renders_empty_human_summary_without_division_error() -> No
     assert report.to_text() == "분석 결과: 0/0개 매칭 (0.0%)"
 
 
-def test_match_report_always_explains_failed_human_match() -> None:
+def test_매칭_리포트는_실패한_사람용_매칭을_항상_설명한다() -> None:
     report = MatchReport(
         sessions=(),
         matches=(AudioMatch(Path("failed.mov"), 8, MatchStatus.ERROR),),
@@ -152,7 +152,7 @@ def test_match_report_always_explains_failed_human_match() -> None:
     assert report.to_text().endswith("사유: 사유를 확인할 수 없습니다.")
 
 
-def test_match_report_renders_english_human_summary() -> None:
+def test_매칭_리포트는_영문_사람용_요약을_렌더링한다() -> None:
     report = MatchReport(
         sessions=(),
         matches=(

@@ -14,7 +14,7 @@ from recordersync.models import AudioChunk, AudioMatch, MatchStatus, RecordingSe
 from recordersync.render import RenderMode
 
 
-def test_discover_sessions_probes_and_groups_audio_directory(tmp_path: Path) -> None:
+def test_세션_탐색은_오디오_디렉터리를_분석하고_그룹화한다(tmp_path: Path) -> None:
     first = tmp_path / "REC_001.wav"
     second = tmp_path / "REC_002.wav"
     first.touch()
@@ -31,7 +31,7 @@ def test_discover_sessions_probes_and_groups_audio_directory(tmp_path: Path) -> 
     assert sessions[0].chunks[1].path == second
 
 
-def test_match_videos_returns_results_without_rendering() -> None:
+def test_영상_매칭은_렌더링하지_않고_결과를_반환한다() -> None:
     rng = np.random.default_rng(23)
     video_features = rng.normal(size=(6, 80)).astype(np.float32)
     video_features = (video_features - video_features.mean(axis=1, keepdims=True)) / (
@@ -62,7 +62,7 @@ def test_match_videos_returns_results_without_rendering() -> None:
     assert matches[0].status is MatchStatus.MATCHED
 
 
-def test_build_render_plan_maps_approved_match() -> None:
+def test_렌더_계획_생성은_승인된_매칭을_연결한다() -> None:
     session = RecordingSession(
         "session-001",
         (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),

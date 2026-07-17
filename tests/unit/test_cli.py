@@ -13,7 +13,7 @@ from recordersync.models import AudioMatch, MatchStatus
 from recordersync.pipeline import AnalysisBundle
 
 
-def test_main_without_arguments_prints_help_and_returns_success(
+def test_인자_없는_메인은_도움말을_출력하고_성공을_반환한다(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     assert main([]) == 0
@@ -24,7 +24,7 @@ def test_main_without_arguments_prints_help_and_returns_success(
     assert "recordersync process VIDEO_DIR" in stdout
 
 
-def test_process_help_documents_both_audio_volume_options(
+def test_처리_도움말은_두_오디오_볼륨_옵션을_안내한다(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit) as exit_info:
@@ -38,7 +38,7 @@ def test_process_help_documents_both_audio_volume_options(
     assert "외부 보이스레코더 오디오 볼륨" in stdout
 
 
-def test_process_cli_defaults_to_safe_replace_policy() -> None:
+def test_처리_CLI는_안전한_교체_정책을_기본값으로_사용한다() -> None:
     args = build_parser().parse_args(["process", "/video", "--audio-dir", "/audio"])
 
     assert args.command == "process"
@@ -58,14 +58,14 @@ def test_process_cli_defaults_to_safe_replace_policy() -> None:
     assert not args.overwrite
 
 
-def test_process_cli_allows_audio_dir_to_be_omitted() -> None:
+def test_처리_CLI는_오디오_디렉터리_생략을_허용한다() -> None:
     args = build_parser().parse_args(["process", "/media"])
 
     assert args.video_dir == Path("/media")
     assert args.audio_dir is None
 
 
-def test_process_cli_accepts_output_name_affixes() -> None:
+def test_처리_CLI는_출력_이름의_접두사와_접미사를_허용한다() -> None:
     args = build_parser().parse_args(
         ["process", "/media", "--output-prefix", "final_", "--output-suffix", "_synced"]
     )
@@ -74,7 +74,7 @@ def test_process_cli_accepts_output_name_affixes() -> None:
     assert args.output_suffix == "_synced"
 
 
-def test_analyze_cli_accepts_json_report_path() -> None:
+def test_분석_CLI는_JSON_리포트_경로를_허용한다() -> None:
     args = build_parser().parse_args(
         ["analyze", "/video", "--audio-dir", "/audio", "--report", "/tmp/report.json"]
     )
@@ -84,18 +84,18 @@ def test_analyze_cli_accepts_json_report_path() -> None:
     assert not args.json
 
 
-def test_analyze_cli_accepts_json_stdout_flag() -> None:
+def test_분석_CLI는_JSON_표준_출력_플래그를_허용한다() -> None:
     args = build_parser().parse_args(["analyze", "/video", "--json"])
 
     assert args.json
 
 
-def test_analyze_cli_rejects_unsupported_report_language() -> None:
+def test_분석_CLI는_지원하지_않는_리포트_언어를_거부한다() -> None:
     with pytest.raises(SystemExit):
         build_parser().parse_args(["analyze", "/video", "--report-language", "ja"])
 
 
-def test_process_cli_rejects_camera_volume_outside_unit_interval() -> None:
+def test_처리_CLI는_단위_구간_밖의_카메라_볼륨을_거부한다() -> None:
     with pytest.raises(SystemExit):
         build_parser().parse_args(
             [
@@ -109,7 +109,7 @@ def test_process_cli_rejects_camera_volume_outside_unit_interval() -> None:
         )
 
 
-def test_process_cli_accepts_external_audio_volume() -> None:
+def test_처리_CLI는_외부_오디오_볼륨을_허용한다() -> None:
     args = build_parser().parse_args(
         ["process", "/video", "--mode", "mix", "--external-audio-volume", "0.8"]
     )
@@ -117,7 +117,7 @@ def test_process_cli_accepts_external_audio_volume() -> None:
     assert args.external_audio_volume == pytest.approx(0.8)
 
 
-def test_main_analyze_prints_human_summary_by_default(
+def test_메인_분석은_기본적으로_사람용_요약을_출력한다(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     bundle = AnalysisBundle(
@@ -138,7 +138,7 @@ def test_main_analyze_prints_human_summary_by_default(
     assert '"matched"' not in stdout
 
 
-def test_main_analyze_prints_json_only_when_requested(
+def test_메인_분석은_요청할_때만_JSON을_출력한다(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     bundle = AnalysisBundle(
@@ -158,7 +158,7 @@ def test_main_analyze_prints_json_only_when_requested(
     assert "분석 결과:" not in stdout
 
 
-def test_main_analyze_writes_json_report_while_printing_human_summary(
+def test_메인_분석은_사람용_요약을_출력하면서_JSON_리포트를_작성한다(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -179,7 +179,7 @@ def test_main_analyze_writes_json_report_while_printing_human_summary(
     assert json.loads(report_path.read_text(encoding="utf-8"))["summary"]["matched"] == 1
 
 
-def test_main_uses_video_dir_for_audio_when_audio_dir_is_omitted() -> None:
+def test_메인은_오디오_디렉터리_생략_시_영상_디렉터리를_사용한다() -> None:
     bundle = AnalysisBundle(
         sessions=(),
         videos=(),
@@ -195,7 +195,7 @@ def test_main_uses_video_dir_for_audio_when_audio_dir_is_omitted() -> None:
     assert pipeline.analyze.call_args.args[:2] == (Path("/media"), Path("/media"))
 
 
-def test_main_prints_selected_files_and_progress_to_stderr(
+def test_메인은_선택된_파일과_진행률을_표준_오류에_출력한다(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     bundle = AnalysisBundle(
@@ -224,7 +224,7 @@ def test_main_prints_selected_files_and_progress_to_stderr(
     assert "[영상 매칭] 2/2 (100%) clip.mov" in stderr
 
 
-def test_main_can_print_english_report_reasons(capsys: pytest.CaptureFixture[str]) -> None:
+def test_메인은_영문_리포트_사유를_출력할_수_있다(capsys: pytest.CaptureFixture[str]) -> None:
     bundle = AnalysisBundle(
         sessions=(),
         videos=(),
@@ -247,7 +247,7 @@ def test_main_can_print_english_report_reasons(capsys: pytest.CaptureFixture[str
     assert "Match confidence is below the configured threshold" in capsys.readouterr().out
 
 
-def test_main_dry_run_returns_partial_exit_without_rendering() -> None:
+def test_메인_모의_실행은_렌더링_없이_부분_종료를_반환한다() -> None:
     bundle = AnalysisBundle(
         sessions=(),
         videos=(),
@@ -263,7 +263,9 @@ def test_main_dry_run_returns_partial_exit_without_rendering() -> None:
     pipeline.process.assert_not_called()
 
 
-def test_main_dry_run_applies_output_name_affixes(capsys: pytest.CaptureFixture[str]) -> None:
+def test_메인_모의_실행은_출력_이름의_접두사와_접미사를_적용한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     bundle = AnalysisBundle(
         sessions=(),
         videos=(),
@@ -290,7 +292,7 @@ def test_main_dry_run_applies_output_name_affixes(capsys: pytest.CaptureFixture[
     pipeline.process.assert_not_called()
 
 
-def test_main_reports_fatal_validation_error(capsys: pytest.CaptureFixture[str]) -> None:
+def test_메인은_치명적인_검증_오류를_보고한다(capsys: pytest.CaptureFixture[str]) -> None:
     pipeline = MagicMock()
     pipeline.analyze.side_effect = ValueError("bad input")
 
