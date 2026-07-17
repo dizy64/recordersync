@@ -34,8 +34,8 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--audio-dir",
         type=Path,
-        required=True,
-        help="분할된 보이스레코더 오디오 디렉터리",
+        default=None,
+        help="분할된 보이스레코더 오디오 디렉터리(기본: VIDEO_DIR)",
     )
     parser.add_argument("--output-dir", type=Path, default=None, help="기본: VIDEO_DIR/replace")
     parser.add_argument("--report", type=Path, default=None, help="JSON 리포트 저장 경로")
@@ -97,12 +97,13 @@ def _dry_run_report(bundle: object, output_dir: Path) -> MatchReport:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     pipeline = RecorderSyncPipeline()
+    audio_dir = args.audio_dir or args.video_dir
     output_dir = args.output_dir or args.video_dir / "replace"
 
     try:
         bundle = pipeline.analyze(
             args.video_dir,
-            args.audio_dir,
+            audio_dir,
             output_dir=output_dir,
             match_options=_match_options(args),
             session_gap_seconds=args.session_gap_seconds,

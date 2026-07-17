@@ -27,6 +27,13 @@ def test_process_cli_defaults_to_safe_replace_policy() -> None:
     assert not args.overwrite
 
 
+def test_process_cli_allows_audio_dir_to_be_omitted() -> None:
+    args = build_parser().parse_args(["process", "/media"])
+
+    assert args.video_dir == Path("/media")
+    assert args.audio_dir is None
+
+
 def test_analyze_cli_accepts_json_report_path() -> None:
     args = build_parser().parse_args(
         ["analyze", "/video", "--audio-dir", "/audio", "--report", "/tmp/report.json"]
@@ -64,6 +71,22 @@ def test_main_analyze_prints_report_and_returns_success(capsys: pytest.CaptureFi
 
     assert exit_code == 0
     assert '"matched": 1' in capsys.readouterr().out
+
+
+def test_main_uses_video_dir_for_audio_when_audio_dir_is_omitted() -> None:
+    bundle = AnalysisBundle(
+        sessions=(),
+        videos=(),
+        matches=(AudioMatch(Path("clip.mov"), 5, MatchStatus.MATCHED),),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = bundle
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(["analyze", "/media"])
+
+    assert exit_code == 0
+    assert pipeline.analyze.call_args.args[:2] == (Path("/media"), Path("/media"))
 
 
 def test_main_dry_run_returns_partial_exit_without_rendering() -> None:
