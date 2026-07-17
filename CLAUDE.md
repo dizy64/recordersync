@@ -13,17 +13,18 @@
 - 코드 변경은 `../.worktrees/recordersync/{name}` worktree에서 수행
 - `main`에 직접 commit/push/merge하지 않고 작업 브랜치의 PR과 필수 CI를 통해 병합
 - `AGENTS.md`는 이 파일을 가리키는 심볼릭 링크로 유지
+- 문서는 `docs/{관심사}/{file-name}.md` 구조와 소문자 kebab-case 파일명을 사용
 
 ## 작업 전 읽기 순서
 
-1. `docs/CONCEPT.md`: 제품 범위와 안전 정책
-2. `docs/ARCHITECTURE.md`: 알고리즘, 모듈 책임, 성능 기준
+1. `docs/product/concept.md`: 제품 범위와 안전 정책
+2. `docs/design/architecture.md`: 알고리즘, 모듈 책임, 성능 기준
 3. `CONTRIBUTING.md`: worktree와 TDD 절차
-4. `docs/TESTING.md`: 테스트 지도와 목 작성 규칙
-5. `docs/HANDOFF.md`: 알려진 한계와 다음 우선순위
+4. `docs/development/testing.md`: 테스트 지도와 목 작성 규칙
+5. `docs/project/handoff.md`: 알려진 한계와 다음 우선순위
 
-설치·운영 변경은 `docs/OPERATIONS.md`, 외부 JSON 변경은
-`docs/REPORT_SCHEMA.md`, 개인정보·취약점 처리는 `SECURITY.md`를 함께 읽는다.
+설치·운영 변경은 `docs/operations/guide.md`, 외부 JSON 변경은
+`docs/reference/report-schema.md`, 개인정보·취약점 처리는 `SECURITY.md`를 함께 읽는다.
 
 ## 핵심 계약
 
@@ -56,10 +57,16 @@
 추가하지 않고 `-fps_mode:v passthrough`를 유지한다. JSON 필드와 상태값은 번역하지 않고
 `reason`만 `ko/en`으로 직렬화하며 CLI 기본값은 `ko`다.
 
-부분 매칭은 opt-in이다. `analyze --partial`은 부분 구간을 진단만 하고,
+`analyze`는 전체 일치가 실패한 영상의 부분 구간까지 기본 진단하고 `--full-only`에서만
+부분 탐색을 생략한다. 전체 일치가 성공하면 부분 탐색을 추가 실행하지 않는다.
 `process --mode fallback`은 일치 구간에 레코더음을 쓰고 나머지 구간에 카메라음을 쓴다.
 승인 구간은 영상 타임라인에서 정렬되고 겹치지 않아야 하며, 기본 50ms crossfade로
 경계 클릭을 완화한다. JSON 리포트 v2는 `partial`, `coverage_ratio`, `segments`를 제공한다.
+
+사람용 `analyze` 마지막에는 배치 전체의 권장 `process` 명령을 셸 형식으로 표시하고,
+`analyze --json`과 분석 `--report`에는 같은 명령을 `recommended_command` argv 배열로
+제공한다. fallback 추천 명령은 `--recommended-only`로 안전 기준을 통과한 부분 매칭만
+렌더한다. 이 추천은 렌더를 자동 실행하거나 사용자가 명시한 process 모드를 바꾸지 않는다.
 
 기본 출력 파일명은 `<원본 stem>.mp4`이며 자동 접두사·접미사를 붙이지 않는다. 사용자가
 명시한 `--output-prefix/--output-suffix`만 적용하고 경로 구분자를 거부한다. 어떤

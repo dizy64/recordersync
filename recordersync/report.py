@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -179,6 +180,8 @@ class MatchReport:
     sessions: tuple[RecordingSession, ...]
     matches: tuple[AudioMatch, ...]
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    recommended_command: tuple[str, ...] | None = None
+    include_recommended_command: bool = False
 
     def _summary(self) -> dict[str, int]:
         return {
@@ -191,7 +194,7 @@ class MatchReport:
         }
 
     def to_dict(self, *, language: ReportLanguage = ReportLanguage.KO) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "version": REPORT_VERSION,
             "language": language.value,
             "created_at": self.created_at.isoformat(),
@@ -206,6 +209,11 @@ class MatchReport:
             ],
             "matches": [_match_payload(match, language) for match in self.matches],
         }
+        if self.include_recommended_command:
+            payload["recommended_command"] = (
+                list(self.recommended_command) if self.recommended_command is not None else None
+            )
+        return payload
 
     def to_json(self, *, language: ReportLanguage = ReportLanguage.KO) -> str:
         return json.dumps(self.to_dict(language=language), ensure_ascii=False, indent=2)
@@ -277,6 +285,17 @@ class MatchReport:
                     f"{_recommendation_reason(recommendation, language)}"
                 )
             lines.append(line)
+        if self.include_recommended_command:
+            lines.append("")
+            if self.recommended_command is not None:
+                command_label = (
+                    "추천 실행" if language is ReportLanguage.KO else "Recommended command"
+                )
+                lines.extend((f"{command_label}:", f"  {shlex.join(self.recommended_command)}"))
+            elif language is ReportLanguage.KO:
+                lines.append("추천 실행 명령 없음: 신뢰할 수 있는 매칭이 없습니다.")
+            else:
+                lines.append("No recommended command: no reliable match is available.")
         return "\n".join(lines)
 
     def write(self, path: Path, *, language: ReportLanguage = ReportLanguage.KO) -> None:

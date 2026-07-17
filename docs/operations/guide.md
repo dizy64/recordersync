@@ -149,8 +149,11 @@ recordersync analyze /path/to/media \
 
 ```text
 분석 결과: 1/2개 매칭 (50.0%)
-- clip-001.mov | 매칭 여부: 성공 | 매칭률: 94.0%
+- clip-001.mov | 매칭 여부: 성공 | 매칭률: 94.0% | 추천: replace
 - clip-002.mov | 매칭 여부: 실패 | 매칭률: 71.0% | 사유: 최상위 후보와 차순위 후보의 차이가 충분하지 않습니다.
+
+추천 실행:
+  recordersync process /path/to/media
 ```
 
 전체 세션·offset·상관도 등 기계 판독 필드는 `--json`을 명시한다.
@@ -172,17 +175,19 @@ recordersync analyze /path/to/media --report-language en
 recordersync analyze /path/to/videos --audio-dir /path/to/recorder-files
 ```
 
-영상 전체가 아닌 앞뒤 길이 차이와 중간 단절까지 진단하려면 부분 분석을 명시한다.
+기본 분석은 전체 일치가 실패한 영상의 앞뒤 길이 차이와 중간 단절까지 진단한다.
+전체 일치만 빠르게 확인하려면 `--full-only`를 사용한다.
 
 ```bash
 recordersync analyze /path/to/videos \
   --audio-dir /path/to/recorder-files \
-  --partial \
   --min-partial-seconds 5
 ```
 
 사람용 목록에는 `부분`, 레코더 사용률, 승인 구간 수가 표시된다. 자동화는
-`analyze --partial --json`의 v2 `coverage_ratio`와 `segments`를 사용한다.
+`analyze --json`의 v2 `coverage_ratio`, `segments`, `recommended_command`를 사용한다.
+추천된 fallback 명령은 `--recommended-only`를 포함해 추천 기준에 미달한 partial은
+렌더하지 않는다.
 
 사람용 목록에서 실패 파일과 사유를 먼저 확인한다. 상세 JSON의 `summary`,
 `audio_sessions`, 각 영상의 `confidence`, `peak_margin`, 시작점은 자동화나 심층 진단에만
@@ -237,6 +242,8 @@ recordersync process /path/to/media \
 fallback은 영상 앞뒤와 승인 구간 사이에 카메라음을 쓰고, 승인된 각 구간에는 해당 녹음
 세션의 레코더음을 쓴다. 경계는 기본 50ms crossfade로 연결한다. 전체 일치 영상도 같은
 명령에서 정상 렌더되며, 부분 일치만 fallback 출력 대상으로 추가된다.
+`analyze`의 보수적인 추천 대상만 자동 처리하려면 `--recommended-only`를 함께 사용한다.
+이때 기준 미달 partial은 출력하지 않으며 배치 종료 코드는 2로 남는다.
 
 두 값은 0.0~1.0 범위의 독립적인 FFmpeg 볼륨 배수다. 외부 음량은 모든 모드에 적용되고,
 카메라 음량은 mix와 fallback에 적용된다. 카메라 음량 기본값은 mix 0.1, fallback 1.0이다.
@@ -284,7 +291,7 @@ esac
 
 자동화에서는 종료 코드 2를 성공으로 덮어쓰지 않는다. 일부 파일만 생성된 정상적인
 배치 결과이므로 리포트를 읽어 후속 정책을 결정한다. `process --mode fallback`에서
-성공적으로 렌더된 `partial`은 종료 코드 0 조건에 포함되지만 `analyze --partial`은
+성공적으로 렌더된 `partial`은 종료 코드 0 조건에 포함되지만 `analyze`의 부분 진단은
 렌더 성공이 아니므로 partial이 있으면 2를 반환한다.
 
 ## 자주 발생하는 문제
@@ -294,7 +301,7 @@ esac
 | `No supported audio files` | 확장자와 선택된 오디오 디렉터리 바로 아래 파일인지 확인. 생략 시 VIDEO_DIR 사용 |
 | `Camera audio is required` | 카메라 원본에 첫 오디오 스트림이 있는지 ffprobe 확인 |
 | 결과가 모두 ambiguous | 반복 음원, 너무 넓은 세션, peak margin 확인 |
-| 부분 구간이 검출되지 않음 | `--partial` 또는 `--mode fallback`, 최소 부분 길이, 카메라음 확인 |
+| 부분 구간이 검출되지 않음 | `--full-only` 사용 여부, 최소 부분 길이, 카메라음 확인 |
 | 결과가 이미 존재 | 다른 output dir 또는 의도적인 `--overwrite` 사용 |
 | VideoToolbox 실패 | `ffmpeg -encoders`, macOS 권한, 디스크 공간 확인 |
 | libx265도 실패 | JSON error와 FFmpeg stderr, 지원 filter/codec 확인 |

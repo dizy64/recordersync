@@ -266,3 +266,32 @@ def test_매칭_리포트는_영문_사람용_요약을_렌더링한다() -> Non
             "reason: Match confidence is below the configured threshold | recommendation: hold"
         ),
     ]
+
+
+def test_매칭_리포트는_추천_명령을_JSON과_셸_형식으로_렌더링한다() -> None:
+    report = MatchReport(
+        sessions=(),
+        matches=(AudioMatch(Path("clip.mov"), 8, MatchStatus.MATCHED),),
+        created_at=datetime(2026, 7, 17, tzinfo=UTC),
+        recommended_command=("recordersync", "process", "/video dir"),
+        include_recommended_command=True,
+    )
+
+    assert report.to_dict()["recommended_command"] == [
+        "recordersync",
+        "process",
+        "/video dir",
+    ]
+    assert report.to_text().endswith("추천 실행:\n  recordersync process '/video dir'")
+
+
+def test_매칭_리포트는_추천할_명령이_없음을_표시한다() -> None:
+    report = MatchReport(
+        sessions=(),
+        matches=(AudioMatch(Path("clip.mov"), 8, MatchStatus.UNMATCHED),),
+        created_at=datetime(2026, 7, 17, tzinfo=UTC),
+        include_recommended_command=True,
+    )
+
+    assert report.to_dict()["recommended_command"] is None
+    assert report.to_text().endswith("추천 실행 명령 없음: 신뢰할 수 있는 매칭이 없습니다.")

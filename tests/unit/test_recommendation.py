@@ -8,6 +8,7 @@ from recordersync.models import AudioMatch, AudioMatchSegment, MatchStatus
 from recordersync.recommendation import (
     RecommendationMode,
     RecommendationReason,
+    recommend_batch_mode,
     recommend_mode,
 )
 
@@ -133,3 +134,38 @@ def test_승인되지_않은_매칭은_처리를_보류한다(
 
     assert recommendation.mode is None
     assert recommendation.reason is reason
+
+
+def test_배치에_안전한_부분_매칭이_있으면_fallback을_추천한다() -> None:
+    matched = AudioMatch(Path("full.mov"), 60, MatchStatus.MATCHED)
+    first_partial = _partial_match(duration_seconds=100, segment_durations=(30,))
+    second_partial = _partial_match(duration_seconds=200, segment_durations=(60,))
+
+    recommendation = recommend_batch_mode((matched, first_partial, second_partial))
+
+    assert recommendation.mode is RecommendationMode.FALLBACK
+    assert recommendation.minimum_contiguous_seconds == pytest.approx(30.0)
+
+
+def test_배치에_전체_매칭만_있으면_replace를_추천한다() -> None:
+    matches = (
+        AudioMatch(Path("first.mov"), 60, MatchStatus.MATCHED),
+        AudioMatch(Path("second.mov"), 60, MatchStatus.UNMATCHED),
+    )
+
+    recommendation = recommend_batch_mode(matches)
+
+    assert recommendation.mode is RecommendationMode.REPLACE
+    assert recommendation.minimum_contiguous_seconds is None
+
+
+def test_배치에_처리할_매칭이_없으면_모드를_추천하지_않는다() -> None:
+    matches = (
+        AudioMatch(Path("first.mov"), 60, MatchStatus.UNMATCHED),
+        AudioMatch(Path("second.mov"), 60, MatchStatus.AMBIGUOUS),
+    )
+
+    recommendation = recommend_batch_mode(matches)
+
+    assert recommendation.mode is None
+    assert recommendation.minimum_contiguous_seconds is None

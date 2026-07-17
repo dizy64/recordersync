@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -77,3 +78,33 @@ def recommend_mode(match: AudioMatch) -> ModeRecommendation:
         RecommendationReason.RELIABLE_PARTIAL,
         minimum_contiguous_seconds=required_contiguous_seconds,
     )
+
+
+def recommend_batch_mode(matches: Iterable[AudioMatch]) -> ModeRecommendation:
+    """배치 전체를 한 번에 안전하게 처리할 렌더 모드를 추천한다."""
+
+    recommendations = tuple(recommend_mode(match) for match in matches)
+    fallback_recommendations = tuple(
+        recommendation
+        for recommendation in recommendations
+        if recommendation.mode is RecommendationMode.FALLBACK
+    )
+    if fallback_recommendations:
+        if any(
+            recommendation.minimum_contiguous_seconds is None
+            for recommendation in fallback_recommendations
+        ):
+            raise ValueError("fallback recommendation requires a contiguous duration")
+        minimum_contiguous_seconds = max(
+            recommendation.minimum_contiguous_seconds
+            for recommendation in fallback_recommendations
+            if recommendation.minimum_contiguous_seconds is not None
+        )
+        return ModeRecommendation(
+            RecommendationMode.FALLBACK,
+            RecommendationReason.RELIABLE_PARTIAL,
+            minimum_contiguous_seconds=minimum_contiguous_seconds,
+        )
+    if any(recommendation.mode is RecommendationMode.REPLACE for recommendation in recommendations):
+        return ModeRecommendation(RecommendationMode.REPLACE, RecommendationReason.FULL_MATCH)
+    return ModeRecommendation(None, RecommendationReason.UNMATCHED)

@@ -10,13 +10,22 @@ from typing import TYPE_CHECKING
 
 from recordersync import __version__
 from recordersync.matching import MatchOptions
-from recordersync.models import MatchStatus
+from recordersync.models import AudioMatch, MatchStatus
 from recordersync.pipeline import RecorderSyncPipeline
+from recordersync.recommendation import (
+    RecommendationMode,
+    recommend_batch_mode,
+    recommend_mode,
+)
 from recordersync.render import RenderMode, resolve_output_path, validate_output_affix
 from recordersync.report import MatchReport, ReportLanguage
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+
+_DEFAULT_MATCH_OPTIONS = MatchOptions()
+_DEFAULT_SESSION_GAP_SECONDS = 10.0
 
 
 def _unit_interval(value: str) -> float:
@@ -45,15 +54,27 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
         default=ReportLanguage.KO.value,
         help="리포트 사유 언어(기본: ko)",
     )
-    parser.add_argument("--min-confidence", type=float, default=0.75)
-    parser.add_argument("--min-peak-margin", type=float, default=0.05)
+    parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=_DEFAULT_MATCH_OPTIONS.min_confidence,
+    )
+    parser.add_argument(
+        "--min-peak-margin",
+        type=float,
+        default=_DEFAULT_MATCH_OPTIONS.min_peak_margin,
+    )
     parser.add_argument(
         "--min-partial-seconds",
         type=float,
-        default=5.0,
+        default=_DEFAULT_MATCH_OPTIONS.min_partial_duration_seconds,
         help="부분 매칭으로 승인할 최소 연속 구간 길이(기본: 5.0)",
     )
-    parser.add_argument("--session-gap-seconds", type=float, default=10.0)
+    parser.add_argument(
+        "--session-gap-seconds",
+        type=float,
+        default=_DEFAULT_SESSION_GAP_SECONDS,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -64,7 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="""사용 예시:
   recordersync analyze VIDEO_DIR
   recordersync analyze VIDEO_DIR --json
-  recordersync analyze VIDEO_DIR --partial
+  recordersync analyze VIDEO_DIR --full-only
   recordersync process VIDEO_DIR
   recordersync process VIDEO_DIR --audio-dir AUDIO_DIR --mode mix
   recordersync process VIDEO_DIR --mode fallback
@@ -85,11 +106,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="기계 처리를 위한 전체 JSON을 표준 출력으로 내보냅니다.",
     )
-    analyze.add_argument(
+    partial_group = analyze.add_mutually_exclusive_group()
+    partial_group.add_argument(
         "--partial",
+        dest="partial",
         action="store_true",
-        help="부분·다중 구간 매칭과 fallback 모드 추천 가능성을 분석합니다.",
+        help="부분·다중 구간과 fallback 추천을 분석합니다(기본 동작).",
     )
+    partial_group.add_argument(
+        "--full-only",
+        dest="partial",
+        action="store_false",
+        help="부분 탐색을 생략하고 전체 일치만 빠르게 분석합니다.",
+    )
+    analyze.set_defaults(partial=True)
 
     process = subparsers.add_parser("process", help="매칭 후 개별 표준화 영상을 생성")
     _add_common_options(process)
@@ -118,6 +148,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="출력 파일명 뒤에 붙일 문자열",
     )
+    process.add_argument(
+        "--recommended-only",
+        action="store_true",
+        help="fallback에서 analyze가 추천한 안전한 부분 매칭만 렌더링",
+    )
     process.add_argument("--overwrite", action="store_true")
     process.add_argument("--dry-run", action="store_true")
     return parser
@@ -136,10 +171,56 @@ def _match_options(args: argparse.Namespace) -> MatchOptions:
 
 
 def _exit_code(report: MatchReport, *, accept_partial: bool = False) -> int:
-    successful = {MatchStatus.MATCHED}
-    if accept_partial:
-        successful.add(MatchStatus.PARTIAL)
-    return 0 if all(match.status in successful for match in report.matches) else 2
+    def is_successful(match: AudioMatch) -> bool:
+        if match.status is MatchStatus.MATCHED:
+            return True
+        return (
+            accept_partial and match.status is MatchStatus.PARTIAL and match.output_path is not None
+        )
+
+    return 0 if all(is_successful(match) for match in report.matches) else 2
+
+
+def _format_cli_number(value: float) -> str:
+    return format(value, ".15g")
+
+
+def _recommended_process_command(
+    args: argparse.Namespace,
+    report: MatchReport,
+) -> tuple[str, ...] | None:
+    recommendation = recommend_batch_mode(report.matches)
+    if recommendation.mode is None:
+        return None
+
+    command = ["recordersync", "process", str(args.video_dir)]
+    if args.audio_dir is not None:
+        command.extend(("--audio-dir", str(args.audio_dir)))
+    if args.output_dir is not None:
+        command.extend(("--output-dir", str(args.output_dir)))
+    if args.min_confidence != _DEFAULT_MATCH_OPTIONS.min_confidence:
+        command.extend(("--min-confidence", _format_cli_number(args.min_confidence)))
+    if args.min_peak_margin != _DEFAULT_MATCH_OPTIONS.min_peak_margin:
+        command.extend(("--min-peak-margin", _format_cli_number(args.min_peak_margin)))
+    if args.session_gap_seconds != _DEFAULT_SESSION_GAP_SECONDS:
+        command.extend(("--session-gap-seconds", _format_cli_number(args.session_gap_seconds)))
+    if recommendation.mode is RecommendationMode.FALLBACK:
+        if recommendation.minimum_contiguous_seconds is None:
+            raise ValueError("fallback recommendation requires a contiguous duration")
+        minimum_partial_seconds = max(
+            args.min_partial_seconds,
+            recommendation.minimum_contiguous_seconds,
+        )
+        command.extend(
+            (
+                "--mode",
+                "fallback",
+                "--recommended-only",
+                "--min-partial-seconds",
+                _format_cli_number(minimum_partial_seconds),
+            )
+        )
+    return tuple(command)
 
 
 def _print_selection(kind: str, paths: tuple[Path, ...]) -> None:
@@ -163,6 +244,7 @@ def _dry_run_report(
     output_dir: Path,
     *,
     mode: RenderMode,
+    recommended_only: bool,
     output_prefix: str,
     output_suffix: str,
 ) -> MatchReport:
@@ -181,7 +263,14 @@ def _dry_run_report(
                     suffix=output_suffix,
                 )
                 if match.status is MatchStatus.MATCHED
-                or (match.status is MatchStatus.PARTIAL and mode is RenderMode.FALLBACK)
+                or (
+                    match.status is MatchStatus.PARTIAL
+                    and mode is RenderMode.FALLBACK
+                    and (
+                        not recommended_only
+                        or recommend_mode(match).mode is RecommendationMode.FALLBACK
+                    )
+                )
                 else None
             ),
         )
@@ -202,6 +291,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     output_dir = args.output_dir or args.video_dir / "replace"
     report_language = ReportLanguage(args.report_language)
     render_mode = RenderMode(args.mode) if args.command == "process" else RenderMode.REPLACE
+    if (
+        args.command == "process"
+        and args.recommended_only
+        and render_mode is not RenderMode.FALLBACK
+    ):
+        parser.error("--recommended-only requires --mode fallback")
 
     try:
         bundle = pipeline.analyze(
@@ -215,11 +310,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if args.command == "analyze":
             report = bundle.report()
+            report = replace(
+                report,
+                recommended_command=_recommended_process_command(args, report),
+                include_recommended_command=True,
+            )
         elif args.dry_run:
             report = _dry_run_report(
                 bundle,
                 output_dir,
                 mode=render_mode,
+                recommended_only=args.recommended_only,
                 output_prefix=args.output_prefix,
                 output_suffix=args.output_suffix,
             )
@@ -228,6 +329,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 bundle,
                 output_dir,
                 mode=render_mode,
+                recommended_only=args.recommended_only,
                 camera_audio_volume=args.camera_audio_volume,
                 external_audio_volume=args.external_audio_volume,
                 overwrite=args.overwrite,
