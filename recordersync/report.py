@@ -1,4 +1,4 @@
-"""자동화 가능한 JSON 분석·처리 리포트."""
+"""사람용 분석 목록과 자동화 가능한 JSON 리포트."""
 
 from __future__ import annotations
 
@@ -124,6 +124,38 @@ class MatchReport:
 
     def to_json(self, *, language: ReportLanguage = ReportLanguage.KO) -> str:
         return json.dumps(self.to_dict(language=language), ensure_ascii=False, indent=2)
+
+    def to_text(self, *, language: ReportLanguage = ReportLanguage.KO) -> str:
+        """영상별 핵심 매칭 결과만 사람이 읽기 쉬운 목록으로 반환한다."""
+
+        summary = self._summary()
+        total = summary["total"]
+        matched = summary["matched"]
+        overall_rate = matched / total * 100 if total else 0.0
+
+        if language is ReportLanguage.KO:
+            summary_line = f"분석 결과: {matched}/{total}개 매칭 ({overall_rate:.1f}%)"
+            matched_label, yes, no = "매칭 여부", "성공", "실패"
+            confidence_label, reason_label = "매칭률", "사유"
+            missing_reason = "사유를 확인할 수 없습니다."
+        else:
+            summary_line = f"Analysis result: {matched}/{total} matched ({overall_rate:.1f}%)"
+            matched_label, yes, no = "matched", "yes", "no"
+            confidence_label, reason_label = "match confidence", "reason"
+            missing_reason = "reason unavailable"
+
+        lines = [summary_line]
+        for match in self.matches:
+            is_matched = match.status is MatchStatus.MATCHED
+            line = (
+                f"- {match.video_path.name} | {matched_label}: {yes if is_matched else no} | "
+                f"{confidence_label}: {match.confidence * 100:.1f}%"
+            )
+            if not is_matched:
+                reason = _translate_reason(match.reason, language) or missing_reason
+                line = f"{line} | {reason_label}: {reason}"
+            lines.append(line)
+        return "\n".join(lines)
 
     def write(self, path: Path, *, language: ReportLanguage = ReportLanguage.KO) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

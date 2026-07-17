@@ -57,16 +57,23 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""사용 예시:
   recordersync analyze VIDEO_DIR
+  recordersync analyze VIDEO_DIR --json
   recordersync process VIDEO_DIR
   recordersync process VIDEO_DIR --audio-dir AUDIO_DIR --mode mix
 
 세부 옵션은 `recordersync analyze --help` 또는 `recordersync process --help`로 확인합니다.""",
     )
+    parser.set_defaults(json=False)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    analyze = subparsers.add_parser("analyze", help="매칭만 분석하고 JSON을 출력")
+    analyze = subparsers.add_parser("analyze", help="매칭만 분석하고 사람이 읽는 결과를 출력")
     _add_common_options(analyze)
+    analyze.add_argument(
+        "--json",
+        action="store_true",
+        help="기계 처리를 위한 전체 JSON을 표준 출력으로 내보냅니다.",
+    )
 
     process = subparsers.add_parser("process", help="매칭 후 개별 표준화 영상을 생성")
     _add_common_options(process)
@@ -206,7 +213,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             report_path = output_dir / "recordersync-report.json"
         if report_path is not None:
             report.write(report_path, language=report_language)
-        print(report.to_json(language=report_language))
+        if args.command == "analyze" and not args.json:
+            print(report.to_text(language=report_language))
+        else:
+            print(report.to_json(language=report_language))
         return _exit_code(report)
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         print(f"recordersync: {exc}", file=sys.stderr)

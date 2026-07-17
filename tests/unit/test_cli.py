@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -53,6 +54,7 @@ def test_process_cli_defaults_to_safe_replace_policy() -> None:
     assert args.report_language == "ko"
     assert args.output_prefix == ""
     assert args.output_suffix == ""
+    assert not args.json
     assert not args.overwrite
 
 
@@ -79,6 +81,13 @@ def test_analyze_cli_accepts_json_report_path() -> None:
 
     assert args.command == "analyze"
     assert args.report == Path("/tmp/report.json")
+    assert not args.json
+
+
+def test_analyze_cli_accepts_json_stdout_flag() -> None:
+    args = build_parser().parse_args(["analyze", "/video", "--json"])
+
+    assert args.json
 
 
 def test_analyze_cli_rejects_unsupported_report_language() -> None:
@@ -108,7 +117,9 @@ def test_process_cli_accepts_external_audio_volume() -> None:
     assert args.external_audio_volume == pytest.approx(0.8)
 
 
-def test_main_analyze_prints_report_and_returns_success(capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_analyze_prints_human_summary_by_default(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     bundle = AnalysisBundle(
         sessions=(),
         videos=(),
@@ -121,7 +132,51 @@ def test_main_analyze_prints_report_and_returns_success(capsys: pytest.CaptureFi
         exit_code = main(["analyze", "/video", "--audio-dir", "/audio"])
 
     assert exit_code == 0
-    assert '"matched": 1' in capsys.readouterr().out
+    stdout = capsys.readouterr().out
+    assert "분석 결과: 1/1개 매칭 (100.0%)" in stdout
+    assert "- clip.mov | 매칭 여부: 성공 | 매칭률: 0.0%" in stdout
+    assert '"matched"' not in stdout
+
+
+def test_main_analyze_prints_json_only_when_requested(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    bundle = AnalysisBundle(
+        sessions=(),
+        videos=(),
+        matches=(AudioMatch(Path("clip.mov"), 5, MatchStatus.MATCHED),),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = bundle
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(["analyze", "/media", "--json"])
+
+    assert exit_code == 0
+    stdout = capsys.readouterr().out
+    assert '"matched": 1' in stdout
+    assert "분석 결과:" not in stdout
+
+
+def test_main_analyze_writes_json_report_while_printing_human_summary(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    bundle = AnalysisBundle(
+        sessions=(),
+        videos=(),
+        matches=(AudioMatch(Path("clip.mov"), 5, MatchStatus.MATCHED, confidence=0.9),),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = bundle
+    report_path = tmp_path / "analysis.json"
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(["analyze", "/media", "--report", str(report_path)])
+
+    assert exit_code == 0
+    assert "분석 결과: 1/1개 매칭 (100.0%)" in capsys.readouterr().out
+    assert json.loads(report_path.read_text(encoding="utf-8"))["summary"]["matched"] == 1
 
 
 def test_main_uses_video_dir_for_audio_when_audio_dir_is_omitted() -> None:

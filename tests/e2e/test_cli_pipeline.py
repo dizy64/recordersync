@@ -26,6 +26,46 @@ def _stream(payload: dict[str, Any], codec_type: str) -> dict[str, Any]:
     )
 
 
+def test_analyze_cli_defaults_to_human_output_and_supports_json(
+    synthetic_project: SyntheticProject,
+) -> None:
+    base_command = [
+        sys.executable,
+        "-m",
+        "recordersync",
+        "analyze",
+        str(synthetic_project.video_dir),
+        "--audio-dir",
+        str(synthetic_project.audio_dir),
+    ]
+
+    human = subprocess.run(
+        base_command,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=180,
+    )
+
+    assert human.returncode == 0, human.stderr or human.stdout
+    assert "분석 결과: 1/1개 매칭 (100.0%)" in human.stdout
+    assert "- clip.mov | 매칭 여부: 성공 | 매칭률:" in human.stdout
+    assert '"audio_sessions"' not in human.stdout
+
+    machine = subprocess.run(
+        [*base_command, "--json"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=180,
+    )
+
+    assert machine.returncode == 0, machine.stderr or machine.stdout
+    payload = json.loads(machine.stdout)
+    assert payload["summary"]["matched"] == 1
+    assert payload["matches"][0]["video"] == str(synthetic_project.video_path)
+
+
 def test_process_cli_matches_split_audio_and_renders_source_profile(
     synthetic_project: SyntheticProject,
 ) -> None:

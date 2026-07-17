@@ -4,17 +4,17 @@
 
 - 저장소: `git@github.com:dizy64/recordersync.git`
 - 기본 브랜치: `main`
-- 패키지/CLI 버전: `0.1.4`
+- 패키지/CLI 버전: `0.2.0`
 - 최초 기능 완료 커밋: `3873f62`
 - Python: 3.14+
 - 플랫폼: macOS
-- 자동 테스트: 단위 테스트 61개(기준 커버리지 88%), 합성 FFmpeg E2E 1개
+- 자동 테스트: 단위 테스트 68개(기준 커버리지 90%), 합성 FFmpeg E2E 2개
 - 성능 기준: 12시간·영상 200개, 총 31.645초, p95 0.159초, p99 0.161초,
   peak RSS 287.9MB(2026-07-17 Apple Silicon)
 
 현재 main은 분할 녹음 세션 구성, 영상별 FFT NCC 매칭, 반복 후보 거부, clock drift,
-replace/mix와 두 오디오 볼륨, VideoToolbox/libx265 렌더, 선택 파일/진행률, JSON 리포트,
-공개 Python API를 포함한다.
+replace/mix와 두 오디오 볼륨, VideoToolbox/libx265 렌더, 선택 파일/진행률, 기본 사람용
+분석 목록과 opt-in JSON 리포트, 공개 Python API를 포함한다.
 TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 
 ## 먼저 읽을 문서
@@ -41,7 +41,8 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 - 렌더는 임시 파일 성공 후 최종 경로로 원자 이동한다.
 - subprocess는 인자 배열과 `shell=False`를 사용한다.
 - 자동 테스트에 실제 사용자 미디어나 네트워크를 넣지 않는다.
-- 선택 파일/진행률은 stderr, JSON은 stdout으로 분리한다.
+- 선택 파일/진행률은 stderr로 분리한다. `analyze`는 기본 사람용 목록이며 `--json`에서만
+  상세 JSON을 stdout에 출력한다. `process` stdout과 `--report` 파일은 JSON을 유지한다.
 
 이 불변식을 바꾸는 요구는 단순 리팩터가 아니라 제품 정책 변경이다. 별도 합의, RED
 테스트, 문서와 REPORT_VERSION 영향을 먼저 정리한다.
