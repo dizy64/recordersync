@@ -12,6 +12,7 @@ from recordersync.matching import (
     MatchOptions,
     build_multiband_features,
     match_video_features,
+    refine_feature_alignment,
 )
 from recordersync.models import MatchStatus
 
@@ -77,6 +78,24 @@ def test_match_video_features_marks_repeated_pattern_ambiguous() -> None:
     assert result.peak_margin < 0.05
 
 
+def test_match_video_features_detects_overlapping_repeated_pattern_as_ambiguous() -> None:
+    rng = np.random.default_rng(10)
+    repeating_unit = rng.normal(size=(6, 20)).astype(np.float32)
+    video = _standardize(np.tile(repeating_unit, (1, 5)))
+    session = rng.normal(scale=0.01, size=(6, 500)).astype(np.float32)
+    session[:, 100:260] += np.tile(repeating_unit, (1, 8))
+
+    result = match_video_features(
+        Path("clip.mov"),
+        duration_seconds=5.0,
+        video_features=video,
+        sessions=[FeatureTimeline("session-001", _standardize(session), 0.05)],
+        options=MatchOptions(min_confidence=0.7, min_peak_margin=0.05),
+    )
+
+    assert result.status is MatchStatus.AMBIGUOUS
+
+
 def test_match_video_features_marks_unrelated_audio_unmatched() -> None:
     rng = np.random.default_rng(11)
     video = _standardize(rng.normal(size=(6, 100)).astype(np.float32))
@@ -122,3 +141,26 @@ def test_match_video_features_allows_same_region_for_multiple_videos() -> None:
     assert first.status is MatchStatus.MATCHED
     assert second.status is MatchStatus.MATCHED
     assert first.external_start_seconds == second.external_start_seconds
+
+
+def test_refine_feature_alignment_estimates_clock_drift() -> None:
+    rng = np.random.default_rng(17)
+    video = _standardize(rng.normal(size=(6, 2_000)).astype(np.float32))
+    session = rng.normal(scale=0.01, size=(6, 3_000)).astype(np.float32)
+    head_frames = 400
+    session[:, 200 : 200 + head_frames] += video[:, :head_frames]
+    tail_reference_start = video.shape[1] - head_frames
+    tail_session_start = 200 + tail_reference_start + 4
+    session[:, tail_session_start : tail_session_start + head_frames] += video[:, -head_frames:]
+
+    start_frame, tempo_ratio = refine_feature_alignment(
+        _standardize(session),
+        video,
+        coarse_start_frame=200,
+        hop_seconds=0.05,
+        window_seconds=20.0,
+        search_seconds=1.0,
+    )
+
+    assert start_frame == 200
+    assert tempo_ratio == pytest.approx((1_600 + 4) / 1_600, rel=1e-4)

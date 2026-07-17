@@ -36,7 +36,9 @@ def _starts_new_session(previous: AudioChunk, current: AudioChunk, gap_seconds: 
         return False
     expected_start = previous.started_at.timestamp() + previous.duration_seconds
     gap = current.started_at.timestamp() - expected_start
-    return abs(gap) > gap_seconds
+    # 복사 과정에서 모든 파일의 birthtime/mtime가 같아지는 경우에는 자연 파일명
+    # 순서를 신뢰한다. 실제로 관측된 양수 공백만 새 세션 경계로 취급한다.
+    return gap > gap_seconds
 
 
 def group_recording_sessions(

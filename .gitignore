@@ -8,6 +8,6 @@ __pycache__/
 *.egg-info/
 .coverage
 htmlcov/
+dist/
 replace/
 .recordersync-tmp/
-

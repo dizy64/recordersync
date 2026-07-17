@@ -39,7 +39,7 @@ class MatchOptions:
     min_confidence: float = 0.75
     min_peak_margin: float = 0.05
     peak_margin_full_scale: float = 0.15
-    exclusion_seconds: float = 5.0
+    exclusion_seconds: float = 1.0
 
     def __post_init__(self) -> None:
         if not 0 < self.min_confidence <= 1:
@@ -116,16 +116,39 @@ def build_multiband_features(
 
 
 def _correlation_curve(session: FloatArray, video: FloatArray) -> FloatArray:
-    band_count, video_frames = video.shape
+    _, video_frames = video.shape
     combined = np.zeros(session.shape[1] - video_frames + 1, dtype=np.float64)
-    for band_index in range(band_count):
-        combined += correlate(
-            session[band_index],
-            video[band_index],
+    active_bands = 0
+    for band_index in range(video.shape[0]):
+        reference = video[band_index].astype(np.float64)
+        reference -= reference.mean()
+        reference_energy = float(np.dot(reference, reference))
+        if reference_energy <= 1e-8:
+            continue
+
+        signal = session[band_index].astype(np.float64)
+        numerator = correlate(
+            signal,
+            reference,
             mode="valid",
             method="fft",
         )
-    combined /= band_count * video_frames
+        prefix_sum = np.concatenate(([0.0], np.cumsum(signal)))
+        prefix_square = np.concatenate(([0.0], np.cumsum(np.square(signal))))
+        local_sum = prefix_sum[video_frames:] - prefix_sum[:-video_frames]
+        local_square = prefix_square[video_frames:] - prefix_square[:-video_frames]
+        local_energy = np.maximum(
+            0.0,
+            local_square - np.square(local_sum) / video_frames,
+        )
+        denominator = np.sqrt(reference_energy * local_energy)
+        band_curve = np.zeros_like(numerator)
+        np.divide(numerator, denominator, out=band_curve, where=denominator > 1e-8)
+        combined += np.clip(band_curve, -1.0, 1.0)
+        active_bands += 1
+    if active_bands == 0:
+        return np.zeros_like(combined, dtype=np.float32)
+    combined /= active_bands
     return combined.astype(np.float32)
 
 
@@ -145,10 +168,7 @@ def _top_candidates(
         _Candidate(timeline.session_id, best_index, float(curve[best_index]), timeline.hop_seconds)
     ]
 
-    exclusion_frames = max(
-        video_features.shape[1],
-        round(exclusion_seconds / timeline.hop_seconds),
-    )
+    exclusion_frames = max(1, round(exclusion_seconds / timeline.hop_seconds))
     masked = curve.copy()
     left = max(0, best_index - exclusion_frames)
     right = min(masked.size, best_index + exclusion_frames + 1)
@@ -164,6 +184,71 @@ def _top_candidates(
             )
         )
     return candidates
+
+
+def _find_local_start(
+    session_features: FloatArray,
+    reference_features: FloatArray,
+    *,
+    expected_start: int,
+    search_frames: int,
+) -> int:
+    region_start = max(0, expected_start - search_frames)
+    region_end = min(
+        session_features.shape[1],
+        expected_start + search_frames + reference_features.shape[1],
+    )
+    region = session_features[:, region_start:region_end]
+    if region.shape[1] < reference_features.shape[1]:
+        return expected_start
+    curve = _correlation_curve(region, reference_features)
+    return region_start + int(np.argmax(curve))
+
+
+def refine_feature_alignment(
+    session_features: FloatArray,
+    video_features: FloatArray,
+    *,
+    coarse_start_frame: int,
+    hop_seconds: float,
+    window_seconds: float = 60.0,
+    search_seconds: float = 5.0,
+) -> tuple[int, float]:
+    """클립 시작·끝 특징을 다시 찾아 정밀 시작점과 recorder clock 비율을 구한다."""
+
+    if hop_seconds <= 0:
+        raise ValueError("hop_seconds must be > 0")
+    video_frames = video_features.shape[1]
+    if video_frames * hop_seconds < 30.0:
+        return coarse_start_frame, 1.0
+
+    requested_window = max(2, round(window_seconds / hop_seconds))
+    window_frames = min(requested_window, max(2, video_frames // 4))
+    reference_span = video_frames - window_frames
+    if reference_span <= 0:
+        return coarse_start_frame, 1.0
+
+    search_frames = max(1, round(search_seconds / hop_seconds))
+    head_start = _find_local_start(
+        session_features,
+        video_features[:, :window_frames],
+        expected_start=coarse_start_frame,
+        search_frames=search_frames,
+    )
+    expected_tail = coarse_start_frame + reference_span
+    tail_start = _find_local_start(
+        session_features,
+        video_features[:, -window_frames:],
+        expected_start=expected_tail,
+        search_frames=search_frames,
+    )
+    observed_span = tail_start - head_start
+    if observed_span <= 0:
+        return coarse_start_frame, 1.0
+    tempo_ratio = observed_span / reference_span
+    if not 0.5 <= tempo_ratio <= 2.0:
+        return coarse_start_frame, 1.0
+    return head_start, tempo_ratio
 
 
 def match_video_features(
@@ -242,12 +327,22 @@ def match_video_features(
             reason="Match confidence is below the configured threshold",
         )
 
+    best_timeline = next(
+        timeline for timeline in sessions if timeline.session_id == best.session_id
+    )
+    refined_start, tempo_ratio = refine_feature_alignment(
+        best_timeline.features,
+        video_features,
+        coarse_start_frame=best.frame_index,
+        hop_seconds=best.hop_seconds,
+    )
     return AudioMatch(
         video_path=video_path,
         duration_seconds=duration_seconds,
         status=MatchStatus.MATCHED,
         session_id=best.session_id,
-        external_start_seconds=best.frame_index * best.hop_seconds,
+        external_start_seconds=refined_start * best.hop_seconds,
+        tempo_ratio=tempo_ratio,
         correlation=best.correlation,
         peak_margin=peak_margin,
         confidence=confidence,

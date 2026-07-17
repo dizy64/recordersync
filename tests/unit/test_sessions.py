@@ -85,6 +85,18 @@ def test_group_recording_sessions_uses_filename_when_timestamps_missing() -> Non
     assert [chunk.path.name for chunk in sessions[0].chunks] == ["take_2.wav", "take_10.wav"]
 
 
+def test_group_recording_sessions_keeps_copied_chunks_with_same_timestamp_together() -> None:
+    copied_at = datetime(2026, 7, 17, tzinfo=UTC)
+    chunks = [
+        _chunk("REC_001.WAV", started_at=copied_at, duration=3_600),
+        _chunk("REC_002.WAV", started_at=copied_at, duration=3_600),
+    ]
+
+    sessions = group_recording_sessions(chunks)
+
+    assert len(sessions) == 1
+
+
 def test_group_recording_sessions_rejects_invalid_gap() -> None:
     with pytest.raises(ValueError, match="gap_seconds"):
         group_recording_sessions([], gap_seconds=-1)
