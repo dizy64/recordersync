@@ -181,6 +181,8 @@ class RecorderSyncPipeline:
                         match,
                         status=MatchStatus.ERROR,
                         reason="Matched result is missing render metadata",
+                        output_path=None,
+                        segments=(),
                     )
                 )
                 render_completed += 1
@@ -193,51 +195,52 @@ class RecorderSyncPipeline:
                     )
                 continue
 
-            render_segments = (
-                tuple(
-                    RenderSegment(
-                        session=sessions[segment.session_id],
-                        video_start_seconds=segment.video_start_seconds,
-                        external_start_seconds=segment.external_start_seconds,
-                        duration_seconds=segment.duration_seconds,
-                        tempo_ratio=segment.tempo_ratio,
-                    )
-                    for segment in match.segments
-                )
-                if mode is RenderMode.FALLBACK
-                else ()
-            )
-            primary_session = (
-                render_segments[0].session if render_segments else sessions[match.session_id or ""]
-            )
-            primary_external_start = (
-                render_segments[0].external_start_seconds
-                if render_segments
-                else match.external_start_seconds or 0.0
-            )
-            primary_tempo_ratio = (
-                render_segments[0].tempo_ratio if render_segments else match.tempo_ratio
-            )
-
-            output_path = resolve_output_path(
-                match.video_path,
-                output_dir,
-                prefix=output_prefix,
-                suffix=output_suffix,
-            )
-            plan = RenderPlan(
-                video=videos[match.video_path],
-                session=primary_session,
-                output_path=output_path,
-                external_start_seconds=primary_external_start,
-                tempo_ratio=primary_tempo_ratio,
-                mode=mode,
-                camera_audio_volume=resolved_camera_volume,
-                external_audio_volume=external_audio_volume,
-                overwrite=overwrite,
-                segments=render_segments,
-            )
             try:
+                render_segments = (
+                    tuple(
+                        RenderSegment(
+                            session=sessions[segment.session_id],
+                            video_start_seconds=segment.video_start_seconds,
+                            external_start_seconds=segment.external_start_seconds,
+                            duration_seconds=segment.duration_seconds,
+                            tempo_ratio=segment.tempo_ratio,
+                        )
+                        for segment in match.segments
+                    )
+                    if mode is RenderMode.FALLBACK
+                    else ()
+                )
+                primary_session = (
+                    render_segments[0].session
+                    if render_segments
+                    else sessions[match.session_id or ""]
+                )
+                primary_external_start = (
+                    render_segments[0].external_start_seconds
+                    if render_segments
+                    else match.external_start_seconds or 0.0
+                )
+                primary_tempo_ratio = (
+                    render_segments[0].tempo_ratio if render_segments else match.tempo_ratio
+                )
+                output_path = resolve_output_path(
+                    match.video_path,
+                    output_dir,
+                    prefix=output_prefix,
+                    suffix=output_suffix,
+                )
+                plan = RenderPlan(
+                    video=videos[match.video_path],
+                    session=primary_session,
+                    output_path=output_path,
+                    external_start_seconds=primary_external_start,
+                    tempo_ratio=primary_tempo_ratio,
+                    mode=mode,
+                    camera_audio_volume=resolved_camera_volume,
+                    external_audio_volume=external_audio_volume,
+                    overwrite=overwrite,
+                    segments=render_segments,
+                )
                 rendered = self.renderer.render(plan)
             except (FileExistsError, ValueError, RuntimeError) as exc:
                 processed.append(
@@ -245,6 +248,8 @@ class RecorderSyncPipeline:
                         match,
                         status=MatchStatus.ERROR,
                         reason=str(exc),
+                        output_path=None,
+                        segments=(),
                     )
                 )
             else:
