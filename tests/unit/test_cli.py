@@ -42,6 +42,17 @@ def test_처리_도움말은_두_오디오_볼륨_옵션을_안내한다(
     assert "--min-partial-seconds" in stdout
 
 
+def test_분석_도움말은_처리_모드_추천을_안내한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        build_parser().parse_args(["analyze", "--help"])
+
+    assert exit_info.value.code == 0
+    stdout = capsys.readouterr().out
+    assert "fallback 모드 추천 가능성" in stdout
+
+
 def test_처리_CLI는_안전한_교체_정책을_기본값으로_사용한다() -> None:
     args = build_parser().parse_args(["process", "/video", "--audio-dir", "/audio"])
 
@@ -147,7 +158,7 @@ def test_메인_분석은_기본적으로_사람용_요약을_출력한다(
     assert exit_code == 0
     stdout = capsys.readouterr().out
     assert "분석 결과: 1/1개 매칭 (100.0%)" in stdout
-    assert "- clip.mov | 매칭 여부: 성공 | 매칭률: 0.0%" in stdout
+    assert "- clip.mov | 매칭 여부: 성공 | 매칭률: 0.0% | 추천: replace" in stdout
     assert '"matched"' not in stdout
 
 
@@ -168,7 +179,41 @@ def test_메인_분석은_요청할_때만_JSON을_출력한다(
     assert exit_code == 0
     stdout = capsys.readouterr().out
     assert '"matched": 1' in stdout
+    assert '"recommended_mode": "replace"' in stdout
     assert "분석 결과:" not in stdout
+
+
+def test_메인_부분_분석은_안전한_구간에_fallback을_추천한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    match = AudioMatch(
+        Path("clip.mov"),
+        100,
+        MatchStatus.PARTIAL,
+        confidence=0.9,
+        peak_margin=0.1,
+        segments=(
+            AudioMatchSegment(
+                "session-001",
+                10,
+                20,
+                30,
+                confidence=0.9,
+                peak_margin=0.1,
+            ),
+        ),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = AnalysisBundle((), (), (match,))
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(["analyze", "/media", "--partial"])
+
+    assert exit_code == 2
+    stdout = capsys.readouterr().out
+    assert "매칭 여부: 부분" in stdout
+    assert "추천: fallback" in stdout
+    assert pipeline.analyze.call_args.kwargs["match_options"].enable_partial
 
 
 def test_메인_분석은_사람용_요약을_출력하면서_JSON_리포트를_작성한다(

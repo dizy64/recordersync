@@ -39,6 +39,8 @@
 - subprocess는 인자 배열과 `shell=False`를 유지한다.
 - 선택 파일과 진행률은 stderr에 출력한다. `analyze` stdout은 기본 사람용 목록이고
   `--json`에서만 전체 JSON이며, `process` stdout과 `--report` 파일은 JSON을 유지한다.
+- `analyze`의 처리 모드 추천은 안내만 제공한다. 추천이 process 모드, 종료 코드, 렌더
+  허용 여부를 자동으로 바꾸면 안 된다.
 - 원본/외부 오디오 볼륨은 각각 0.0~1.0이다. 원본 볼륨 기본값은 mix 0.1,
   fallback 1.0이며 replace에서는 적용하지 않는다.
 

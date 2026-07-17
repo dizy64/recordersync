@@ -9,6 +9,11 @@ from enum import StrEnum
 from pathlib import Path
 
 from recordersync.models import AudioMatch, MatchStatus, RecordingSession
+from recordersync.recommendation import (
+    ModeRecommendation,
+    RecommendationReason,
+    recommend_mode,
+)
 
 REPORT_VERSION = 2
 
@@ -66,6 +71,49 @@ _KOREAN_REASON_PREFIXES = {
     "Invalid duration: ": "영상 길이가 올바르지 않습니다: ",
 }
 
+_RECOMMENDATION_REASONS = {
+    ReportLanguage.KO: {
+        RecommendationReason.FULL_MATCH: "카메라 오디오 전체가 외부 녹음과 일치합니다.",
+        RecommendationReason.RELIABLE_PARTIAL: ("충분히 길고 넓은 부분 매칭이 확인되었습니다."),
+        RecommendationReason.LOW_CONFIDENCE: ("부분 매칭 신뢰도가 안전 추천 기준보다 낮습니다."),
+        RecommendationReason.LOW_PEAK_MARGIN: (
+            "부분 매칭 후보가 다른 후보와 충분히 구분되지 않습니다."
+        ),
+        RecommendationReason.LOW_COVERAGE: (
+            "일치 구간이 영상의 10%보다 적어 오탐 가능성이 있습니다."
+        ),
+        RecommendationReason.SHORT_SEGMENTS: ("연속 일치 구간이 추천에 필요한 길이보다 짧습니다."),
+        RecommendationReason.UNMATCHED: "신뢰할 수 있는 일치 구간이 없습니다.",
+        RecommendationReason.AMBIGUOUS: "후보가 불분명해 자동 처리를 권장하지 않습니다.",
+        RecommendationReason.ERROR: "분석 오류가 있어 처리를 권장하지 않습니다.",
+    },
+    ReportLanguage.EN: {
+        RecommendationReason.FULL_MATCH: ("The full camera audio matches the external recording."),
+        RecommendationReason.RELIABLE_PARTIAL: (
+            "A sufficiently long and well-covered partial match is available."
+        ),
+        RecommendationReason.LOW_CONFIDENCE: (
+            "Partial-match confidence is below the safe recommendation threshold."
+        ),
+        RecommendationReason.LOW_PEAK_MARGIN: (
+            "The partial match is not sufficiently distinct from other candidates."
+        ),
+        RecommendationReason.LOW_COVERAGE: (
+            "Matched segments cover less than 10% of the video and may be false positives."
+        ),
+        RecommendationReason.SHORT_SEGMENTS: (
+            "Contiguous matched segments are too short for an automatic recommendation."
+        ),
+        RecommendationReason.UNMATCHED: "No reliable matching segment is available.",
+        RecommendationReason.AMBIGUOUS: (
+            "The candidates are ambiguous, so automatic processing is not recommended."
+        ),
+        RecommendationReason.ERROR: (
+            "An analysis error prevents an automatic processing recommendation."
+        ),
+    },
+}
+
 
 def _translate_reason(reason: str | None, language: ReportLanguage) -> str | None:
     if reason is None or language is ReportLanguage.EN:
@@ -77,6 +125,53 @@ def _translate_reason(reason: str | None, language: ReportLanguage) -> str | Non
         if reason.startswith(prefix):
             return f"{translated_prefix}{reason.removeprefix(prefix)}"
     return reason
+
+
+def _recommendation_reason(
+    recommendation: ModeRecommendation,
+    language: ReportLanguage,
+) -> str:
+    return _RECOMMENDATION_REASONS[language][recommendation.reason]
+
+
+def _recommendation_options(recommendation: ModeRecommendation) -> dict[str, float]:
+    if recommendation.minimum_contiguous_seconds is None:
+        return {}
+    return {"min_partial_seconds": recommendation.minimum_contiguous_seconds}
+
+
+def _match_payload(match: AudioMatch, language: ReportLanguage) -> dict[str, object]:
+    recommendation = recommend_mode(match)
+    return {
+        "video": str(match.video_path),
+        "status": match.status.value,
+        "session_id": match.session_id,
+        "external_start_seconds": match.external_start_seconds,
+        "duration_seconds": match.duration_seconds,
+        "tempo_ratio": match.tempo_ratio,
+        "correlation": match.correlation,
+        "peak_margin": match.peak_margin,
+        "confidence": match.confidence,
+        "coverage_ratio": match.coverage_ratio,
+        "segments": [
+            {
+                "session_id": segment.session_id,
+                "video_start_seconds": segment.video_start_seconds,
+                "external_start_seconds": segment.external_start_seconds,
+                "duration_seconds": segment.duration_seconds,
+                "tempo_ratio": segment.tempo_ratio,
+                "correlation": segment.correlation,
+                "peak_margin": segment.peak_margin,
+                "confidence": segment.confidence,
+            }
+            for segment in match.segments
+        ],
+        "reason": _translate_reason(match.reason, language),
+        "output": str(match.output_path) if match.output_path else None,
+        "recommended_mode": recommendation.mode.value if recommendation.mode else None,
+        "recommendation_reason": _recommendation_reason(recommendation, language),
+        "recommended_options": _recommendation_options(recommendation),
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,36 +204,7 @@ class MatchReport:
                 }
                 for session in self.sessions
             ],
-            "matches": [
-                {
-                    "video": str(match.video_path),
-                    "status": match.status.value,
-                    "session_id": match.session_id,
-                    "external_start_seconds": match.external_start_seconds,
-                    "duration_seconds": match.duration_seconds,
-                    "tempo_ratio": match.tempo_ratio,
-                    "correlation": match.correlation,
-                    "peak_margin": match.peak_margin,
-                    "confidence": match.confidence,
-                    "coverage_ratio": match.coverage_ratio,
-                    "segments": [
-                        {
-                            "session_id": segment.session_id,
-                            "video_start_seconds": segment.video_start_seconds,
-                            "external_start_seconds": segment.external_start_seconds,
-                            "duration_seconds": segment.duration_seconds,
-                            "tempo_ratio": segment.tempo_ratio,
-                            "correlation": segment.correlation,
-                            "peak_margin": segment.peak_margin,
-                            "confidence": segment.confidence,
-                        }
-                        for segment in match.segments
-                    ],
-                    "reason": _translate_reason(match.reason, language),
-                    "output": str(match.output_path) if match.output_path else None,
-                }
-                for match in self.matches
-            ],
+            "matches": [_match_payload(match, language) for match in self.matches],
         }
 
     def to_json(self, *, language: ReportLanguage = ReportLanguage.KO) -> str:
@@ -162,6 +228,8 @@ class MatchReport:
             matched_label, yes, partial_value, no = "매칭 여부", "성공", "부분", "실패"
             confidence_label, reason_label = "매칭률", "사유"
             coverage_label, segment_label = "레코더 사용", "구간"
+            recommendation_label, hold = "추천", "처리 보류"
+            recommendation_reason_label = "추천 사유"
             missing_reason = "사유를 확인할 수 없습니다."
         else:
             summary_line = (
@@ -172,10 +240,13 @@ class MatchReport:
             matched_label, yes, partial_value, no = "matched", "yes", "partial", "no"
             confidence_label, reason_label = "match confidence", "reason"
             coverage_label, segment_label = "recorder coverage", "segments"
+            recommendation_label, hold = "recommendation", "hold"
+            recommendation_reason_label = "recommendation reason"
             missing_reason = "reason unavailable"
 
         lines = [summary_line]
         for match in self.matches:
+            recommendation = recommend_mode(match)
             is_matched = match.status is MatchStatus.MATCHED
             is_partial = match.status is MatchStatus.PARTIAL
             match_value = partial_value if is_partial else (yes if is_matched else no)
@@ -196,6 +267,15 @@ class MatchReport:
             elif not is_matched:
                 reason = _translate_reason(match.reason, language) or missing_reason
                 line = f"{line} | {reason_label}: {reason}"
+            recommendation_value = (
+                recommendation.mode.value if recommendation.mode is not None else hold
+            )
+            line = f"{line} | {recommendation_label}: {recommendation_value}"
+            if is_partial:
+                line = (
+                    f"{line} | {recommendation_reason_label}: "
+                    f"{_recommendation_reason(recommendation, language)}"
+                )
             lines.append(line)
         return "\n".join(lines)
 

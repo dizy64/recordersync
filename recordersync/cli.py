@@ -75,7 +75,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    analyze = subparsers.add_parser("analyze", help="매칭만 분석하고 사람이 읽는 결과를 출력")
+    analyze = subparsers.add_parser(
+        "analyze",
+        help="매칭과 권장 처리 모드를 분석해 사람이 읽는 결과를 출력",
+    )
     _add_common_options(analyze)
     analyze.add_argument(
         "--json",
@@ -85,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--partial",
         action="store_true",
-        help="부분·다중 구간 매칭과 카메라음 폴백 가능성을 분석합니다.",
+        help="부분·다중 구간 매칭과 fallback 모드 추천 가능성을 분석합니다.",
     )
 
     process = subparsers.add_parser("process", help="매칭 후 개별 표준화 영상을 생성")

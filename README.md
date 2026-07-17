@@ -22,8 +22,8 @@ uv sync
 ## 빠른 시작
 
 영상과 레코더 파일이 같은 디렉터리에 있으면 `--audio-dir`를 생략합니다. 매칭 결과만
-확인하는 `analyze`는 미디어 파일을 만들지 않고 파일별 매칭 여부·매칭률·실패 사유를
-사람이 읽기 쉬운 목록으로 보여줍니다.
+확인하는 `analyze`는 미디어 파일을 만들지 않고 파일별 매칭 여부·매칭률·실패 사유와
+권장 처리 모드를 사람이 읽기 쉬운 목록으로 보여줍니다.
 
 ```bash
 uv run recordersync analyze ~/Capture/day1
@@ -35,7 +35,8 @@ uv run recordersync analyze ~/Capture/day1
 uv run recordersync analyze ~/Capture/day1 --json
 ```
 
-영상 전체가 아닌 일부 구간의 일치 여부도 확인하려면 부분 분석을 명시합니다.
+영상 전체가 아닌 일부 구간의 일치 여부와 `fallback` 추천도 확인하려면 부분 분석을
+명시합니다.
 
 ```bash
 uv run recordersync analyze ~/Capture/day1 --partial
@@ -102,7 +103,9 @@ uv run recordersync process ~/Videos/day1 \
 5. confidence 0.75 이상이고 차순위 peak와 0.05 이상 차이 나는 결과만 승인합니다.
 6. 부분 모드에서는 5초 창을 검증하고 연속된 창을 구간으로 묶습니다. 중간 단절이나
    다른 녹음 세션 재시작은 별도 구간으로 유지합니다.
-7. 승인된 영상은 원본 표시 해상도, 가로·세로 방향, 프레임 타임스탬프를 유지한 HEVC
+7. 전체 일치는 `replace`, 안전 기준을 추가로 통과한 부분 일치는 `fallback`을 추천합니다.
+   추천은 안내일 뿐 처리 모드를 자동으로 선택하거나 영상을 생성하지 않습니다.
+8. 승인된 영상은 원본 표시 해상도, 가로·세로 방향, 프레임 타임스탬프를 유지한 HEVC
    10-bit/AAC MP4로 출력합니다. 스마트폰 회전 메타데이터와 VFR도 보존합니다.
 
 기본 출력 이름은 `replace/<원본명>.mp4`입니다. 접두사·접미사가 필요할 때만
@@ -112,13 +115,17 @@ uv run recordersync process ~/Videos/day1 \
 
 ### 매칭 상태
 
-| 상태 | 의미 | 출력 생성 |
-|---|---|---|
-| `matched` | 신뢰도와 peak 유일성 기준 통과 | 예 |
-| `partial` | 영상 일부에 하나 이상의 신뢰 가능한 구간 | `--mode fallback`에서만 예 |
-| `unmatched` | 상관도 또는 confidence 부족 | 아니요 |
-| `ambiguous` | 비슷한 후보가 둘 이상 존재 | 아니요 |
-| `error` | 오디오 스트림 없음, probe/렌더 실패 등 | 아니요 |
+| 상태 | 의미 | 기본 추천 | 출력 생성 |
+|---|---|---|---|
+| `matched` | 신뢰도와 peak 유일성 기준 통과 | `replace` | 예 |
+| `partial` | 영상 일부에 하나 이상의 신뢰 가능한 구간 | 안전 기준 통과 시 `fallback` | `--mode fallback`에서만 예 |
+| `unmatched` | 상관도 또는 confidence 부족 | 처리 보류 | 아니요 |
+| `ambiguous` | 비슷한 후보가 둘 이상 존재 | 처리 보류 | 아니요 |
+| `error` | 오디오 스트림 없음, probe/렌더 실패 등 | 처리 보류 | 아니요 |
+
+부분 일치의 자동 추천은 confidence 0.75, peak margin 0.05, 영상 커버리지 10% 이상이고,
+영상 길이의 25% 또는 30초 중 짧은 값 이상인 연속 일치 구간이 있을 때만
+`fallback`입니다. 짧고 분산된 반복음 오탐은 `partial`이어도 처리 보류로 표시합니다.
 
 종료 코드는 전체 성공 `0`, 일부 미매칭·애매함·오류 `2`, 입력이나 세션 분석의
 치명적 실패 `1`입니다. fallback process에서 렌더된 `partial`은 성공에 포함되지만
@@ -159,11 +166,13 @@ recordersync process --help
 ```
 
 JSON 키와 `matched` 같은 상태값은 자동화 호환성을 위해 영어로 고정되며, 사람이 읽는
-`reason`만 기본 한국어 또는 `--report-language en`의 영어로 출력됩니다. JSON 소비자는
-`analyze --json`을 사용해야 합니다.
+`reason`과 `recommendation_reason`은 기본 한국어 또는 `--report-language en`의 영어로
+출력됩니다. JSON 소비자는 `analyze --json`을 사용해야 합니다.
 
 JSON 리포트 v2는 상태별 `partial` 개수와 영상별 `coverage_ratio`, 시간순 `segments`를
-제공합니다. 각 구간에는 세션 ID, 영상/외부 시작점, 길이, drift와 신뢰도 수치가 있습니다.
+제공합니다. 각 영상에는 `recommended_mode`, `recommendation_reason`,
+`recommended_options`도 포함됩니다. 각 구간에는 세션 ID, 영상/외부 시작점, 길이,
+drift와 신뢰도 수치가 있습니다.
 
 예를 들어 `clip.mov`를 `final_clip_synced.mp4`로 만들려면 다음처럼 실행합니다.
 
