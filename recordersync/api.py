@@ -72,6 +72,7 @@ def build_render_plan(
     *,
     mode: RenderMode = RenderMode.REPLACE,
     camera_audio_volume: float = 0.1,
+    external_audio_volume: float = 1.0,
     overwrite: bool = False,
     output_prefix: str = "",
     output_suffix: str = "",
@@ -95,5 +96,6 @@ def build_render_plan(
         tempo_ratio=match.tempo_ratio,
         mode=mode,
         camera_audio_volume=camera_audio_volume,
+        external_audio_volume=external_audio_volume,
         overwrite=overwrite,
     )

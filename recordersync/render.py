@@ -33,6 +33,7 @@ class RenderPlan:
     tempo_ratio: float
     mode: RenderMode = RenderMode.REPLACE
     camera_audio_volume: float = 0.1
+    external_audio_volume: float = 1.0
     overwrite: bool = False
 
     def __post_init__(self) -> None:
@@ -42,6 +43,8 @@ class RenderPlan:
             raise ValueError("tempo_ratio must be in [0.5, 2.0]")
         if not 0 <= self.camera_audio_volume <= 1:
             raise ValueError("camera_audio_volume must be in [0, 1]")
+        if not 0 <= self.external_audio_volume <= 1:
+            raise ValueError("external_audio_volume must be in [0, 1]")
         if self.mode is RenderMode.MIX and not self.video.has_audio:
             raise ValueError("mix mode requires camera audio")
 
@@ -111,7 +114,8 @@ class FFmpegCommandBuilder:
         tempo = _number(plan.tempo_ratio)
         filters = _video_filter(plan.video)
         filters.append(
-            f"[1:a:0]atempo={tempo},apad,atrim=duration={duration},asetpts=PTS-STARTPTS[external]"
+            f"[1:a:0]volume={_number(plan.external_audio_volume)},atempo={tempo},"
+            f"apad,atrim=duration={duration},asetpts=PTS-STARTPTS[external]"
         )
         audio_label = "[external]"
         if plan.mode is RenderMode.MIX:

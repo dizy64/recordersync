@@ -12,6 +12,31 @@ from recordersync.models import AudioMatch, MatchStatus
 from recordersync.pipeline import AnalysisBundle
 
 
+def test_main_without_arguments_prints_help_and_returns_success(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main([]) == 0
+
+    stdout = capsys.readouterr().out
+    assert "usage: recordersync" in stdout
+    assert "recordersync analyze VIDEO_DIR" in stdout
+    assert "recordersync process VIDEO_DIR" in stdout
+
+
+def test_process_help_documents_both_audio_volume_options(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        build_parser().parse_args(["process", "--help"])
+
+    assert exit_info.value.code == 0
+    stdout = capsys.readouterr().out
+    assert "--camera-audio-volume" in stdout
+    assert "원본 영상 오디오 볼륨" in stdout
+    assert "--external-audio-volume" in stdout
+    assert "외부 보이스레코더 오디오 볼륨" in stdout
+
+
 def test_process_cli_defaults_to_safe_replace_policy() -> None:
     args = build_parser().parse_args(["process", "/video", "--audio-dir", "/audio"])
 
@@ -21,6 +46,7 @@ def test_process_cli_defaults_to_safe_replace_policy() -> None:
     assert args.output_dir is None
     assert args.mode == "replace"
     assert args.camera_audio_volume == pytest.approx(0.1)
+    assert args.external_audio_volume == pytest.approx(1.0)
     assert args.min_confidence == pytest.approx(0.75)
     assert args.min_peak_margin == pytest.approx(0.05)
     assert args.session_gap_seconds == pytest.approx(10.0)
@@ -74,6 +100,14 @@ def test_process_cli_rejects_camera_volume_outside_unit_interval() -> None:
         )
 
 
+def test_process_cli_accepts_external_audio_volume() -> None:
+    args = build_parser().parse_args(
+        ["process", "/video", "--mode", "mix", "--external-audio-volume", "0.8"]
+    )
+
+    assert args.external_audio_volume == pytest.approx(0.8)
+
+
 def test_main_analyze_prints_report_and_returns_success(capsys: pytest.CaptureFixture[str]) -> None:
     bundle = AnalysisBundle(
         sessions=(),
@@ -104,6 +138,35 @@ def test_main_uses_video_dir_for_audio_when_audio_dir_is_omitted() -> None:
 
     assert exit_code == 0
     assert pipeline.analyze.call_args.args[:2] == (Path("/media"), Path("/media"))
+
+
+def test_main_prints_selected_files_and_progress_to_stderr(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    bundle = AnalysisBundle(
+        sessions=(),
+        videos=(),
+        matches=(AudioMatch(Path("clip.mov"), 5, MatchStatus.MATCHED),),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = bundle
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        assert main(["analyze", "/media"]) == 0
+
+    selection_callback = pipeline.analyze.call_args.kwargs["selection_callback"]
+    progress_callback = pipeline.analyze.call_args.kwargs["progress_callback"]
+    selection_callback("audio", (Path("REC_001.wav"), Path("REC_002.wav")))
+    selection_callback("video", (Path("clip.mov"),))
+    progress_callback("audio", 1, 2, "session-001")
+    progress_callback("match", 2, 2, "clip.mov")
+
+    stderr = capsys.readouterr().err
+    assert "선택된 오디오 파일 (2개)" in stderr
+    assert "REC_001.wav" in stderr
+    assert "선택된 영상 파일 (1개)" in stderr
+    assert "[오디오 분석] 1/2 (50%) session-001" in stderr
+    assert "[영상 매칭] 2/2 (100%) clip.mov" in stderr
 
 
 def test_main_can_print_english_report_reasons(capsys: pytest.CaptureFixture[str]) -> None:

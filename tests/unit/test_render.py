@@ -129,6 +129,7 @@ def test_build_mix_command_keeps_camera_audio_at_requested_volume() -> None:
         tempo_ratio=1.0,
         mode=RenderMode.MIX,
         camera_audio_volume=0.08,
+        external_audio_volume=0.65,
         overwrite=True,
     )
 
@@ -137,6 +138,7 @@ def test_build_mix_command_keeps_camera_audio_at_requested_volume() -> None:
 
     assert "-y" in command[:8]
     assert "volume=0.08" in joined
+    assert "volume=0.65,atempo=1" in joined
     assert "amix=inputs=2" in joined
     assert "scale=" not in joined
     assert "pad=" not in joined
@@ -153,6 +155,18 @@ def test_render_plan_rejects_invalid_camera_volume() -> None:
             tempo_ratio=1,
             mode=RenderMode.MIX,
             camera_audio_volume=1.1,
+        )
+
+
+def test_render_plan_rejects_invalid_external_audio_volume() -> None:
+    with pytest.raises(ValueError, match="external_audio_volume"):
+        RenderPlan(
+            video=_video(),
+            session=_session(),
+            output_path=Path("out.mp4"),
+            external_start_seconds=0,
+            tempo_ratio=1,
+            external_audio_volume=1.1,
         )
 
 

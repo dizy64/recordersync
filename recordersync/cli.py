@@ -54,6 +54,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="recordersync",
         description="보이스레코더 녹음과 영상 오디오를 비교해 영상별 음원을 교체합니다.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""사용 예시:
+  recordersync analyze VIDEO_DIR
+  recordersync process VIDEO_DIR
+  recordersync process VIDEO_DIR --audio-dir AUDIO_DIR --mode mix
+
+세부 옵션은 `recordersync analyze --help` 또는 `recordersync process --help`로 확인합니다.""",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -64,7 +71,18 @@ def build_parser() -> argparse.ArgumentParser:
     process = subparsers.add_parser("process", help="매칭 후 개별 표준화 영상을 생성")
     _add_common_options(process)
     process.add_argument("--mode", choices=[mode.value for mode in RenderMode], default="replace")
-    process.add_argument("--camera-audio-volume", type=_unit_interval, default=0.1)
+    process.add_argument(
+        "--camera-audio-volume",
+        type=_unit_interval,
+        default=0.1,
+        help="원본 영상 오디오 볼륨(0.0~1.0, mix 전용, 기본: 0.1)",
+    )
+    process.add_argument(
+        "--external-audio-volume",
+        type=_unit_interval,
+        default=1.0,
+        help="외부 보이스레코더 오디오 볼륨(0.0~1.0, 기본: 1.0)",
+    )
     process.add_argument(
         "--output-prefix",
         type=validate_output_affix,
@@ -91,6 +109,22 @@ def _match_options(args: argparse.Namespace) -> MatchOptions:
 
 def _exit_code(report: MatchReport) -> int:
     return 0 if all(match.status is MatchStatus.MATCHED for match in report.matches) else 2
+
+
+def _print_selection(kind: str, paths: tuple[Path, ...]) -> None:
+    labels = {"audio": "오디오", "video": "영상"}
+    label = labels.get(kind, kind)
+    print(f"선택된 {label} 파일 ({len(paths)}개)", file=sys.stderr)
+    for path in paths:
+        print(f"  - {path}", file=sys.stderr)
+
+
+def _print_progress(stage: str, current: int, total: int, item: str) -> None:
+    labels = {"audio": "오디오 분석", "match": "영상 매칭", "render": "영상 렌더"}
+    label = labels.get(stage, stage)
+    percent = 100 if total == 0 else round(current / total * 100)
+    detail = f" {item}" if item else ""
+    print(f"[{label}] {current}/{total} ({percent}%){detail}", file=sys.stderr)
 
 
 def _dry_run_report(
@@ -124,7 +158,12 @@ def _dry_run_report(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    arguments = list(argv) if argv is not None else sys.argv[1:]
+    if not arguments:
+        parser.print_help()
+        return 0
+    args = parser.parse_args(arguments)
     pipeline = RecorderSyncPipeline()
     audio_dir = args.audio_dir or args.video_dir
     output_dir = args.output_dir or args.video_dir / "replace"
@@ -137,6 +176,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_dir=output_dir,
             match_options=_match_options(args),
             session_gap_seconds=args.session_gap_seconds,
+            selection_callback=_print_selection,
+            progress_callback=_print_progress,
         )
         if args.command == "analyze":
             report = bundle.report()
@@ -153,9 +194,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 output_dir,
                 mode=RenderMode(args.mode),
                 camera_audio_volume=args.camera_audio_volume,
+                external_audio_volume=args.external_audio_volume,
                 overwrite=args.overwrite,
                 output_prefix=args.output_prefix,
                 output_suffix=args.output_suffix,
+                progress_callback=_print_progress,
             )
 
         report_path = args.report

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import numpy as np
 
@@ -42,16 +42,30 @@ def test_pipeline_analyze_discovers_sessions_and_matches_video(tmp_path: Path) -
     )
     tools.probe_video.return_value = VideoInfo(video_path, 5, 3840, 2160, True, "bt709")
     tools.extract_features.return_value = video_features
+    selection_callback = MagicMock()
+    progress_callback = MagicMock()
 
     bundle = RecorderSyncPipeline(tools=tools).analyze(
         video_dir,
         audio_dir,
         match_options=MatchOptions(min_confidence=0.7),
+        selection_callback=selection_callback,
+        progress_callback=progress_callback,
     )
 
     assert len(bundle.sessions) == 1
     assert bundle.matches[0].status is MatchStatus.MATCHED
     assert bundle.matches[0].external_start_seconds == 12.5
+    assert selection_callback.call_args_list == [
+        call("audio", (audio_path,)),
+        call("video", (video_path,)),
+    ]
+    assert progress_callback.call_args_list == [
+        call("audio", 0, 1, ""),
+        call("audio", 1, 1, "session-001"),
+        call("match", 0, 1, ""),
+        call("match", 1, 1, "clip.mov"),
+    ]
 
 
 def test_pipeline_marks_video_without_camera_audio_as_error(tmp_path: Path) -> None:
@@ -100,20 +114,28 @@ def test_pipeline_process_renders_only_matched_videos(tmp_path: Path) -> None:
     renderer = MagicMock(spec=FFmpegRenderer)
     expected = tmp_path / "final_clip_synced.mp4"
     renderer.render.return_value = expected
+    progress_callback = MagicMock()
 
     report = RecorderSyncPipeline(renderer=renderer).process(
         bundle,
         tmp_path,
         mode=RenderMode.MIX,
         camera_audio_volume=0.08,
+        external_audio_volume=0.7,
         output_prefix="final_",
         output_suffix="_synced",
+        progress_callback=progress_callback,
     )
 
     assert renderer.render.call_count == 1
     plan = renderer.render.call_args.args[0]
     assert plan.mode is RenderMode.MIX
     assert plan.camera_audio_volume == 0.08
+    assert plan.external_audio_volume == 0.7
     assert plan.output_path == expected
     assert report.matches[0].output_path == expected
     assert report.matches[1].status is MatchStatus.AMBIGUOUS
+    assert progress_callback.call_args_list == [
+        call("render", 0, 1, ""),
+        call("render", 1, 1, "clip.mov"),
+    ]
