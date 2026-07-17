@@ -137,6 +137,12 @@ recordersync analyze /path/to/media \
   --report /safe/private/path/analysis.json
 ```
 
+리포트의 `reason`은 기본 한국어다. 영어가 필요한 연동이나 공유에서는 다음을 추가한다.
+
+```bash
+recordersync analyze /path/to/media --report-language en
+```
+
 별도 디렉터리 예:
 
 ```bash
@@ -252,4 +258,5 @@ ffprobe -v error -show_entries \
 
 기대 시작점은 약 3.00초이며 출력 해상도는 원본과 같은 320×240이다. 스마트폰 회전
 메타데이터가 있는 입력은 autorotate 적용 후의 표시 해상도와 가로·세로 방향이
-유지되는지도 확인한다. 확인 후 임시 디렉터리는 삭제해도 된다.
+유지되는지, 원본 frame rate/VFR이 불필요한 CFR로 바뀌지 않는지도 확인한다. 확인 후
+임시 디렉터리는 삭제해도 된다.

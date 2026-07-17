@@ -76,7 +76,8 @@ def test_build_replace_command_uses_tubearchive_profile() -> None:
     assert "-c:v hevc_videotoolbox" in joined
     assert "-b:v 50M" in joined
     assert "-pix_fmt p010le" in joined
-    assert "-r 30000/1001" in joined
+    assert "-r" not in command
+    assert "-fps_mode:v passthrough" in joined
     assert "-c:a aac -b:a 256k -ar 48000" in joined
     assert "[external]" in joined
     assert "amix" not in joined

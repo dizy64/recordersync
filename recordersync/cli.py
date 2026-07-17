@@ -13,7 +13,7 @@ from recordersync.matching import MatchOptions
 from recordersync.models import MatchStatus
 from recordersync.pipeline import RecorderSyncPipeline
 from recordersync.render import RenderMode, resolve_output_path
-from recordersync.report import MatchReport
+from recordersync.report import MatchReport, ReportLanguage
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -39,6 +39,12 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--output-dir", type=Path, default=None, help="기본: VIDEO_DIR/replace")
     parser.add_argument("--report", type=Path, default=None, help="JSON 리포트 저장 경로")
+    parser.add_argument(
+        "--report-language",
+        choices=[language.value for language in ReportLanguage],
+        default=ReportLanguage.KO.value,
+        help="리포트 사유 언어(기본: ko)",
+    )
     parser.add_argument("--min-confidence", type=float, default=0.75)
     parser.add_argument("--min-peak-margin", type=float, default=0.05)
     parser.add_argument("--session-gap-seconds", type=float, default=10.0)
@@ -99,6 +105,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     pipeline = RecorderSyncPipeline()
     audio_dir = args.audio_dir or args.video_dir
     output_dir = args.output_dir or args.video_dir / "replace"
+    report_language = ReportLanguage(args.report_language)
 
     try:
         bundle = pipeline.analyze(
@@ -125,8 +132,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if report_path is None and args.command == "process" and not args.dry_run:
             report_path = output_dir / "recordersync-report.json"
         if report_path is not None:
-            report.write(report_path)
-        print(report.to_json())
+            report.write(report_path, language=report_language)
+        print(report.to_json(language=report_language))
         return _exit_code(report)
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         print(f"recordersync: {exc}", file=sys.stderr)

@@ -38,13 +38,15 @@
 
 ## 목표 프로파일
 
-- 출력: MP4, 회전 적용 후 원본 표시 해상도 유지, 30000/1001fps
+- 출력: MP4, 회전 적용 후 원본 표시 해상도와 프레임 타임스탬프/VFR 유지
 - 영상: HEVC 10-bit, VideoToolbox 50Mbps, BT.709 SDR, `hvc1`
 - 오디오: AAC 48kHz 256kbps
 - VideoToolbox 실패 시 libx265 10-bit 폴백
 
 렌더 필터에 고정 `scale`, `pad`, `crop`, 배경 `overlay`를 추가하지 않는다. 세로 영상은
-세로 픽셀 배열로 출력하고, 가로·세로 모두 원본 표시 해상도를 보존한다.
+세로 픽셀 배열로 출력하고, 가로·세로 모두 원본 표시 해상도를 보존한다. 고정 `-r`을
+추가하지 않고 `-fps_mode:v passthrough`를 유지한다. JSON 필드와 상태값은 번역하지 않고
+`reason`만 `ko/en`으로 직렬화하며 CLI 기본값은 `ko`다.
 
 ## 검증 명령
 

@@ -6,7 +6,7 @@ RecorderSync의 자동 테스트는 단위 테스트다. FFmpeg·ffprobe·파일
 도메인 정책과 분리하고 목/스텁으로 대체한다. 실제 코덱 동작은 공개 가능한 합성
 미디어를 임시 디렉터리에 생성해 수동 smoke로 확인한다.
 
-현재 기준은 45개 테스트, 전체 커버리지 88%다. 새 변경은 전체 커버리지를 85% 아래로
+현재 기준은 49개 테스트, 전체 커버리지 88%다. 새 변경은 전체 커버리지를 85% 아래로
 떨어뜨리지 않고, 변경된 비즈니스 분기의 정상·경계·오류를 직접 검증해야 한다.
 
 ## 현재 테스트 지도
@@ -18,9 +18,9 @@ RecorderSync의 자동 테스트는 단위 테스트다. FFmpeg·ffprobe·파일
 | `test_media.py` | 7 | 탐색, ffprobe 파싱, PCM, 실패, 조각 frame padding |
 | `test_render.py` | 8 | 원본 해상도, concat escaping, 프로파일, mix, 볼륨, 폴백, 원자 출력 |
 | `test_pipeline.py` | 3 | 배치 분석, 카메라음 없음, matched만 렌더 |
-| `test_cli.py` | 8 | 기본값, 오디오 경로 생략, 범위 검증, JSON 출력, 종료 코드, fatal 오류 |
+| `test_cli.py` | 10 | 기본값, 경로 생략, 언어 검증, JSON 출력, 종료 코드, fatal 오류 |
 | `test_api.py` | 3 | 외부 소비자용 세션·매칭·렌더 계획 API |
-| `test_report.py` | 1 | JSON 버전, 필드, 상태 요약 |
+| `test_report.py` | 3 | JSON 버전, 상태 요약, 한국어·영어 사유와 진단 보존 |
 
 개수는 구현 기준선이며 새 테스트가 추가되면 표도 갱신한다.
 
@@ -58,6 +58,7 @@ RecorderSync의 자동 테스트는 단위 테스트다. FFmpeg·ffprobe·파일
 - 소프트웨어 폴백도 실패하면 최종 파일이 남지 않는가
 - 기존 출력이 `--overwrite` 없이 보존되는가
 - 가로·세로 입력 모두 고정 scale/pad/crop/overlay 없이 원본 표시 해상도를 유지하는가
+- 고정 `-r` 없이 `-fps_mode:v passthrough`로 원본 프레임 타임스탬프를 유지하는가
 - HLG/PQ 입력이 설치된 FFmpeg에 없는 `zscale`을 요구하지 않는가
 
 ### CLI와 리포트
@@ -68,6 +69,8 @@ RecorderSync의 자동 테스트는 단위 테스트다. FFmpeg·ffprobe·파일
 - 부분 성공이 종료 코드 2인가
 - 치명적 입력 오류가 종료 코드 1인가
 - JSON 필드와 null 가능성이 REPORT_VERSION 계약과 일치하는가
+- 기본 한국어와 명시적 영어 사유가 출력되고 미지원 언어는 거부되는가
+- 알 수 없는 코덱·FFmpeg 진단이 번역 과정에서 손실되지 않는가
 - 사용자 입력 오류에 비밀값이나 전체 subprocess 환경을 출력하지 않는가
 
 ## 목과 fixture 작성 규칙

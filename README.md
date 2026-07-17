@@ -69,8 +69,8 @@ uv run recordersync process ~/Videos/day1 \
 4. FFT 기반 normalized cross-correlation으로 후보 구간을 찾고, 시작·끝 특징으로
    offset과 recorder clock drift를 보정합니다.
 5. confidence 0.75 이상이고 차순위 peak와 0.05 이상 차이 나는 결과만 승인합니다.
-6. 승인된 영상은 원본 표시 해상도와 가로·세로 방향을 유지한 HEVC 10-bit/AAC MP4로
-   출력합니다. 스마트폰 회전 메타데이터는 FFmpeg가 실제 픽셀 방향에 적용합니다.
+6. 승인된 영상은 원본 표시 해상도, 가로·세로 방향, 프레임 타임스탬프를 유지한 HEVC
+   10-bit/AAC MP4로 출력합니다. 스마트폰 회전 메타데이터와 VFR도 보존합니다.
 
 기본 출력 이름은 `replace/<원본명>_replaced.mp4`입니다. 기존 출력은
 `--overwrite` 없이는 덮어쓰지 않습니다.
@@ -94,6 +94,7 @@ uv run recordersync process ~/Videos/day1 \
 --audio-dir DIR               레코더 오디오 디렉터리(기본: VIDEO_DIR)
 --output-dir DIR              출력 디렉터리(기본: VIDEO_DIR/replace)
 --report PATH                 JSON 리포트 저장 경로
+--report-language ko|en       리포트 사유 언어(기본: ko)
 --min-confidence 0.75         최소 종합 신뢰도
 --min-peak-margin 0.05        최고/차순위 상관 peak 최소 차이
 --session-gap-seconds 10      새 녹음 세션으로 나눌 시간 공백
@@ -102,6 +103,9 @@ uv run recordersync process ~/Videos/day1 \
 --dry-run                     process 계획만 출력
 --overwrite                   기존 결과 덮어쓰기 허용
 ```
+
+JSON 키와 `matched` 같은 상태값은 자동화 호환성을 위해 영어로 고정되며, 사람이 읽는
+`reason`만 기본 한국어 또는 `--report-language en`의 영어로 출력됩니다.
 
 지원 오디오: AAC, AIF/AIFF, FLAC, M4A, MP3, WAV/WAVE
 

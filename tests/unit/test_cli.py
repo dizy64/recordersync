@@ -24,6 +24,7 @@ def test_process_cli_defaults_to_safe_replace_policy() -> None:
     assert args.min_confidence == pytest.approx(0.75)
     assert args.min_peak_margin == pytest.approx(0.05)
     assert args.session_gap_seconds == pytest.approx(10.0)
+    assert args.report_language == "ko"
     assert not args.overwrite
 
 
@@ -41,6 +42,11 @@ def test_analyze_cli_accepts_json_report_path() -> None:
 
     assert args.command == "analyze"
     assert args.report == Path("/tmp/report.json")
+
+
+def test_analyze_cli_rejects_unsupported_report_language() -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["analyze", "/video", "--report-language", "ja"])
 
 
 def test_process_cli_rejects_camera_volume_outside_unit_interval() -> None:
@@ -87,6 +93,29 @@ def test_main_uses_video_dir_for_audio_when_audio_dir_is_omitted() -> None:
 
     assert exit_code == 0
     assert pipeline.analyze.call_args.args[:2] == (Path("/media"), Path("/media"))
+
+
+def test_main_can_print_english_report_reasons(capsys: pytest.CaptureFixture[str]) -> None:
+    bundle = AnalysisBundle(
+        sessions=(),
+        videos=(),
+        matches=(
+            AudioMatch(
+                Path("clip.mov"),
+                5,
+                MatchStatus.UNMATCHED,
+                reason="Match confidence is below the configured threshold",
+            ),
+        ),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = bundle
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(["analyze", "/media", "--report-language", "en"])
+
+    assert exit_code == 2
+    assert "Match confidence is below the configured threshold" in capsys.readouterr().out
 
 
 def test_main_dry_run_returns_partial_exit_without_rendering() -> None:

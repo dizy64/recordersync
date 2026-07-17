@@ -6,6 +6,10 @@
 버전에서 가능하지만, 이름·타입·상태 의미·null 가능성 변경은 REPORT_VERSION 증가와
 호환성 테스트가 필요하다.
 
+JSON 키와 `status` 값은 번역하지 않는다. `reason`만 `language`에 따라 한국어 또는
+영어로 직렬화한다. CLI 기본값은 `ko`이며 `--report-language en`으로 바꿀 수 있다.
+소비자는 표시 문구인 `reason`으로 분기하지 말고 `status`와 수치 필드를 사용한다.
+
 `analyze`는 JSON을 stdout으로 출력하고 `--report`가 있으면 파일에도 쓴다. `process`는
 별도 경로가 없으면 output dir의 `recordersync-report.json`에 쓴다.
 
@@ -14,6 +18,7 @@
 | 필드 | 타입 | 의미 |
 |---|---|---|
 | `version` | integer | 스키마 버전 |
+| `language` | string | `reason` 언어: `ko` 또는 `en` |
 | `created_at` | ISO 8601 string | UTC 리포트 생성 시각 |
 | `summary` | object | 상태별 영상 개수 |
 | `audio_sessions` | array | 자동 구성된 녹음 세션 |
@@ -43,7 +48,7 @@
 | `correlation` | number | 최고 NCC peak |
 | `peak_margin` | number | 최고와 차순위 peak 차이 |
 | `confidence` | number | 상관도·유일성을 결합한 0~1 점수 |
-| `reason` | string/null | 승인 거부나 오류 설명 |
+| `reason` | string/null | 선택한 언어의 승인 거부·오류 설명 |
 | `output` | string/null | 성공한 결과 또는 dry-run 예상 경로 |
 
 `matched` 분석 결과는 `output`이 null일 수 있다. `process --dry-run`은 렌더하지 않아도
@@ -56,6 +61,7 @@
 ```json
 {
   "version": 1,
+  "language": "ko",
   "created_at": "2026-07-17T00:00:00+00:00",
   "summary": {
     "total": 2,
@@ -95,12 +101,15 @@
       "correlation": 0.88,
       "peak_margin": 0.01,
       "confidence": 0.71,
-      "reason": "Best match is not sufficiently distinct from the runner-up",
+      "reason": "최상위 후보와 차순위 후보의 차이가 충분하지 않습니다.",
       "output": null
     }
   ]
 }
 ```
+
+정의된 공통 사유와 오류 접두사는 번역한다. 코덱이나 FFmpeg가 반환한 알 수 없는 진단은
+정보 손실을 피하기 위해 원문으로 남을 수 있다.
 
 ## 개인정보 주의
 
