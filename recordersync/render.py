@@ -296,7 +296,7 @@ class FFmpegCommandBuilder:
             label = f"part{part_index}"
             filters.append(
                 f"[0:a:0]atrim=start={_number(start)}:end={_number(end)},"
-                "asetpts=PTS-STARTPTS,aresample=48000,"
+                "asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,"
                 f"volume={_number(plan.camera_audio_volume)}[{label}]"
             )
             labels.append(f"[{label}]")
@@ -314,7 +314,8 @@ class FFmpegCommandBuilder:
             label = f"part{part_index}"
             filters.append(
                 f"[{segment_index}:a:0]volume={_number(plan.external_audio_volume)},"
-                f"aresample=48000,atempo={_number(segment.tempo_ratio)},"
+                "aresample=48000,aformat=channel_layouts=stereo,"
+                f"atempo={_number(segment.tempo_ratio)},"
                 f"atrim=duration={_number(segment.duration_seconds)},"
                 f"asetpts=PTS-STARTPTS[{label}]"
             )
