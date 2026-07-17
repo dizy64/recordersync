@@ -22,10 +22,17 @@ uv sync
 ## 빠른 시작
 
 영상과 레코더 파일이 같은 디렉터리에 있으면 `--audio-dir`를 생략합니다. 매칭 결과만
-확인하는 `analyze`는 미디어 파일을 만들지 않고 JSON을 표준 출력으로 내보냅니다.
+확인하는 `analyze`는 미디어 파일을 만들지 않고 파일별 매칭 여부·매칭률·실패 사유를
+사람이 읽기 쉬운 목록으로 보여줍니다.
 
 ```bash
 uv run recordersync analyze ~/Capture/day1
+```
+
+자동화에서 상세 필드가 필요할 때만 JSON을 명시합니다.
+
+```bash
+uv run recordersync analyze ~/Capture/day1 --json
 ```
 
 매칭이 확실한 영상만 `~/Capture/day1/replace`에 생성합니다.
@@ -95,7 +102,8 @@ uv run recordersync process ~/Videos/day1 \
 `recordersync-report.json`을 저장합니다.
 
 선택된 오디오·영상 파일과 오디오 분석/영상 매칭/렌더 진행률은 표준 오류에 표시합니다.
-JSON 결과는 표준 출력에만 기록하므로 파이프나 자동화에서 분리해 사용할 수 있습니다.
+`analyze`의 기본 stdout은 사람용 목록이며 `--json`을 지정하면 기존 전체 JSON으로
+바뀝니다. `process` stdout과 `--report` 파일은 계속 JSON을 사용합니다.
 
 ## 주요 옵션
 
@@ -106,6 +114,7 @@ JSON 결과는 표준 출력에만 기록하므로 파이프나 자동화에서 
 --output-suffix TEXT          출력 파일명 뒤에 붙일 문자열(기본: 없음)
 --report PATH                 JSON 리포트 저장 경로
 --report-language ko|en       리포트 사유 언어(기본: ko)
+--json                        analyze 전체 JSON을 stdout에 출력
 --min-confidence 0.75         최소 종합 신뢰도
 --min-peak-margin 0.05        최고/차순위 상관 peak 최소 차이
 --session-gap-seconds 10      새 녹음 세션으로 나눌 시간 공백
@@ -124,7 +133,8 @@ recordersync process --help
 ```
 
 JSON 키와 `matched` 같은 상태값은 자동화 호환성을 위해 영어로 고정되며, 사람이 읽는
-`reason`만 기본 한국어 또는 `--report-language en`의 영어로 출력됩니다.
+`reason`만 기본 한국어 또는 `--report-language en`의 영어로 출력됩니다. JSON 소비자는
+`analyze --json`을 사용해야 합니다.
 
 예를 들어 `clip.mov`를 `final_clip_synced.mp4`로 만들려면 다음처럼 실행합니다.
 

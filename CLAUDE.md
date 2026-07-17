@@ -36,7 +36,8 @@
 - 렌더는 임시 출력 성공 후 최종 경로로 원자 이동한다.
 - 사용자 미디어·리포트·절대 경로·비밀정보를 저장소나 테스트 fixture에 넣지 않는다.
 - subprocess는 인자 배열과 `shell=False`를 유지한다.
-- 선택 파일과 진행률은 stderr, 기계 판독 JSON은 stdout에만 출력한다.
+- 선택 파일과 진행률은 stderr에 출력한다. `analyze` stdout은 기본 사람용 목록이고
+  `--json`에서만 전체 JSON이며, `process` stdout과 `--report` 파일은 JSON을 유지한다.
 - 원본/외부 오디오 볼륨은 각각 0.0~1.0이며 원본 볼륨은 mix에서만 적용한다.
 
 ## 목표 프로파일

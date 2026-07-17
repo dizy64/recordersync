@@ -145,6 +145,21 @@ recordersync analyze /path/to/media \
   --report /safe/private/path/analysis.json
 ```
 
+터미널에는 다음처럼 파일별 핵심 결과만 표시된다.
+
+```text
+분석 결과: 1/2개 매칭 (50.0%)
+- clip-001.mov | 매칭 여부: 성공 | 매칭률: 94.0%
+- clip-002.mov | 매칭 여부: 실패 | 매칭률: 71.0% | 사유: 최상위 후보와 차순위 후보의 차이가 충분하지 않습니다.
+```
+
+전체 세션·offset·상관도 등 기계 판독 필드는 `--json`을 명시한다.
+
+```bash
+recordersync analyze /path/to/media --json >analysis.json 2>progress.log
+```
+
+`--report PATH`는 기본 사람용 화면을 유지하면서 해당 파일에 전체 JSON을 저장한다.
 리포트의 `reason`은 기본 한국어다. 영어가 필요한 연동이나 공유에서는 다음을 추가한다.
 
 ```bash
@@ -157,8 +172,9 @@ recordersync analyze /path/to/media --report-language en
 recordersync analyze /path/to/videos --audio-dir /path/to/recorder-files
 ```
 
-먼저 `summary`, `audio_sessions`, 각 영상의 `confidence`, `peak_margin`, 시작점을 확인한다.
-리포트에는 절대 경로가 들어가므로 저장소나 공개 이슈에 커밋하지 않는다.
+사람용 목록에서 실패 파일과 사유를 먼저 확인한다. 상세 JSON의 `summary`,
+`audio_sessions`, 각 영상의 `confidence`, `peak_margin`, 시작점은 자동화나 심층 진단에만
+사용한다. JSON에는 절대 경로가 들어가므로 저장소나 공개 이슈에 커밋하지 않는다.
 
 ### 2. dry run
 

@@ -100,3 +100,77 @@ def test_match_report_translates_known_prefix_and_preserves_unknown_reason() -> 
 
     assert payload["matches"][0]["reason"] == "출력 파일이 이미 존재합니다: result.mp4"
     assert payload["matches"][1]["reason"] == "codec-specific diagnostic"
+
+
+def test_match_report_renders_compact_korean_human_summary() -> None:
+    report = MatchReport(
+        sessions=(),
+        matches=(
+            AudioMatch(Path("matched.mov"), 8, MatchStatus.MATCHED, confidence=0.9),
+            AudioMatch(
+                Path("unmatched.mov"),
+                8,
+                MatchStatus.UNMATCHED,
+                confidence=0.42,
+                reason="Match confidence is below the configured threshold",
+            ),
+        ),
+        created_at=datetime(2026, 7, 17, tzinfo=UTC),
+    )
+
+    rendered = report.to_text()
+
+    assert rendered.splitlines() == [
+        "분석 결과: 1/2개 매칭 (50.0%)",
+        "- matched.mov | 매칭 여부: 성공 | 매칭률: 90.0%",
+        (
+            "- unmatched.mov | 매칭 여부: 실패 | 매칭률: 42.0% | "
+            "사유: 매칭 신뢰도가 설정된 기준보다 낮습니다."
+        ),
+    ]
+    assert "session_id" not in rendered
+    assert "correlation" not in rendered
+
+
+def test_match_report_renders_empty_human_summary_without_division_error() -> None:
+    report = MatchReport(
+        sessions=(),
+        matches=(),
+        created_at=datetime(2026, 7, 17, tzinfo=UTC),
+    )
+
+    assert report.to_text() == "분석 결과: 0/0개 매칭 (0.0%)"
+
+
+def test_match_report_always_explains_failed_human_match() -> None:
+    report = MatchReport(
+        sessions=(),
+        matches=(AudioMatch(Path("failed.mov"), 8, MatchStatus.ERROR),),
+        created_at=datetime(2026, 7, 17, tzinfo=UTC),
+    )
+
+    assert report.to_text().endswith("사유: 사유를 확인할 수 없습니다.")
+
+
+def test_match_report_renders_english_human_summary() -> None:
+    report = MatchReport(
+        sessions=(),
+        matches=(
+            AudioMatch(
+                Path("clip.mov"),
+                8,
+                MatchStatus.UNMATCHED,
+                confidence=0.3,
+                reason="Match confidence is below the configured threshold",
+            ),
+        ),
+        created_at=datetime(2026, 7, 17, tzinfo=UTC),
+    )
+
+    assert report.to_text(language=ReportLanguage.EN).splitlines() == [
+        "Analysis result: 0/1 matched (0.0%)",
+        (
+            "- clip.mov | matched: no | match confidence: 30.0% | "
+            "reason: Match confidence is below the configured threshold"
+        ),
+    ]
