@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +12,7 @@ import pytest
 from recordersync.cli import build_parser, main
 from recordersync.models import AudioMatch, AudioMatchSegment, MatchStatus
 from recordersync.pipeline import AnalysisBundle
+from recordersync.report import MatchReport
 
 
 def test_인자_없는_메인은_도움말을_출력하고_성공을_반환한다(
@@ -41,6 +43,7 @@ def test_처리_도움말은_두_오디오_볼륨_옵션을_안내한다(
     assert "--mode {replace,mix,fallback}" in stdout
     assert "--min-partial-seconds" in stdout
     assert "--recommended-only" in stdout
+    assert "--analysis-report" in stdout
 
 
 def test_분석_도움말은_처리_모드_추천을_안내한다(
@@ -71,6 +74,7 @@ def test_처리_CLI는_안전한_교체_정책을_기본값으로_사용한다()
     assert args.report_language == "ko"
     assert args.output_prefix == ""
     assert args.output_suffix == ""
+    assert args.analysis_report is None
     assert not args.recommended_only
     assert not args.json
     assert not args.overwrite
@@ -104,6 +108,14 @@ def test_처리_CLI는_오디오_디렉터리_생략을_허용한다() -> None:
 
     assert args.video_dir == Path("/media")
     assert args.audio_dir is None
+
+
+def test_처리_CLI는_기존_분석_리포트를_입력으로_허용한다() -> None:
+    args = build_parser().parse_args(
+        ["process", "/media", "--analysis-report", "/tmp/analysis.json"]
+    )
+
+    assert args.analysis_report == Path("/tmp/analysis.json")
 
 
 def test_처리_CLI는_출력_이름의_접두사와_접미사를_허용한다() -> None:
@@ -336,6 +348,110 @@ def test_메인_분석은_사람용_요약을_출력하면서_JSON_리포트를_
     assert exit_code == 0
     assert "분석 결과: 1/1개 매칭 (100.0%)" in capsys.readouterr().out
     assert json.loads(report_path.read_text(encoding="utf-8"))["summary"]["matched"] == 1
+
+
+def test_메인_분석은_저장한_리포트를_재사용하는_명령을_추천한다(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    video_dir = tmp_path / "video"
+    video_dir.mkdir()
+    video_path = video_dir / "clip.mov"
+    video_path.write_bytes(b"video")
+    bundle = AnalysisBundle(
+        sessions=(),
+        videos=(),
+        matches=(AudioMatch(video_path, 5, MatchStatus.MATCHED),),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = bundle
+    report_path = tmp_path / "analysis.json"
+
+    with (
+        patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline),
+        patch("recordersync.cli.write_analysis_report") as write_report,
+    ):
+        exit_code = main(["analyze", str(video_dir), "--report", str(report_path)])
+
+    assert exit_code == 0
+    expected_command = shlex.join(
+        (
+            "recordersync",
+            "process",
+            str(video_dir),
+            "--analysis-report",
+            str(report_path.resolve()),
+        )
+    )
+    assert expected_command in capsys.readouterr().out
+    write_report.assert_called_once()
+
+
+def test_메인_처리는_분석_리포트를_사용하면_재분석하지_않는다(
+    tmp_path: Path,
+) -> None:
+    video_dir = tmp_path / "video"
+    video_dir.mkdir()
+    report_path = tmp_path / "analysis.json"
+    bundle = AnalysisBundle((), (), ())
+    pipeline = MagicMock()
+    pipeline.process.return_value = MatchReport(sessions=(), matches=())
+
+    with (
+        patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline),
+        patch("recordersync.cli.load_analysis_report", return_value=bundle) as load_report,
+    ):
+        exit_code = main(
+            [
+                "process",
+                str(video_dir),
+                "--analysis-report",
+                str(report_path),
+            ]
+        )
+
+    assert exit_code == 0
+    load_report.assert_called_once_with(report_path, expected_video_dir=video_dir)
+    pipeline.analyze.assert_not_called()
+    pipeline.process.assert_called_once()
+
+
+def test_메인_처리는_분석_리포트와_분석_옵션의_혼용을_거부한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(
+            [
+                "process",
+                "/video",
+                "--analysis-report",
+                "/tmp/analysis.json",
+                "--audio-dir",
+                "/audio",
+            ]
+        )
+
+    assert exit_info.value.code == 2
+    assert "--analysis-report cannot be combined with analysis options" in capsys.readouterr().err
+
+
+def test_메인_처리는_입력_분석_리포트_덮어쓰기를_거부한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(
+            [
+                "process",
+                "/video",
+                "--analysis-report",
+                "/tmp/analysis.json",
+                "--report",
+                "/tmp/analysis.json",
+            ]
+        )
+
+    assert exit_info.value.code == 2
+    assert "--analysis-report and --report must use different paths" in capsys.readouterr().err
 
 
 def test_메인은_오디오_디렉터리_생략_시_영상_디렉터리를_사용한다() -> None:
