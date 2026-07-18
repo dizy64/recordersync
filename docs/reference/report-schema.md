@@ -31,12 +31,24 @@ JSON 키와 `status` 값은 번역하지 않는다. `reason`과 `recommendation_
 | `audio_sessions` | array | 자동 구성된 녹음 세션 |
 | `matches` | array | 입력 영상 순서의 매칭·렌더 결과 |
 | `recommended_command` | string[]/null | analyze에서 권장하는 배치 `process` argv. 처리 보류면 null |
+| `analysis_inputs` | object/생략 | analyze `--report` 파일의 검증 가능한 재사용 입력. stdout과 process 리포트에서는 생략 |
 
 `recommended_command`는 `analyze --json`과 analyze의 `--report`에만 포함한다. 안전한
 부분 일치가 하나라도 있으면 `--mode fallback`, `--recommended-only`, 보수적인
 `--min-partial-seconds`를 포함하고, 전체 일치만 있으면 기본 replace 명령을 제공한다.
 `--recommended-only`는 같은 배치의 추천 기준 미달 partial을 렌더 대상에서 제외한다.
 `process` 리포트에는 이미 실행한 명령을 다시 권장하지 않으므로 이 필드를 포함하지 않는다.
+
+## analysis_inputs
+
+`analyze --report PATH`로 파일에 저장할 때만 포함한다. `version`은 리포트 버전과 별개인
+실행 계획 버전이며 현재 `1`이다. 오디오 세션·영상의 절대 경로, size, mtime, probe
+메타데이터와 번역 전 매칭 결과를 포함한다. `process --analysis-report PATH`는 모든 입력
+지문과 요청한 `VIDEO_DIR`를 검증한 뒤 재분석 없이 렌더한다.
+
+입력이 없거나 바뀌었거나 계획 버전이 다르면 재사용을 거부한다. 자동 재분석 폴백은
+stale 결과를 사용자가 눈치채지 못하게 만들 수 있으므로 제공하지 않는다. 분석 리포트와
+처리 결과 리포트를 같은 경로로 지정할 수도 없다.
 
 ## audio_sessions
 

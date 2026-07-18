@@ -42,6 +42,8 @@
   `--json`에서만 전체 JSON이며, `process` stdout과 `--report` 파일은 JSON을 유지한다.
 - `analyze`의 처리 모드 추천은 안내만 제공한다. 추천이 process 모드, 종료 코드, 렌더
   허용 여부를 자동으로 바꾸면 안 된다.
+- 분석 `--report`의 재사용 입력은 경로·size·mtime을 검증하며, 불일치 시 조용히
+  재분석하지 않고 실패한다.
 - 원본/외부 오디오 볼륨은 각각 0.0~1.0이다. 원본 볼륨 기본값은 mix 0.1,
   fallback 1.0이며 replace에서는 적용하지 않는다.
 
@@ -67,6 +69,8 @@
 `analyze --json`과 분석 `--report`에는 같은 명령을 `recommended_command` argv 배열로
 제공한다. fallback 추천 명령은 `--recommended-only`로 안전 기준을 통과한 부분 매칭만
 렌더한다. 이 추천은 렌더를 자동 실행하거나 사용자가 명시한 process 모드를 바꾸지 않는다.
+분석 `--report`를 지정하면 추천 명령에 `--analysis-report`를 포함해 디코딩과 매칭을
+반복하지 않는다. stdout JSON은 재사용 계획으로 간주하지 않는다.
 
 기본 출력 파일명은 `<원본 stem>.mp4`이며 자동 접두사·접미사를 붙이지 않는다. 사용자가
 명시한 `--output-prefix/--output-suffix`만 적용하고 경로 구분자를 거부한다. 어떤
