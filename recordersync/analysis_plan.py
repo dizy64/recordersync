@@ -5,8 +5,12 @@ from __future__ import annotations
 import json
 import tempfile
 from datetime import datetime
+from functools import cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Never
+
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError
 
 from recordersync.media import VideoInfo
 from recordersync.models import (
@@ -23,6 +27,7 @@ if TYPE_CHECKING:
 
 
 ANALYSIS_INPUT_VERSION = 1
+_REPORT_SCHEMA_NAME = "recordersync-report-v2.schema.json"
 
 
 def _fingerprint(path: Path) -> dict[str, object]:
@@ -178,6 +183,28 @@ def _boolean(value: object, field: str) -> bool:
     return value
 
 
+def _reject_non_finite_json(value: str) -> Never:
+    raise ValueError(f"Non-finite JSON number: {value}")
+
+
+@cache
+def _report_validator() -> Draft202012Validator:
+    source_path = Path(__file__).resolve().parents[1] / "schemas" / _REPORT_SCHEMA_NAME
+    packaged_path = Path(__file__).resolve().parent / "schemas" / _REPORT_SCHEMA_NAME
+    schema_path = packaged_path if packaged_path.is_file() else source_path
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema)
+
+
+def _validate_report_schema(payload: object) -> None:
+    try:
+        _report_validator().validate(payload)
+    except ValidationError as exc:
+        field = ".".join(str(part) for part in exc.absolute_path) or "root"
+        raise ValueError(f"Invalid analysis report schema at {field}: {exc.message}") from exc
+
+
 def _validated_path(payload: dict[str, Any], field: str) -> Path:
     path = Path(_string(payload.get("path"), f"{field}.path")).resolve()
     expected_size = _integer(payload.get("size_bytes"), f"{field}.size_bytes")
@@ -286,10 +313,13 @@ def load_analysis_report(path: Path, *, expected_video_dir: Path) -> AnalysisBun
     """입력 변경 여부를 검증하고 분석 번들을 복원한다."""
 
     try:
-        raw_payload = json.loads(path.read_text(encoding="utf-8"))
+        raw_payload = json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=_reject_non_finite_json,
+        )
     except OSError as exc:
         raise ValueError(f"Analysis report not found or inaccessible: {path}") from exc
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f"Invalid analysis report JSON: {path}") from exc
     payload = _mapping(raw_payload, "root")
     raw_inputs = payload.get("analysis_inputs")
@@ -299,6 +329,7 @@ def load_analysis_report(path: Path, *, expected_video_dir: Path) -> AnalysisBun
     version = _integer(inputs.get("version"), "analysis_inputs.version")
     if version != ANALYSIS_INPUT_VERSION:
         raise ValueError(f"Unsupported analysis input version: {version}")
+    _validate_report_schema(payload)
 
     sessions = tuple(
         _load_session(value, index)

@@ -7,6 +7,7 @@ requires-python = ">=3.14"
 license = "MIT"
 authors = [{ name = "Donggeun Lee", email = "i@dizy.me" }]
 dependencies = [
+    "jsonschema>=4.26,<5",
     "numpy>=2.4,<3",
     "scipy>=1.18,<2",
 ]
@@ -23,13 +24,13 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "jsonschema>=4.26,<5",
     "mypy>=1.19",
     "pip-audit>=2.10",
     "pytest>=9.0",
     "pytest-cov>=7.0",
     "radon>=6.0",
     "ruff>=0.14",
+    "types-jsonschema>=4.26,<5",
 ]
 
 [tool.pytest.ini_options]
