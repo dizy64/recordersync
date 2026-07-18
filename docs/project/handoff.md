@@ -8,7 +8,7 @@
 - 최초 기능 완료 커밋: `3873f62`
 - Python: 3.14+
 - 플랫폼: macOS
-- 자동 테스트: 단위 테스트 130개(기준 커버리지 90%), 합성 FFmpeg E2E 3개
+- 자동 검증: `bash scripts/check.sh`, `bash scripts/test-e2e.sh` (합성 FFmpeg E2E), GitHub Actions
 - 성능 기준: 12시간·영상 200개, 일반 31.683초/실제 부분 160.178초, p95
   0.159초/0.806초, p99 0.162초/0.809초, peak RSS 287.5MB/288.5MB
   (2026-07-17 Apple Silicon)
