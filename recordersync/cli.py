@@ -159,7 +159,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="analyze --report 결과를 검증해 재분석 없이 처리",
     )
-    process.add_argument("--overwrite", action="store_true")
+    process.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="기존 출력 파일 덮어쓰기",
+    )
     process.add_argument("--dry-run", action="store_true")
     return parser
 

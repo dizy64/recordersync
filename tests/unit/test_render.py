@@ -209,6 +209,26 @@ def test_렌더러는_덮어쓰지_않고_기존_출력을_보존한다(tmp_path
     assert output.read_bytes() == b"original"
 
 
+def test_렌더러는_덮어쓰기_옵션으로_기존_출력을_원자적으로_교체한다(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "clip.mp4"
+    output.write_bytes(b"original")
+    plan = RenderPlan(_video(), _session(), output, 0, 1, overwrite=True)
+    renderer = FFmpegRenderer()
+
+    def run(command: list[str]) -> CompletedProcess[str]:
+        Path(command[-1]).write_bytes(b"replacement")
+        return CompletedProcess(command, 0, "", "")
+
+    with patch.object(renderer, "_run", side_effect=run) as mocked_run:
+        rendered = renderer.render(plan)
+
+    assert rendered == output
+    assert output.read_bytes() == b"replacement"
+    assert "-y" in mocked_run.call_args.args[0]
+
+
 def test_렌더러는_원본_영상을_절대_덮어쓰지_않는다() -> None:
     plan = RenderPlan(_video(), _session(), Path("clip.mov"), 0, 1, overwrite=True)
     renderer = FFmpegRenderer()
