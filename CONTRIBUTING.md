@@ -97,6 +97,10 @@ git diff --check
 pre-push에 단위 테스트를 연결합니다. E2E는 실행 시간이 길고 FFmpeg가 필요하므로
 명시적 스크립트와 CI에서 수행합니다.
 
+`scripts/check.sh`와 CI는 `scripts/check_markdown_links.py`도 실행합니다. 이 검사는 외부
+URL에 네트워크 요청을 보내지 않고 저장소 내부 파일 경로와 저장소 이탈만 확인합니다.
+문서 내부 anchor의 GitHub slug 유효성은 검사 범위가 아닙니다.
+
 매칭 알고리즘·특징·성능 경로를 바꾼 경우 벤치도 실행한다.
 
 ```bash
