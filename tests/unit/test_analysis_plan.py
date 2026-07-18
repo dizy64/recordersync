@@ -136,6 +136,101 @@ def test_분석_리포트는_지원하지_않는_계획_버전을_거부한다(t
         load_analysis_report(report_path, expected_video_dir=tmp_path / "video")
 
 
+def test_분석_리포트는_계획의_알_수_없는_필드를_거부한다(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path)
+    report_path = tmp_path / "analysis.json"
+    write_analysis_report(bundle.report(), bundle, report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    payload["analysis_inputs"]["unexpected"] = True
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid analysis report schema at analysis_inputs"):
+        load_analysis_report(report_path, expected_video_dir=tmp_path / "video")
+
+
+def test_분석_리포트는_매칭의_알_수_없는_필드를_거부한다(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path)
+    report_path = tmp_path / "analysis.json"
+    write_analysis_report(bundle.report(), bundle, report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    payload["analysis_inputs"]["matches"][0]["unexpected"] = True
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match=r"Invalid analysis report schema at analysis_inputs\.matches\.0",
+    ):
+        load_analysis_report(report_path, expected_video_dir=tmp_path / "video")
+
+
+def test_분석_리포트는_빈_세션_ID를_거부한다(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path)
+    report_path = tmp_path / "analysis.json"
+    write_analysis_report(bundle.report(), bundle, report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    payload["analysis_inputs"]["audio_sessions"][0]["id"] = ""
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match=r"Invalid analysis report schema at analysis_inputs\.audio_sessions\.0\.id",
+    ):
+        load_analysis_report(report_path, expected_video_dir=tmp_path / "video")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("external_start_seconds", -0.1),
+        ("tempo_ratio", 2.1),
+        ("correlation", -1.1),
+        ("peak_margin", 2.1),
+        ("confidence", 1.1),
+    ],
+)
+def test_분석_리포트는_범위를_벗어난_매칭_수치를_거부한다(
+    tmp_path: Path,
+    field: str,
+    value: float,
+) -> None:
+    bundle = _bundle(tmp_path)
+    report_path = tmp_path / "analysis.json"
+    write_analysis_report(bundle.report(), bundle, report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    payload["analysis_inputs"]["matches"][0][field] = value
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match=rf"Invalid analysis report schema at analysis_inputs\.matches\.0\.{field}",
+    ):
+        load_analysis_report(report_path, expected_video_dir=tmp_path / "video")
+
+
+def test_분석_리포트는_유한하지_않은_JSON_수치를_거부한다(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path)
+    report_path = tmp_path / "analysis.json"
+    write_analysis_report(bundle.report(), bundle, report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    payload["analysis_inputs"]["matches"][0]["confidence"] = float("nan")
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid analysis report JSON"):
+        load_analysis_report(report_path, expected_video_dir=tmp_path / "video")
+
+
+def test_분석_리포트는_RFC3339가_아닌_생성_시간을_거부한다(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path)
+    report_path = tmp_path / "analysis.json"
+    write_analysis_report(bundle.report(), bundle, report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    payload["created_at"] = "2026-07-18"
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid analysis report schema at created_at"):
+        load_analysis_report(report_path, expected_video_dir=tmp_path / "video")
+
+
 def test_분석_리포트는_다른_영상_디렉터리에서의_실행을_거부한다(tmp_path: Path) -> None:
     bundle = _bundle(tmp_path)
     report_path = tmp_path / "analysis.json"

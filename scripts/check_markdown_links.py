@@ -43,6 +43,7 @@ def markdown_files(root: Path) -> tuple[Path, ...]:
             path
             for path in resolved_root.rglob("*.md")
             if not _IGNORED_DIRECTORIES.intersection(path.relative_to(resolved_root).parts)
+            and path.is_file()
         )
     )
 

@@ -72,6 +72,11 @@ PY
 stale 결과를 사용자가 눈치채지 못하게 만들 수 있으므로 제공하지 않는다. 분석 리포트와
 처리 결과 리포트를 같은 경로로 지정할 수도 없다.
 
+`process --analysis-report`는 배포 wheel에 포함된 v2 JSON Schema로 전체 문서와
+`analysis_inputs`의 필드 집합·필수값·수치 범위·RFC 3339 `date-time` 형식을 먼저 검증한다.
+unknown 필드나 유한하지 않은 JSON 수치는 거부하며, 스키마 검증 후 실제 파일의
+path·size·mtime 지문을 확인한다.
+
 ## audio_sessions
 
 | 필드 | 타입 | 의미 |

@@ -1,13 +1,15 @@
 [project]
 name = "recordersync"
-version = "0.4.0"
+version = "0.4.1"
 description = "Match split recorder audio to camera clips and replace their audio"
 readme = "README.md"
 requires-python = ">=3.14"
 license = "MIT"
 authors = [{ name = "Donggeun Lee", email = "i@dizy.me" }]
 dependencies = [
+    "jsonschema>=4.26,<5",
     "numpy>=2.4,<3",
+    "rfc3339-validator>=0.1.4,<0.2",
     "scipy>=1.18,<2",
 ]
 
@@ -23,13 +25,13 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "jsonschema>=4.26,<5",
     "mypy>=1.19",
     "pip-audit>=2.10",
     "pytest>=9.0",
     "pytest-cov>=7.0",
     "radon>=6.0",
     "ruff>=0.14",
+    "types-jsonschema>=4.26,<5",
 ]
 
 [tool.pytest.ini_options]
