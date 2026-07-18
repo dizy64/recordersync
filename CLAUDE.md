@@ -48,6 +48,8 @@
   재분석하지 않고 실패한다.
 - `REPORT_VERSION`이나 JSON 필드 계약을 변경하면 버전별 JSON Schema와 실제 payload
   검증 테스트를 함께 갱신한다.
+- release 태그는 main 병합 커밋에만 생성하며 `pyproject.toml`, `recordersync.__version__`,
+  `v<version>` 태그가 모두 일치해야 한다.
 - 원본/외부 오디오 볼륨은 각각 0.0~1.0이다. 원본 볼륨 기본값은 mix 0.1,
   fallback 1.0이며 replace에서는 적용하지 않는다.
 

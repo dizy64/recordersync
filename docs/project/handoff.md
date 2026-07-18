@@ -4,7 +4,7 @@
 
 - 저장소: `git@github.com:dizy64/recordersync.git`
 - 기본 브랜치: `main`
-- 패키지/CLI 버전: `0.3.0`
+- 패키지/CLI 버전 정본: `pyproject.toml`의 `project.version`
 - 최초 기능 완료 커밋: `3873f62`
 - Python: 3.14+
 - 플랫폼: macOS
@@ -18,7 +18,7 @@
 VideoToolbox/libx265 렌더, 선택 파일/진행률, 기본 부분 분석, 사람용 분석 목록과 보수적인
 처리 모드·배치 명령 추천, dry-run/process 공통 렌더 정책, 입력 지문을 검증하는 분석
 리포트 재사용, Draft 2020-12 스키마가 있는 opt-in JSON v2 리포트, 영상별 오류를
-격리하는 공개 Python API를 포함한다.
+격리하는 공개 Python API, 태그 기반 GitHub Release 자동화를 포함한다.
 TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 
 ## 먼저 읽을 문서
@@ -29,7 +29,9 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 4. [테스트 전략](../development/testing.md): 테스트 케이스 작성법
 5. [운영 가이드](../operations/guide.md): 전역 설치, 실행, 문제 해결
 6. [리포트 스키마](../reference/report-schema.md): 외부 연동 JSON 계약
-7. [SECURITY.md](../../SECURITY.md): 미디어·리포트 개인정보와 보안
+7. [변경 이력](changelog.md): 버전별 사용자 동작과 공개 계약 변경
+8. [릴리스 절차](../operations/releasing.md): release 브랜치, 태그, GitHub Release
+9. [SECURITY.md](../../SECURITY.md): 미디어·리포트 개인정보와 보안
 
 ## 변경하면 안 되는 핵심 불변식
 
@@ -86,8 +88,7 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
   10-bit/AAC 프로파일과 영상 bitrate는 고정되어 있다.
 - 진행률은 완료 개수/비율만 제공하며 ETA·취소 후 resume·디스크 사전 용량 검사는 없다.
 - macOS 외 플랫폼은 지원 대상으로 검증하지 않았다.
-- JSON은 `version: 2`지만 JSON Schema 파일은 아직 없다.
-- release tag와 자동 배포 파이프라인이 없다.
+- PyPI 배포 파이프라인은 없으며 Git 태그와 GitHub Release 산출물을 사용한다.
 
 ## 다음 우선순위
 
@@ -135,8 +136,6 @@ TubeArchive가 `match_videos()` 결과를 직접 받아 기존 Transcoder에서 
 - 진행률과 영상별 ETA
 - 렌더 전 출력 예상 크기 및 디스크 여유 검사
 - 중단된 배치 resume
-- versioned JSON Schema
-- release tag 기반 전역 설치와 changelog
 
 ## 새 작업 시작 체크리스트
 

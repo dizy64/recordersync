@@ -142,6 +142,8 @@ Document global uv tool installation workflow
 PR에는 문제와 범위, RED 재현, 테스트 결과, 성능·보안·데이터 영향, 남은 위험을 적는다.
 `.github/pull_request_template.md` 체크리스트를 모두 확인한다.
 `main` 보호 규칙은 PR, 최신 main 기준 필수 CI, 미해결 대화 해소를 요구한다.
+버전 배포는 [릴리스 절차](docs/operations/releasing.md)에 따라 release 브랜치를 main에
+병합한 뒤 main 병합 커밋에 태그를 생성한다.
 
 ## 완료 정의
 
