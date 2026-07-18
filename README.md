@@ -259,7 +259,7 @@ GitHub main 직접 설치, editable 개발 설치, 제거 방법은
 
 ```bash
 bash scripts/format.sh    # Ruff 자동 수정·포맷
-bash scripts/check.sh     # lint, format, 문서 링크, mypy, 단위 테스트, 감사, 복잡도, build
+bash scripts/check.sh     # lint, format, 문서 링크·버전, mypy, 단위 테스트, 감사, 복잡도, build
 bash scripts/test-e2e.sh  # 실제 FFmpeg 합성 E2E
 uv run python scripts/benchmark_matcher.py
 uv run python scripts/benchmark_matcher.py --partial
@@ -279,5 +279,7 @@ bash scripts/install-hooks.sh
 - [설치·실행·운영](docs/operations/guide.md)
 - [JSON 리포트 계약](docs/reference/report-schema.md)
 - [JSON Schema v2](schemas/recordersync-report-v2.schema.json)
+- [변경 이력](docs/project/changelog.md)
+- [릴리스 절차](docs/operations/releasing.md)
 - [인수인계와 다음 작업](docs/project/handoff.md)
 - [보안·개인정보](SECURITY.md)
