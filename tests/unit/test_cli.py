@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import shlex
 from pathlib import Path
@@ -13,6 +14,37 @@ from recordersync.cli import build_parser, main
 from recordersync.models import AudioMatch, AudioMatchSegment, MatchStatus
 from recordersync.pipeline import AnalysisBundle
 from recordersync.report import MatchReport
+
+
+def test_모든_공개_CLI_인자는_도움말을_제공한다() -> None:
+    def is_missing_help(value: object) -> bool:
+        return (
+            value is None
+            or value == argparse.SUPPRESS
+            or (isinstance(value, str) and not value.strip())
+        )
+
+    pending = [("recordersync", build_parser())]
+    missing: list[str] = []
+
+    while pending:
+        command, parser = pending.pop()
+        for action in parser._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                missing.extend(
+                    f"{command} {choice.dest}"
+                    for choice in action._choices_actions
+                    if is_missing_help(choice.help)
+                )
+                pending.extend(
+                    (f"{command} {name}", child) for name, child in action.choices.items()
+                )
+                continue
+            if is_missing_help(action.help):
+                argument = action.option_strings[0] if action.option_strings else action.dest
+                missing.append(f"{command} {argument}")
+
+    assert sorted(missing) == []
 
 
 def test_인자_없는_메인은_도움말을_출력하고_성공을_반환한다(

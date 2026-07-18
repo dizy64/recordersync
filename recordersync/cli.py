@@ -58,11 +58,19 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
         "--min-confidence",
         type=float,
         default=_DEFAULT_MATCH_OPTIONS.min_confidence,
+        help=(
+            "매칭으로 승인할 최소 종합 신뢰도"
+            f"(0 초과~1.0, 기본: {_DEFAULT_MATCH_OPTIONS.min_confidence:g})"
+        ),
     )
     parser.add_argument(
         "--min-peak-margin",
         type=float,
         default=_DEFAULT_MATCH_OPTIONS.min_peak_margin,
+        help=(
+            "최고·차순위 후보의 최소 상관 peak 차이"
+            f"(0.0~2.0, 기본: {_DEFAULT_MATCH_OPTIONS.min_peak_margin:g})"
+        ),
     )
     parser.add_argument(
         "--min-partial-seconds",
@@ -74,6 +82,7 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
         "--session-gap-seconds",
         type=float,
         default=_DEFAULT_SESSION_GAP_SECONDS,
+        help=f"새 녹음 세션으로 분리할 시간 공백(0 이상, 기본: {_DEFAULT_SESSION_GAP_SECONDS:g}초)",
     )
 
 
@@ -123,7 +132,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     process = subparsers.add_parser("process", help="매칭 후 개별 표준화 영상을 생성")
     _add_common_options(process)
-    process.add_argument("--mode", choices=[mode.value for mode in RenderMode], default="replace")
+    process.add_argument(
+        "--mode",
+        choices=[mode.value for mode in RenderMode],
+        default="replace",
+        help=(
+            "오디오 처리 방식: replace=전체 교체, mix=혼합, "
+            "fallback=일치 구간만 교체(기본: replace)"
+        ),
+    )
     process.add_argument(
         "--camera-audio-volume",
         type=_unit_interval,
@@ -164,7 +181,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="기존 출력 파일 덮어쓰기",
     )
-    process.add_argument("--dry-run", action="store_true")
+    process.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="렌더하지 않고 예상 처리 결과와 출력 경로만 JSON으로 출력",
+    )
     return parser
 
 
