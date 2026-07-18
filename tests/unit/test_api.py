@@ -113,7 +113,7 @@ def test_영상_매칭은_특징_추출_실패를_격리하고_다음_영상을_
     matches = match_videos([broken_path, next_path], [session], tools=tools)
 
     assert [match.status for match in matches] == [MatchStatus.ERROR, MatchStatus.ERROR]
-    assert matches[0].duration_seconds == 0
+    assert matches[0].duration_seconds == 4
     assert matches[0].reason == "decoded features are invalid"
     assert matches[1].reason == "Camera audio is required for automatic matching"
     assert tools.probe_video.call_count == 2

@@ -41,13 +41,15 @@ def match_videos(
     timelines = [resolved_tools.build_session_timeline(session) for session in sessions]
     matches: list[AudioMatch] = []
     for path in video_paths:
+        duration_seconds = 0.0
         try:
             video = resolved_tools.probe_video(path)
+            duration_seconds = video.duration_seconds
             if not video.has_audio:
                 matches.append(
                     AudioMatch(
                         path,
-                        video.duration_seconds,
+                        duration_seconds,
                         MatchStatus.ERROR,
                         reason="Camera audio is required for automatic matching",
                     )
@@ -56,7 +58,7 @@ def match_videos(
             matches.append(
                 match_video_features(
                     path,
-                    video.duration_seconds,
+                    duration_seconds,
                     resolved_tools.extract_features(path),
                     timelines,
                     options,
@@ -66,7 +68,7 @@ def match_videos(
             matches.append(
                 AudioMatch(
                     path,
-                    0.0,
+                    duration_seconds,
                     MatchStatus.ERROR,
                     reason=str(exc),
                 )
