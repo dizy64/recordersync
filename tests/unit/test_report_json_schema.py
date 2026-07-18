@@ -101,3 +101,18 @@ def test_리포트_스키마는_문서의_공개_합성_예시를_검증한다(
     example = document.split("```json\n", maxsplit=1)[1].split("\n```", maxsplit=1)[0]
 
     Draft202012Validator(schema).validate(json.loads(example))
+
+
+def test_리포트_스키마는_재사용_입력의_알_수_없는_필드를_거부한다(
+    tmp_path: Path,
+    schema: dict[str, object],
+    bundle: AnalysisBundle,
+) -> None:
+    report_path = tmp_path / "analysis.json"
+    write_analysis_report(bundle.report(), bundle, report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    chunk = payload["analysis_inputs"]["audio_sessions"][0]["chunks"][0]
+    chunk["unexpected"] = True
+
+    with pytest.raises(ValidationError, match="not allowed"):
+        Draft202012Validator(schema).validate(payload)

@@ -289,17 +289,15 @@
       }
     },
     "analysisAudioChunk": {
+      "type": "object",
+      "unevaluatedProperties": false,
       "allOf": [
         {
           "$ref": "#/$defs/fingerprint"
         },
         {
           "type": "object",
-          "additionalProperties": false,
           "required": [
-            "path",
-            "size_bytes",
-            "mtime_ns",
             "duration_seconds",
             "sample_rate",
             "channels",
@@ -307,16 +305,6 @@
             "started_at"
           ],
           "properties": {
-            "path": {
-              "$ref": "#/$defs/nonEmptyString"
-            },
-            "size_bytes": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "mtime_ns": {
-              "type": "integer"
-            },
             "duration_seconds": {
               "type": "number",
               "exclusiveMinimum": 0
@@ -358,17 +346,15 @@
       }
     },
     "analysisVideo": {
+      "type": "object",
+      "unevaluatedProperties": false,
       "allOf": [
         {
           "$ref": "#/$defs/fingerprint"
         },
         {
           "type": "object",
-          "additionalProperties": false,
           "required": [
-            "path",
-            "size_bytes",
-            "mtime_ns",
             "duration_seconds",
             "width",
             "height",
@@ -376,16 +362,6 @@
             "color_transfer"
           ],
           "properties": {
-            "path": {
-              "$ref": "#/$defs/nonEmptyString"
-            },
-            "size_bytes": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "mtime_ns": {
-              "type": "integer"
-            },
             "duration_seconds": {
               "type": "number",
               "exclusiveMinimum": 0
