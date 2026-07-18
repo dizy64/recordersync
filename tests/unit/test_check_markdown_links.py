@@ -54,6 +54,15 @@ def test_링크_검사는_저장소_밖을_가리키는_경로를_거부한다(t
     assert issues[0].reason == "저장소 밖을 가리킵니다"
 
 
+def test_링크_검사는_MD_확장자_디렉터리를_문서로_읽지_않는다(tmp_path: Path) -> None:
+    (tmp_path / "archive.md").mkdir()
+    (tmp_path / "README.md").write_text("# 문서\n", encoding="utf-8")
+
+    issues = check_markdown_links(tmp_path)
+
+    assert issues == ()
+
+
 def test_링크_검사_CLI는_실패_목록과_종료_코드를_제공한다(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
