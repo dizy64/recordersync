@@ -184,8 +184,8 @@ def _validated_path(payload: dict[str, Any], field: str) -> Path:
     expected_mtime = _integer(payload.get("mtime_ns"), f"{field}.mtime_ns")
     try:
         stat = path.stat()
-    except FileNotFoundError as exc:
-        raise ValueError(f"Analysis input is missing: {path}") from exc
+    except OSError as exc:
+        raise ValueError(f"Analysis input is missing or inaccessible: {path}") from exc
     if stat.st_size != expected_size or stat.st_mtime_ns != expected_mtime:
         raise ValueError(f"Analysis input changed: {path}")
     return path
@@ -287,8 +287,8 @@ def load_analysis_report(path: Path, *, expected_video_dir: Path) -> AnalysisBun
 
     try:
         raw_payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise ValueError(f"Analysis report not found: {path}") from exc
+    except OSError as exc:
+        raise ValueError(f"Analysis report not found or inaccessible: {path}") from exc
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid analysis report JSON: {path}") from exc
     payload = _mapping(raw_payload, "root")

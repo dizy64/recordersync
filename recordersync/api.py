@@ -64,7 +64,7 @@ def match_videos(
                     options,
                 )
             )
-        except (MediaError, ValueError) as exc:
+        except (MediaError, OSError, ValueError) as exc:
             matches.append(
                 AudioMatch(
                     path,
