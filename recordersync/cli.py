@@ -58,19 +58,13 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
         "--min-confidence",
         type=float,
         default=_DEFAULT_MATCH_OPTIONS.min_confidence,
-        help=(
-            "매칭으로 승인할 최소 종합 신뢰도"
-            f"(0 초과~1.0, 기본: {_DEFAULT_MATCH_OPTIONS.min_confidence:g})"
-        ),
+        help=f"매칭으로 승인할 최소 종합 신뢰도(0 초과~1.0, 기본: {_DEFAULT_MATCH_OPTIONS.min_confidence:g})",
     )
     parser.add_argument(
         "--min-peak-margin",
         type=float,
         default=_DEFAULT_MATCH_OPTIONS.min_peak_margin,
-        help=(
-            "최고·차순위 후보의 최소 상관 peak 차이"
-            f"(0.0~2.0, 기본: {_DEFAULT_MATCH_OPTIONS.min_peak_margin:g})"
-        ),
+        help=f"최고·차순위 후보의 최소 상관 peak 차이(0.0~2.0, 기본: {_DEFAULT_MATCH_OPTIONS.min_peak_margin:g})",
     )
     parser.add_argument(
         "--min-partial-seconds",
@@ -136,10 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode",
         choices=[mode.value for mode in RenderMode],
         default="replace",
-        help=(
-            "오디오 처리 방식: replace=전체 교체, mix=혼합, "
-            "fallback=일치 구간만 교체(기본: replace)"
-        ),
+        help="오디오 처리 방식: replace=전체 교체, mix=혼합, fallback=일치 구간만 교체(기본: replace)",
     )
     process.add_argument(
         "--camera-audio-volume",
@@ -194,8 +185,7 @@ def _match_options(args: argparse.Namespace) -> MatchOptions:
         min_confidence=args.min_confidence,
         min_peak_margin=args.min_peak_margin,
         enable_partial=(
-            bool(getattr(args, "partial", False))
-            or getattr(args, "mode", None) == RenderMode.FALLBACK.value
+            bool(getattr(args, "partial", False)) or getattr(args, "mode", None) == RenderMode.FALLBACK.value
         ),
         min_partial_duration_seconds=args.min_partial_seconds,
     )
@@ -205,9 +195,7 @@ def _exit_code(report: MatchReport, *, accept_partial: bool = False) -> int:
     def is_successful(match: AudioMatch) -> bool:
         if match.status is MatchStatus.MATCHED:
             return True
-        return (
-            accept_partial and match.status is MatchStatus.PARTIAL and match.output_path is not None
-        )
+        return accept_partial and match.status is MatchStatus.PARTIAL and match.output_path is not None
 
     return 0 if all(is_successful(match) for match in report.matches) else 2
 

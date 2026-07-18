@@ -11,9 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-_IGNORED_DIRECTORIES = frozenset(
-    {".git", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv", "build", "dist"}
-)
+_IGNORED_DIRECTORIES = frozenset({".git", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv", "build", "dist"})
 _FENCE_PATTERN = re.compile(r"^\s*(?P<fence>`{3,}|~{3,})")
 _INLINE_CODE_PATTERN = re.compile(r"(`+).*?\1")
 _INLINE_LINK_PATTERN = re.compile(
@@ -42,8 +40,7 @@ def markdown_files(root: Path) -> tuple[Path, ...]:
         sorted(
             path
             for path in resolved_root.rglob("*.md")
-            if not _IGNORED_DIRECTORIES.intersection(path.relative_to(resolved_root).parts)
-            and path.is_file()
+            if not _IGNORED_DIRECTORIES.intersection(path.relative_to(resolved_root).parts) and path.is_file()
         )
     )
 
@@ -88,9 +85,7 @@ def _validate_target(root: Path, source: Path, target: str) -> str | None:
 
     decoded_path = unquote(parsed.path)
     candidate = (
-        root / decoded_path.lstrip("/")
-        if decoded_path.startswith("/")
-        else source.parent / decoded_path
+        root / decoded_path.lstrip("/") if decoded_path.startswith("/") else source.parent / decoded_path
     ).resolve()
     try:
         candidate.relative_to(root)

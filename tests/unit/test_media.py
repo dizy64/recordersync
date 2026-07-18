@@ -90,9 +90,7 @@ def test_특징_추출은_부동소수점_PCM을_디코딩한다() -> None:
 
     with (
         patch("recordersync.media.subprocess.run", return_value=completed) as run,
-        patch(
-            "recordersync.media.build_multiband_features", return_value=np.ones((6, 10))
-        ) as build,
+        patch("recordersync.media.build_multiband_features", return_value=np.ones((6, 10))) as build,
     ):
         result = FFmpegTools().extract_features(Path("clip.mov"))
 

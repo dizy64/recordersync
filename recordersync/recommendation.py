@@ -85,15 +85,10 @@ def recommend_batch_mode(matches: Iterable[AudioMatch]) -> ModeRecommendation:
 
     recommendations = tuple(recommend_mode(match) for match in matches)
     fallback_recommendations = tuple(
-        recommendation
-        for recommendation in recommendations
-        if recommendation.mode is RecommendationMode.FALLBACK
+        recommendation for recommendation in recommendations if recommendation.mode is RecommendationMode.FALLBACK
     )
     if fallback_recommendations:
-        if any(
-            recommendation.minimum_contiguous_seconds is None
-            for recommendation in fallback_recommendations
-        ):
+        if any(recommendation.minimum_contiguous_seconds is None for recommendation in fallback_recommendations):
             raise ValueError("fallback recommendation requires a contiguous duration")
         minimum_contiguous_seconds = max(
             recommendation.minimum_contiguous_seconds

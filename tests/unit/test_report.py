@@ -59,13 +59,9 @@ def test_매칭_리포트는_세션과_매칭과_요약을_직렬화한다() -> 
     assert payload["audio_sessions"][0]["chunks"] == ["a.wav"]
     assert payload["matches"][0]["external_start_seconds"] == 2.5
     assert payload["matches"][0]["recommended_mode"] == "replace"
-    assert payload["matches"][0]["recommendation_reason"] == (
-        "카메라 오디오 전체가 외부 녹음과 일치합니다."
-    )
+    assert payload["matches"][0]["recommendation_reason"] == "카메라 오디오 전체가 외부 녹음과 일치합니다."
     assert payload["matches"][0]["recommended_options"] == {}
-    assert payload["matches"][1]["reason"] == (
-        "최상위 후보와 차순위 후보의 차이가 충분하지 않습니다."
-    )
+    assert payload["matches"][1]["reason"] == "최상위 후보와 차순위 후보의 차이가 충분하지 않습니다."
     assert payload["matches"][1]["recommended_mode"] is None
 
 
@@ -138,10 +134,8 @@ def test_매칭_리포트는_영문_사유를_렌더링할_수_있다() -> None:
     payload = json.loads(report.to_json(language=ReportLanguage.EN))
 
     assert payload["language"] == "en"
-    assert payload["matches"][0]["reason"] == ("Match confidence is below the configured threshold")
-    assert payload["matches"][0]["recommendation_reason"] == (
-        "No reliable matching segment is available."
-    )
+    assert payload["matches"][0]["reason"] == "Match confidence is below the configured threshold"
+    assert payload["matches"][0]["recommendation_reason"] == "No reliable matching segment is available."
 
 
 def test_부분_매칭의_영문_목록은_한국어_단위를_포함하지_않는다() -> None:

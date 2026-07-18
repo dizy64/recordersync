@@ -49,9 +49,7 @@ def validate_release_version(root: Path, tag: str | None = None) -> str:
     project_version = _project_version(root)
     package_version = _package_version(root)
     if project_version != package_version:
-        raise ValueError(
-            f"버전 불일치: pyproject.toml {project_version}, recordersync {package_version}"
-        )
+        raise ValueError(f"버전 불일치: pyproject.toml {project_version}, recordersync {package_version}")
 
     if tag is not None:
         expected_tag = f"v{project_version}"
@@ -61,9 +59,7 @@ def validate_release_version(root: Path, tag: str | None = None) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="릴리스 태그와 패키지 버전의 일치 여부를 검사합니다."
-    )
+    parser = argparse.ArgumentParser(description="릴리스 태그와 패키지 버전의 일치 여부를 검사합니다.")
     parser.add_argument("tag", nargs="?", help="검사할 Git 태그(예: v0.4.0)")
     parser.add_argument(
         "--root",

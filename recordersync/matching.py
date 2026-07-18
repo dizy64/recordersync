@@ -130,9 +130,7 @@ def build_multiband_features(
 
     frame_count = 1 + (samples.size - frame_size) // hop_size
     frequencies = np.fft.rfftfreq(frame_size, d=1.0 / sample_rate)
-    band_masks = [
-        (frequencies >= low) & (frequencies < high) for low, high in pairwise(_BAND_EDGES_HZ)
-    ]
+    band_masks = [(frequencies >= low) & (frequencies < high) for low, high in pairwise(_BAND_EDGES_HZ)]
     if any(not mask.any() for mask in band_masks):
         raise ValueError("sample_rate is too low for configured frequency bands")
 
@@ -201,9 +199,7 @@ def _top_candidates(
 
     curve = _correlation_curve(timeline.features, video_features)
     best_index = int(np.argmax(curve))
-    candidates = [
-        _Candidate(timeline.session_id, best_index, float(curve[best_index]), timeline.hop_seconds)
-    ]
+    candidates = [_Candidate(timeline.session_id, best_index, float(curve[best_index]), timeline.hop_seconds)]
 
     exclusion_frames = max(1, round(exclusion_seconds / timeline.hop_seconds))
     masked = curve.copy()
@@ -372,10 +368,7 @@ def _window_ranges(
         minimum_frames,
         round(options.partial_window_seconds / hop_seconds),
     )
-    ranges = [
-        (start, min(total_frames, start + window_frames))
-        for start in range(0, total_frames, window_frames)
-    ]
+    ranges = [(start, min(total_frames, start + window_frames)) for start in range(0, total_frames, window_frames)]
     if ranges[-1][1] - ranges[-1][0] < minimum_frames:
         final_range = (total_frames - minimum_frames, total_frames)
         ranges[-1] = final_range
@@ -405,9 +398,7 @@ def _local_window_match(
     found_end = found_start + reference_features.shape[1]
     if found_start < 0 or found_end > timeline.features.shape[1]:
         return None
-    correlation = float(
-        _correlation_curve(timeline.features[:, found_start:found_end], reference_features)[0]
-    )
+    correlation = float(_correlation_curve(timeline.features[:, found_start:found_end], reference_features)[0])
     correlation_score = max(0.0, min(1.0, (correlation + 1.0) / 2.0))
     if correlation_score < options.min_confidence:
         return None
@@ -493,9 +484,7 @@ def _segment_from_group(
         coarse_start_frame=first.candidate.frame_index,
         hop_seconds=timeline.hop_seconds,
     )
-    available_seconds = (
-        (timeline.features.shape[1] - refined_start) * timeline.hop_seconds / tempo_ratio
-    )
+    available_seconds = (timeline.features.shape[1] - refined_start) * timeline.hop_seconds / tempo_ratio
     segment_duration = min(video_end - video_start, available_seconds)
     if segment_duration + 1e-6 < options.min_partial_duration_seconds:
         return None
@@ -542,9 +531,7 @@ def _find_partial_segments(
         reference = video_features[:, video_start:video_end]
         matched: _WindowMatch | None = None
         if anchor_timeline is not None and anchor_start_frame is not None:
-            expected_start = anchor_start_frame + round(
-                (video_start - anchor_video_start_frame) * anchor_tempo_ratio
-            )
+            expected_start = anchor_start_frame + round((video_start - anchor_video_start_frame) * anchor_tempo_ratio)
             matched = _local_window_match(
                 reference,
                 video_start_frame=video_start,
@@ -626,9 +613,7 @@ def match_video_features(
     full_tempo_ratio = 1.0
     full_match: AudioMatch | None = None
     if full_score.status is MatchStatus.MATCHED and full_score.best is not None:
-        best_timeline = next(
-            timeline for timeline in sessions if timeline.session_id == full_score.best.session_id
-        )
+        best_timeline = next(timeline for timeline in sessions if timeline.session_id == full_score.best.session_id)
         full_start, full_tempo_ratio = refine_feature_alignment(
             best_timeline.features,
             video_features,
@@ -691,15 +676,11 @@ def match_video_features(
         session_id=segments[0].session_id if len(session_ids) == 1 else None,
         external_start_seconds=segments[0].external_start_seconds,
         tempo_ratio=segments[0].tempo_ratio,
-        correlation=sum(segment.correlation * segment.duration_seconds for segment in segments)
-        / matched_duration,
+        correlation=sum(segment.correlation * segment.duration_seconds for segment in segments) / matched_duration,
         peak_margin=min(segment.peak_margin for segment in segments),
-        confidence=sum(segment.confidence * segment.duration_seconds for segment in segments)
-        / matched_duration,
+        confidence=sum(segment.confidence * segment.duration_seconds for segment in segments) / matched_duration,
         reason=(
-            "Only part of the camera audio matched the external recording"
-            if status is MatchStatus.PARTIAL
-            else None
+            "Only part of the camera audio matched the external recording" if status is MatchStatus.PARTIAL else None
         ),
         segments=segments,
     )

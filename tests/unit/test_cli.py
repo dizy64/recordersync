@@ -18,11 +18,7 @@ from recordersync.report import MatchReport
 
 def test_모든_공개_CLI_인자는_도움말을_제공한다() -> None:
     def is_missing_help(value: object) -> bool:
-        return (
-            value is None
-            or value == argparse.SUPPRESS
-            or (isinstance(value, str) and not value.strip())
-        )
+        return value is None or value == argparse.SUPPRESS or (isinstance(value, str) and not value.strip())
 
     pending = [("recordersync", build_parser())]
     missing: list[str] = []
@@ -32,13 +28,9 @@ def test_모든_공개_CLI_인자는_도움말을_제공한다() -> None:
         for action in parser._actions:
             if isinstance(action, argparse._SubParsersAction):
                 missing.extend(
-                    f"{command} {choice.dest}"
-                    for choice in action._choices_actions
-                    if is_missing_help(choice.help)
+                    f"{command} {choice.dest}" for choice in action._choices_actions if is_missing_help(choice.help)
                 )
-                pending.extend(
-                    (f"{command} {name}", child) for name, child in action.choices.items()
-                )
+                pending.extend((f"{command} {name}", child) for name, child in action.choices.items())
                 continue
             if is_missing_help(action.help):
                 argument = action.option_strings[0] if action.option_strings else action.dest
@@ -151,26 +143,20 @@ def test_처리_CLI는_오디오_디렉터리_생략을_허용한다() -> None:
 
 
 def test_처리_CLI는_기존_분석_리포트를_입력으로_허용한다() -> None:
-    args = build_parser().parse_args(
-        ["process", "/media", "--analysis-report", "/tmp/analysis.json"]
-    )
+    args = build_parser().parse_args(["process", "/media", "--analysis-report", "/tmp/analysis.json"])
 
     assert args.analysis_report == Path("/tmp/analysis.json")
 
 
 def test_처리_CLI는_출력_이름의_접두사와_접미사를_허용한다() -> None:
-    args = build_parser().parse_args(
-        ["process", "/media", "--output-prefix", "final_", "--output-suffix", "_synced"]
-    )
+    args = build_parser().parse_args(["process", "/media", "--output-prefix", "final_", "--output-suffix", "_synced"])
 
     assert args.output_prefix == "final_"
     assert args.output_suffix == "_synced"
 
 
 def test_분석_CLI는_JSON_리포트_경로를_허용한다() -> None:
-    args = build_parser().parse_args(
-        ["analyze", "/video", "--audio-dir", "/audio", "--report", "/tmp/report.json"]
-    )
+    args = build_parser().parse_args(["analyze", "/video", "--audio-dir", "/audio", "--report", "/tmp/report.json"])
 
     assert args.command == "analyze"
     assert args.report == Path("/tmp/report.json")
@@ -203,9 +189,7 @@ def test_처리_CLI는_단위_구간_밖의_카메라_볼륨을_거부한다() -
 
 
 def test_처리_CLI는_외부_오디오_볼륨을_허용한다() -> None:
-    args = build_parser().parse_args(
-        ["process", "/video", "--mode", "mix", "--external-audio-volume", "0.8"]
-    )
+    args = build_parser().parse_args(["process", "/video", "--mode", "mix", "--external-audio-volume", "0.8"])
 
     assert args.external_audio_volume == pytest.approx(0.8)
 

@@ -159,14 +159,11 @@ class RecorderSyncPipeline:
         processed: list[AudioMatch] = []
 
         render_total = sum(
-            is_renderable_match(match, mode, recommended_only=recommended_only)
-            for match in bundle.matches
+            is_renderable_match(match, mode, recommended_only=recommended_only) for match in bundle.matches
         )
         render_completed = 0
         resolved_camera_volume = (
-            camera_audio_volume
-            if camera_audio_volume is not None
-            else (1.0 if mode is RenderMode.FALLBACK else 0.1)
+            camera_audio_volume if camera_audio_volume is not None else (1.0 if mode is RenderMode.FALLBACK else 0.1)
         )
         if progress_callback is not None:
             progress_callback("render", 0, render_total, "")
@@ -175,9 +172,7 @@ class RecorderSyncPipeline:
             if not is_renderable_match(match, mode, recommended_only=recommended_only):
                 processed.append(match)
                 continue
-            segment_sessions_exist = all(
-                segment.session_id in sessions for segment in match.segments
-            )
+            segment_sessions_exist = all(segment.session_id in sessions for segment in match.segments)
             if (
                 match.video_path not in videos
                 or not segment_sessions_exist
@@ -224,19 +219,13 @@ class RecorderSyncPipeline:
                     if mode is RenderMode.FALLBACK
                     else ()
                 )
-                primary_session = (
-                    render_segments[0].session
-                    if render_segments
-                    else sessions[match.session_id or ""]
-                )
+                primary_session = render_segments[0].session if render_segments else sessions[match.session_id or ""]
                 primary_external_start = (
                     render_segments[0].external_start_seconds
                     if render_segments
                     else match.external_start_seconds or 0.0
                 )
-                primary_tempo_ratio = (
-                    render_segments[0].tempo_ratio if render_segments else match.tempo_ratio
-                )
+                primary_tempo_ratio = render_segments[0].tempo_ratio if render_segments else match.tempo_ratio
                 output_path = resolve_output_path(
                     match.video_path,
                     output_dir,

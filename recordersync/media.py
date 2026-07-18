@@ -15,12 +15,8 @@ from recordersync.matching import FeatureTimeline, FloatArray, build_multiband_f
 from recordersync.models import AudioChunk, RecordingSession
 from recordersync.sessions import natural_sort_key
 
-SUPPORTED_AUDIO_EXTENSIONS = frozenset(
-    {".aac", ".aif", ".aiff", ".flac", ".m4a", ".mp3", ".wav", ".wave"}
-)
-SUPPORTED_VIDEO_EXTENSIONS = frozenset(
-    {".avi", ".m2ts", ".m4v", ".mkv", ".mov", ".mp4", ".mts", ".webm"}
-)
+SUPPORTED_AUDIO_EXTENSIONS = frozenset({".aac", ".aif", ".aiff", ".flac", ".m4a", ".mp3", ".wav", ".wave"})
+SUPPORTED_VIDEO_EXTENSIONS = frozenset({".avi", ".m2ts", ".m4v", ".mkv", ".mov", ".mp4", ".mts", ".webm"})
 
 FFPROBE_TIMEOUT_SECONDS = 30.0
 FEATURE_EXTRACTION_TIMEOUT_SECONDS = 3_600.0
@@ -58,11 +54,7 @@ def _discover_files(directory: Path, extensions: frozenset[str]) -> list[Path]:
     if not directory.is_dir():
         raise FileNotFoundError(f"Directory not found: {directory}")
     return sorted(
-        (
-            path
-            for path in directory.iterdir()
-            if path.is_file() and path.suffix.casefold() in extensions
-        ),
+        (path for path in directory.iterdir() if path.is_file() and path.suffix.casefold() in extensions),
         key=lambda path: natural_sort_key(path.name),
     )
 
@@ -99,11 +91,7 @@ def _first_stream(payload: dict[str, Any], stream_type: str) -> dict[str, Any] |
     if not isinstance(streams, list):
         return None
     return next(
-        (
-            stream
-            for stream in streams
-            if isinstance(stream, dict) and stream.get("codec_type") == stream_type
-        ),
+        (stream for stream in streams if isinstance(stream, dict) and stream.get("codec_type") == stream_type),
         None,
     )
 
@@ -169,9 +157,7 @@ class FFmpegTools:
         format_tags = raw_tags if isinstance(raw_tags, dict) else {}
         raw_stream_tags = stream.get("tags", {})
         stream_tags = raw_stream_tags if isinstance(raw_stream_tags, dict) else {}
-        started_at = _parse_datetime(
-            format_tags.get("creation_time") or stream_tags.get("creation_time")
-        )
+        started_at = _parse_datetime(format_tags.get("creation_time") or stream_tags.get("creation_time"))
         if started_at is None:
             stat = path.stat()
             started_at = datetime.fromtimestamp(
@@ -205,9 +191,7 @@ class FFmpegTools:
             width=int(video_stream.get("width", 0)),
             height=int(video_stream.get("height", 0)),
             has_audio=_first_stream(payload, "audio") is not None,
-            color_transfer=(
-                str(video_stream["color_transfer"]) if video_stream.get("color_transfer") else None
-            ),
+            color_transfer=(str(video_stream["color_transfer"]) if video_stream.get("color_transfer") else None),
         )
 
     def extract_features(self, path: Path) -> FloatArray:
