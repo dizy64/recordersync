@@ -50,6 +50,8 @@ def test_렌더_대상_정책은_상태와_모드와_추천_기준을_함께_판
         segments=(AudioMatchSegment("session-001", 10, 20, 5, confidence=0.9),),
     )
     unmatched = AudioMatch(Path("none.mov"), 100, MatchStatus.UNMATCHED)
+    ambiguous = AudioMatch(Path("ambiguous.mov"), 100, MatchStatus.AMBIGUOUS)
+    error_match = AudioMatch(Path("error.mov"), 100, MatchStatus.ERROR, reason="Test error")
 
     cases = (
         ("전체 일치", matched, RenderMode.REPLACE, True, True),
@@ -58,6 +60,8 @@ def test_렌더_대상_정책은_상태와_모드와_추천_기준을_함께_판
         ("보류된 부분 일치", held_partial, RenderMode.FALLBACK, True, False),
         ("폴백이 아닌 부분 일치", safe_partial, RenderMode.MIX, False, False),
         ("불일치", unmatched, RenderMode.FALLBACK, False, False),
+        ("모호한 일치", ambiguous, RenderMode.FALLBACK, False, False),
+        ("오류 상태", error_match, RenderMode.FALLBACK, False, False),
     )
 
     for label, match, mode, recommended_only, expected in cases:
