@@ -41,9 +41,10 @@ git tag -a "v${release_version}" "${release_commit}" -m "RecorderSync ${release_
 git push origin "v${release_version}"
 ```
 
-`.github/workflows/release.yml`은 태그와 두 패키지 버전이 정확히 일치하는지 검증하고,
-전체 품질 검사 후 `dist/*.whl`과 `dist/*.tar.gz`를 GitHub Release에 첨부한다. 태그가
-잘못됐거나 검사가 실패하면 릴리스를 생성하지 않는다.
+`.github/workflows/release.yml`은 태그 커밋이 기본 브랜치 이력에 포함되는지, 태그와 두
+패키지 버전이 정확히 일치하는지 검증한다. 전체 품질 검사 후 `dist/*.whl`과
+`dist/*.tar.gz`를 GitHub Release에 첨부한다. 태그가 잘못됐거나 검사가 실패하면
+릴리스를 생성하지 않는다.
 
 ## 4. 완료 확인
 
