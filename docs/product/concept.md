@@ -29,8 +29,10 @@ RecorderSync는 분할 파일을 하나의 물리 파일로 복사하지 않고 
 2. 레코더 파일이 별도 위치라면 `--audio-dir AUDIO_DIR`를 지정한다. 어느 방식이든 여러
    녹음 세션이 함께 있어도 된다.
 3. `recordersync analyze`로 세션 구성, 영상별 confidence, 부분 구간, 권장 처리 모드를
-   확인한다. 부분 탐색을 생략하고 전체 일치만 빠르게 확인하려면 `--full-only`를 명시한다.
-4. 전체 일치 영상은 기본 `recordersync process`로 출력한다.
+   확인한다. 긴 분석을 재사용하려면 `--report`를 지정하고, 부분 탐색을 생략하려면
+   `--full-only`를 명시한다.
+4. 전체 일치 영상은 기본 `recordersync process`로 출력한다. 저장한 분석이 있으면
+   추천된 `--analysis-report` 명령으로 입력 지문을 검증하고 렌더만 수행한다.
 5. 부분 일치 영상도 살리려면 `--mode fallback`을 명시한다. 일치 구간은 레코더음,
    나머지는 카메라음으로 출력한다.
 6. `ambiguous`, `unmatched`, `error`는 리포트를 보고 입력이나 임계값을 점검한다.

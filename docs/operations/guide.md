@@ -165,6 +165,22 @@ recordersync analyze /path/to/media --json >analysis.json 2>progress.log
 `--report PATH`는 기본 사람용 화면을 유지하면서 해당 파일에 전체 JSON을 저장한다.
 리포트의 `reason`은 기본 한국어다. 영어가 필요한 연동이나 공유에서는 다음을 추가한다.
 
+분석 리포트를 저장하면 출력되는 추천 명령은 `--analysis-report`를 포함한다. 파일이
+바뀌지 않았다면 오디오 디코딩과 영상 매칭을 반복하지 않고 렌더 단계부터 실행한다.
+
+```bash
+recordersync analyze /path/to/videos \
+  --audio-dir /path/to/recorder-files \
+  --report /safe/private/path/analysis.json
+recordersync process /path/to/videos \
+  --analysis-report /safe/private/path/analysis.json \
+  --output-dir /path/to/output
+```
+
+입력 파일의 size 또는 mtime이 바뀌거나 다른 영상 디렉터리에서 사용하면 실패한다. 이때
+기존 결과를 강제로 사용하지 말고 `analyze --report`를 다시 실행한다. 입력 리포트와 처리
+결과 `--report`에는 서로 다른 경로를 사용한다.
+
 ```bash
 recordersync analyze /path/to/media --report-language en
 ```
@@ -191,7 +207,8 @@ recordersync analyze /path/to/videos \
 
 사람용 목록에서 실패 파일과 사유를 먼저 확인한다. 상세 JSON의 `summary`,
 `audio_sessions`, 각 영상의 `confidence`, `peak_margin`, 시작점은 자동화나 심층 진단에만
-사용한다. JSON에는 절대 경로가 들어가므로 저장소나 공개 이슈에 커밋하지 않는다.
+사용한다. JSON과 `analysis_inputs`에는 절대 경로와 파일 지문이 들어가므로 저장소나 공개
+이슈에 커밋하지 않는다.
 
 ### 2. dry run
 

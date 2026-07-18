@@ -14,6 +14,7 @@
 - `main`에 직접 commit/push/merge하지 않고 작업 브랜치의 PR과 필수 CI를 통해 병합
 - `AGENTS.md`는 이 파일을 가리키는 심볼릭 링크로 유지
 - 문서는 `docs/{관심사}/{file-name}.md` 구조와 소문자 kebab-case 파일명을 사용
+- 변동이 잦은 테스트 개수와 현재 커버리지는 문서에 고정하지 않고 로컬 검사와 CI 결과를 정본으로 사용
 
 ## 작업 전 읽기 순서
 
@@ -32,6 +33,7 @@
 - 원본 미디어를 수정·이동·삭제하지 않는다.
 - `ambiguous`, `unmatched`, `error` 결과는 렌더하지 않는다. `partial`은 사용자가
   `fallback`을 명시한 경우에만 렌더한다.
+- dry-run과 실제 process의 렌더 대상 판정은 `is_renderable_match()` 정책을 공유한다.
 - 사용자가 명시하지 않은 mix, fallback, overwrite를 자동 선택하지 않는다.
 - 레코더 조각은 중간 대용량 파일로 합치지 않고 논리 세션과 concat 입력으로 다룬다.
 - 여러 영상이 같은 외부 오디오 구간에 매칭되는 것을 허용한다.
@@ -42,6 +44,12 @@
   `--json`에서만 전체 JSON이며, `process` stdout과 `--report` 파일은 JSON을 유지한다.
 - `analyze`의 처리 모드 추천은 안내만 제공한다. 추천이 process 모드, 종료 코드, 렌더
   허용 여부를 자동으로 바꾸면 안 된다.
+- 분석 `--report`의 재사용 입력은 경로·size·mtime을 검증하며, 불일치 시 조용히
+  재분석하지 않고 실패한다.
+- `REPORT_VERSION`이나 JSON 필드 계약을 변경하면 버전별 JSON Schema와 실제 payload
+  검증 테스트를 함께 갱신한다.
+- release 태그는 main 병합 커밋에만 생성하며 `pyproject.toml`, `recordersync.__version__`,
+  `v<version>` 태그가 모두 일치해야 한다.
 - 원본/외부 오디오 볼륨은 각각 0.0~1.0이다. 원본 볼륨 기본값은 mix 0.1,
   fallback 1.0이며 replace에서는 적용하지 않는다.
 
@@ -67,6 +75,8 @@
 `analyze --json`과 분석 `--report`에는 같은 명령을 `recommended_command` argv 배열로
 제공한다. fallback 추천 명령은 `--recommended-only`로 안전 기준을 통과한 부분 매칭만
 렌더한다. 이 추천은 렌더를 자동 실행하거나 사용자가 명시한 process 모드를 바꾸지 않는다.
+분석 `--report`를 지정하면 추천 명령에 `--analysis-report`를 포함해 디코딩과 매칭을
+반복하지 않는다. stdout JSON은 재사용 계획으로 간주하지 않는다.
 
 기본 출력 파일명은 `<원본 stem>.mp4`이며 자동 접두사·접미사를 붙이지 않는다. 사용자가
 명시한 `--output-prefix/--output-suffix`만 적용하고 경로 구분자를 거부한다. 어떤

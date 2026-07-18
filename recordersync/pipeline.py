@@ -40,6 +40,21 @@ class AnalysisBundle:
         return MatchReport(sessions=self.sessions, matches=self.matches)
 
 
+def is_renderable_match(
+    match: AudioMatch,
+    mode: RenderMode,
+    *,
+    recommended_only: bool = False,
+) -> bool:
+    """처리 모드와 추천 기준에 따라 매칭 결과의 렌더 허용 여부를 반환한다."""
+
+    if match.status is MatchStatus.MATCHED:
+        return True
+    if match.status is not MatchStatus.PARTIAL or mode is not RenderMode.FALLBACK:
+        return False
+    return not recommended_only or recommend_mode(match).mode is RecommendationMode.FALLBACK
+
+
 class RecorderSyncPipeline:
     """I/O 어댑터를 주입할 수 있는 배치 처리 오케스트레이터."""
 
@@ -143,14 +158,10 @@ class RecorderSyncPipeline:
         videos = {video.path: video for video in bundle.videos}
         processed: list[AudioMatch] = []
 
-        def is_renderable(match: AudioMatch) -> bool:
-            if match.status is MatchStatus.MATCHED:
-                return True
-            if match.status is not MatchStatus.PARTIAL or mode is not RenderMode.FALLBACK:
-                return False
-            return not recommended_only or recommend_mode(match).mode is RecommendationMode.FALLBACK
-
-        render_total = sum(is_renderable(match) for match in bundle.matches)
+        render_total = sum(
+            is_renderable_match(match, mode, recommended_only=recommended_only)
+            for match in bundle.matches
+        )
         render_completed = 0
         resolved_camera_volume = (
             camera_audio_volume
@@ -161,7 +172,7 @@ class RecorderSyncPipeline:
             progress_callback("render", 0, render_total, "")
 
         for match in bundle.matches:
-            if not is_renderable(match):
+            if not is_renderable_match(match, mode, recommended_only=recommended_only):
                 processed.append(match)
                 continue
             segment_sessions_exist = all(

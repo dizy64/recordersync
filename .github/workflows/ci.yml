@@ -51,6 +51,7 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff check recordersync tests scripts
       - run: uv run ruff format --check recordersync tests scripts
+      - run: uv run python scripts/check_markdown_links.py
       - run: uv run mypy recordersync
       - run: uv run pip-audit
       - run: uv run radon cc recordersync -a -nc

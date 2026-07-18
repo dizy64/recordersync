@@ -4,11 +4,11 @@
 
 - 저장소: `git@github.com:dizy64/recordersync.git`
 - 기본 브랜치: `main`
-- 패키지/CLI 버전: `0.3.0`
+- 패키지/CLI 버전 정본: `pyproject.toml`의 `project.version`
 - 최초 기능 완료 커밋: `3873f62`
 - Python: 3.14+
 - 플랫폼: macOS
-- 자동 테스트: 단위 테스트 107개(기준 커버리지 91%), 합성 FFmpeg E2E 3개
+- 자동 검증: `bash scripts/check.sh`, `bash scripts/test-e2e.sh` (합성 FFmpeg E2E), GitHub Actions
 - 성능 기준: 12시간·영상 200개, 일반 31.683초/실제 부분 160.178초, p95
   0.159초/0.806초, p99 0.162초/0.809초, peak RSS 287.5MB/288.5MB
   (2026-07-17 Apple Silicon)
@@ -16,7 +16,9 @@
 현재 구현은 분할 녹음 세션 구성, 영상별 FFT NCC 전체/부분/다중 구간 매칭, 반복 후보
 거부, 구간별 clock drift, replace/mix/fallback과 두 오디오 볼륨,
 VideoToolbox/libx265 렌더, 선택 파일/진행률, 기본 부분 분석, 사람용 분석 목록과 보수적인
-처리 모드·배치 명령 추천, opt-in JSON v2 리포트, 공개 Python API를 포함한다.
+처리 모드·배치 명령 추천, dry-run/process 공통 렌더 정책, 입력 지문을 검증하는 분석
+리포트 재사용, Draft 2020-12 스키마가 있는 opt-in JSON v2 리포트, 영상별 오류를
+격리하는 공개 Python API, 태그 기반 GitHub Release 자동화를 포함한다.
 TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 
 ## 먼저 읽을 문서
@@ -27,7 +29,9 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 4. [테스트 전략](../development/testing.md): 테스트 케이스 작성법
 5. [운영 가이드](../operations/guide.md): 전역 설치, 실행, 문제 해결
 6. [리포트 스키마](../reference/report-schema.md): 외부 연동 JSON 계약
-7. [SECURITY.md](../../SECURITY.md): 미디어·리포트 개인정보와 보안
+7. [변경 이력](changelog.md): 버전별 사용자 동작과 공개 계약 변경
+8. [릴리스 절차](../operations/releasing.md): release 브랜치, 태그, GitHub Release
+9. [SECURITY.md](../../SECURITY.md): 미디어·리포트 개인정보와 보안
 
 ## 변경하면 안 되는 핵심 불변식
 
@@ -69,7 +73,8 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 - 기본 임계값은 합성 fixture와 제한된 smoke를 기준으로 하며 다양한 실제 레코더/카메라
   조합에 대한 대규모 calibration은 아직 없다.
 - 매우 반복적인 음악, 장시간 일정한 소리, 거의 무음인 카메라음은 자동 매칭이 어렵다.
-- 특징과 ffprobe 결과를 캐시하지 않아 재실행할 때 모든 오디오를 다시 디코딩한다.
+- 분석 `--report`를 사용하지 않은 독립 실행은 특징과 ffprobe 결과를 캐시하지 않아 모든
+  오디오를 다시 디코딩한다.
 - drift는 클립 앞뒤 특징 위치의 선형 비율 하나로 보정하며 구간별 비선형 drift는 다루지
   않는다.
 - 부분 탐색은 기본 5초 창이므로 그보다 짧은 실제 일치 구간과 급격한 구간 내부 drift를
@@ -83,8 +88,7 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
   10-bit/AAC 프로파일과 영상 bitrate는 고정되어 있다.
 - 진행률은 완료 개수/비율만 제공하며 ETA·취소 후 resume·디스크 사전 용량 검사는 없다.
 - macOS 외 플랫폼은 지원 대상으로 검증하지 않았다.
-- JSON은 `version: 2`지만 JSON Schema 파일은 아직 없다.
-- release tag와 자동 배포 파이프라인이 없다.
+- PyPI 배포 파이프라인은 없으며 Git 태그와 GitHub Release 산출물을 사용한다.
 
 ## 다음 우선순위
 
@@ -118,9 +122,11 @@ TubeArchive가 `match_videos()` 결과를 직접 받아 기존 Transcoder에서 
 
 첫 오디오 조각만 `external_audio_path`로 넘기는 구현은 금지한다.
 
-### P2: 반복 실행 비용
+### P2: 독립 분석 반복 비용
 
-- 파일 path, size, mtime, feature parameter version을 키로 특징 cache 설계
+- `analyze --report` → `process --analysis-report` 경로는 매칭 결과를 재사용한다.
+- 리포트 없이 서로 독립된 analyze 실행까지 가속할 때만 특징 cache를 추가로 검토한다.
+- 파일 path, size, mtime, feature parameter version을 cache 키로 사용한다.
 - cache 원자 쓰기와 손상 시 재생성
 - 개인정보가 포함될 수 있는 cache 위치와 삭제 명령 문서화
 - 12시간 재분석 wall time과 디스크 사용량 전후 측정
@@ -130,8 +136,6 @@ TubeArchive가 `match_videos()` 결과를 직접 받아 기존 Transcoder에서 
 - 진행률과 영상별 ETA
 - 렌더 전 출력 예상 크기 및 디스크 여유 검사
 - 중단된 배치 resume
-- versioned JSON Schema
-- release tag 기반 전역 설치와 changelog
 
 ## 새 작업 시작 체크리스트
 

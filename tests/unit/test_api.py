@@ -9,7 +9,7 @@ import numpy as np
 
 from recordersync.api import build_render_plan, discover_sessions, match_videos
 from recordersync.matching import FeatureTimeline, MatchOptions
-from recordersync.media import FFmpegTools, VideoInfo
+from recordersync.media import FFmpegTools, MediaError, VideoInfo
 from recordersync.models import (
     AudioChunk,
     AudioMatch,
@@ -66,6 +66,81 @@ def test_영상_매칭은_렌더링하지_않고_결과를_반환한다() -> Non
     )
 
     assert matches[0].status is MatchStatus.MATCHED
+
+
+def test_영상_매칭은_probe_실패를_격리하고_다음_영상을_계속한다() -> None:
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),
+    )
+    broken_path = Path("broken.mov")
+    next_path = Path("next.mov")
+    tools = MagicMock(spec=FFmpegTools)
+    tools.build_session_timeline.return_value = FeatureTimeline(
+        session.id, np.ones((6, 100), dtype=np.float32), 0.05
+    )
+    tools.probe_video.side_effect = [
+        MediaError("Failed to probe broken.mov"),
+        VideoInfo(next_path, 4, 1920, 1080, False),
+    ]
+
+    matches = match_videos([broken_path, next_path], [session], tools=tools)
+
+    assert [match.status for match in matches] == [MatchStatus.ERROR, MatchStatus.ERROR]
+    assert matches[0].duration_seconds == 0
+    assert matches[0].reason == "Failed to probe broken.mov"
+    assert matches[1].reason == "Camera audio is required for automatic matching"
+    assert tools.probe_video.call_count == 2
+
+
+def test_영상_매칭은_IO_실패를_격리하고_다음_영상을_계속한다() -> None:
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),
+    )
+    broken_path = Path("broken.mov")
+    next_path = Path("next.mov")
+    tools = MagicMock(spec=FFmpegTools)
+    tools.build_session_timeline.return_value = FeatureTimeline(
+        session.id, np.ones((6, 100), dtype=np.float32), 0.05
+    )
+    tools.probe_video.side_effect = [
+        PermissionError("permission denied: broken.mov"),
+        VideoInfo(next_path, 4, 1920, 1080, False),
+    ]
+
+    matches = match_videos([broken_path, next_path], [session], tools=tools)
+
+    assert [match.status for match in matches] == [MatchStatus.ERROR, MatchStatus.ERROR]
+    assert matches[0].reason == "permission denied: broken.mov"
+    assert matches[1].reason == "Camera audio is required for automatic matching"
+    assert tools.probe_video.call_count == 2
+
+
+def test_영상_매칭은_특징_추출_실패를_격리하고_다음_영상을_계속한다() -> None:
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),
+    )
+    broken_path = Path("broken.mov")
+    next_path = Path("next.mov")
+    tools = MagicMock(spec=FFmpegTools)
+    tools.build_session_timeline.return_value = FeatureTimeline(
+        session.id, np.ones((6, 100), dtype=np.float32), 0.05
+    )
+    tools.probe_video.side_effect = [
+        VideoInfo(broken_path, 4, 1920, 1080, True),
+        VideoInfo(next_path, 4, 1920, 1080, False),
+    ]
+    tools.extract_features.side_effect = ValueError("decoded features are invalid")
+
+    matches = match_videos([broken_path, next_path], [session], tools=tools)
+
+    assert [match.status for match in matches] == [MatchStatus.ERROR, MatchStatus.ERROR]
+    assert matches[0].duration_seconds == 4
+    assert matches[0].reason == "decoded features are invalid"
+    assert matches[1].reason == "Camera audio is required for automatic matching"
+    assert tools.probe_video.call_count == 2
 
 
 def test_렌더_계획_생성은_승인된_매칭을_연결한다() -> None:

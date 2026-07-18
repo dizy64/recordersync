@@ -9,13 +9,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from recordersync import __version__
+from recordersync.analysis_plan import load_analysis_report, write_analysis_report
 from recordersync.matching import MatchOptions
 from recordersync.models import AudioMatch, MatchStatus
-from recordersync.pipeline import RecorderSyncPipeline
+from recordersync.pipeline import AnalysisBundle, RecorderSyncPipeline, is_renderable_match
 from recordersync.recommendation import (
     RecommendationMode,
     recommend_batch_mode,
-    recommend_mode,
 )
 from recordersync.render import RenderMode, resolve_output_path, validate_output_affix
 from recordersync.report import MatchReport, ReportLanguage
@@ -153,6 +153,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="fallback에서 analyze가 추천한 안전한 부분 매칭만 렌더링",
     )
+    process.add_argument(
+        "--analysis-report",
+        type=Path,
+        default=None,
+        help="analyze --report 결과를 검증해 재분석 없이 처리",
+    )
     process.add_argument("--overwrite", action="store_true")
     process.add_argument("--dry-run", action="store_true")
     return parser
@@ -194,15 +200,17 @@ def _recommended_process_command(
         return None
 
     command = ["recordersync", "process", str(args.video_dir)]
-    if args.audio_dir is not None:
+    if args.report is not None:
+        command.extend(("--analysis-report", str(args.report.resolve())))
+    elif args.audio_dir is not None:
         command.extend(("--audio-dir", str(args.audio_dir)))
     if args.output_dir is not None:
         command.extend(("--output-dir", str(args.output_dir)))
-    if args.min_confidence != _DEFAULT_MATCH_OPTIONS.min_confidence:
+    if args.report is None and args.min_confidence != _DEFAULT_MATCH_OPTIONS.min_confidence:
         command.extend(("--min-confidence", _format_cli_number(args.min_confidence)))
-    if args.min_peak_margin != _DEFAULT_MATCH_OPTIONS.min_peak_margin:
+    if args.report is None and args.min_peak_margin != _DEFAULT_MATCH_OPTIONS.min_peak_margin:
         command.extend(("--min-peak-margin", _format_cli_number(args.min_peak_margin)))
-    if args.session_gap_seconds != _DEFAULT_SESSION_GAP_SECONDS:
+    if args.report is None and args.session_gap_seconds != _DEFAULT_SESSION_GAP_SECONDS:
         command.extend(("--session-gap-seconds", _format_cli_number(args.session_gap_seconds)))
     if recommendation.mode is RecommendationMode.FALLBACK:
         if recommendation.minimum_contiguous_seconds is None:
@@ -262,21 +270,62 @@ def _dry_run_report(
                     prefix=output_prefix,
                     suffix=output_suffix,
                 )
-                if match.status is MatchStatus.MATCHED
-                or (
-                    match.status is MatchStatus.PARTIAL
-                    and mode is RenderMode.FALLBACK
-                    and (
-                        not recommended_only
-                        or recommend_mode(match).mode is RecommendationMode.FALLBACK
-                    )
-                )
+                if is_renderable_match(match, mode, recommended_only=recommended_only)
                 else None
             ),
         )
         for match in bundle.matches
     )
     return MatchReport(sessions=bundle.sessions, matches=matches)
+
+
+def _validate_process_options(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    render_mode: RenderMode,
+) -> None:
+    if args.command != "process":
+        return
+    if args.recommended_only and render_mode is not RenderMode.FALLBACK:
+        parser.error("--recommended-only requires --mode fallback")
+    if args.analysis_report is None:
+        return
+    if (
+        args.audio_dir is not None
+        or args.min_confidence != _DEFAULT_MATCH_OPTIONS.min_confidence
+        or args.min_peak_margin != _DEFAULT_MATCH_OPTIONS.min_peak_margin
+        or args.min_partial_seconds != _DEFAULT_MATCH_OPTIONS.min_partial_duration_seconds
+        or args.session_gap_seconds != _DEFAULT_SESSION_GAP_SECONDS
+    ):
+        parser.error("--analysis-report cannot be combined with analysis options")
+    if args.report is not None and args.analysis_report.resolve() == args.report.resolve():
+        parser.error("--analysis-report and --report must use different paths")
+
+
+def _analysis_bundle(
+    args: argparse.Namespace,
+    pipeline: RecorderSyncPipeline,
+    *,
+    audio_dir: Path,
+    output_dir: Path,
+) -> AnalysisBundle:
+    analysis_report = getattr(args, "analysis_report", None)
+    if analysis_report is not None:
+        bundle = load_analysis_report(
+            analysis_report,
+            expected_video_dir=args.video_dir,
+        )
+        print(f"분석 리포트 재사용: {analysis_report}", file=sys.stderr)
+        return bundle
+    return pipeline.analyze(
+        args.video_dir,
+        audio_dir,
+        output_dir=output_dir,
+        match_options=_match_options(args),
+        session_gap_seconds=args.session_gap_seconds,
+        selection_callback=_print_selection,
+        progress_callback=_print_progress,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -291,22 +340,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     output_dir = args.output_dir or args.video_dir / "replace"
     report_language = ReportLanguage(args.report_language)
     render_mode = RenderMode(args.mode) if args.command == "process" else RenderMode.REPLACE
-    if (
-        args.command == "process"
-        and args.recommended_only
-        and render_mode is not RenderMode.FALLBACK
-    ):
-        parser.error("--recommended-only requires --mode fallback")
+    _validate_process_options(parser, args, render_mode)
 
     try:
-        bundle = pipeline.analyze(
-            args.video_dir,
-            audio_dir,
+        bundle = _analysis_bundle(
+            args,
+            pipeline,
+            audio_dir=audio_dir,
             output_dir=output_dir,
-            match_options=_match_options(args),
-            session_gap_seconds=args.session_gap_seconds,
-            selection_callback=_print_selection,
-            progress_callback=_print_progress,
         )
         if args.command == "analyze":
             report = bundle.report()
@@ -342,7 +383,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if report_path is None and args.command == "process" and not args.dry_run:
             report_path = output_dir / "recordersync-report.json"
         if report_path is not None:
-            report.write(report_path, language=report_language)
+            if args.command == "analyze":
+                write_analysis_report(
+                    report,
+                    bundle,
+                    report_path,
+                    language=report_language,
+                )
+            else:
+                report.write(report_path, language=report_language)
         if args.command == "analyze" and not args.json:
             print(report.to_text(language=report_language))
         else:

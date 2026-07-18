@@ -1,6 +1,6 @@
 [project]
 name = "recordersync"
-version = "0.3.0"
+version = "0.4.0"
 description = "Match split recorder audio to camera clips and replace their audio"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -18,8 +18,12 @@ recordersync = "recordersync.cli:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel.force-include]
+"schemas/recordersync-report-v2.schema.json" = "recordersync/schemas/recordersync-report-v2.schema.json"
+
 [dependency-groups]
 dev = [
+    "jsonschema>=4.26,<5",
     "mypy>=1.19",
     "pip-audit>=2.10",
     "pytest>=9.0",

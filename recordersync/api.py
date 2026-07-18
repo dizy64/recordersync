@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from recordersync.matching import MatchOptions, match_video_features
-from recordersync.media import FFmpegTools, VideoInfo, discover_audio_files
+from recordersync.media import FFmpegTools, MediaError, VideoInfo, discover_audio_files
 from recordersync.models import AudioMatch, MatchStatus, RecordingSession
 from recordersync.render import RenderMode, RenderPlan, RenderSegment, resolve_output_path
 from recordersync.sessions import group_recording_sessions
@@ -41,26 +41,38 @@ def match_videos(
     timelines = [resolved_tools.build_session_timeline(session) for session in sessions]
     matches: list[AudioMatch] = []
     for path in video_paths:
-        video = resolved_tools.probe_video(path)
-        if not video.has_audio:
+        duration_seconds = 0.0
+        try:
+            video = resolved_tools.probe_video(path)
+            duration_seconds = video.duration_seconds
+            if not video.has_audio:
+                matches.append(
+                    AudioMatch(
+                        path,
+                        duration_seconds,
+                        MatchStatus.ERROR,
+                        reason="Camera audio is required for automatic matching",
+                    )
+                )
+                continue
+            matches.append(
+                match_video_features(
+                    path,
+                    duration_seconds,
+                    resolved_tools.extract_features(path),
+                    timelines,
+                    options,
+                )
+            )
+        except (MediaError, OSError, ValueError) as exc:
             matches.append(
                 AudioMatch(
                     path,
-                    video.duration_seconds,
+                    duration_seconds,
                     MatchStatus.ERROR,
-                    reason="Camera audio is required for automatic matching",
+                    reason=str(exc),
                 )
             )
-            continue
-        matches.append(
-            match_video_features(
-                path,
-                video.duration_seconds,
-                resolved_tools.extract_features(path),
-                timelines,
-                options,
-            )
-        )
     return matches
 
 
