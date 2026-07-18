@@ -114,10 +114,7 @@ def _escape_concat_path(path: Path) -> str:
 def build_concat_manifest(session: RecordingSession) -> str:
     """FFmpeg concat demuxer용 안전한 파일 목록 문자열."""
 
-    return (
-        "\n".join(f"file '{_escape_concat_path(chunk.path.resolve())}'" for chunk in session.chunks)
-        + "\n"
-    )
+    return "\n".join(f"file '{_escape_concat_path(chunk.path.resolve())}'" for chunk in session.chunks) + "\n"
 
 
 def validate_output_affix(value: str) -> str:
@@ -147,10 +144,7 @@ def _number(value: float) -> str:
 def _video_filter(video: VideoInfo) -> list[str]:
     if video.color_transfer in {"arib-std-b67", "smpte2084"}:
         return [
-            (
-                "[0:v:0]colorspace=all=bt709:iall=bt2020:dither=fsb,"
-                "format=yuv420p10le,format=p010le[vout]"
-            ),
+            ("[0:v:0]colorspace=all=bt709:iall=bt2020:dither=fsb,format=yuv420p10le,format=p010le[vout]"),
         ]
     return ["[0:v:0]format=p010le[vout]"]
 
@@ -189,10 +183,7 @@ class FFmpegCommandBuilder:
                             f"aresample=48000,apad,atrim=duration={duration},"
                             "asetpts=PTS-STARTPTS[camera]"
                         ),
-                        (
-                            "[camera][external]amix=inputs=2:duration=first:"
-                            "dropout_transition=0:weights=1 1[aout]"
-                        ),
+                        ("[camera][external]amix=inputs=2:duration=first:dropout_transition=0:weights=1 1[aout]"),
                     ]
                 )
                 audio_label = "[aout]"
@@ -330,18 +321,13 @@ class FFmpegCommandBuilder:
         if len(labels) > 1 and fade > 0:
             for index, next_label in enumerate(labels[1:], start=1):
                 output_label = f"fade{index}"
-                filters.append(
-                    f"{current_label}{next_label}acrossfade=d={_number(fade)}:"
-                    f"c1=tri:c2=tri[{output_label}]"
-                )
+                filters.append(f"{current_label}{next_label}acrossfade=d={_number(fade)}:c1=tri:c2=tri[{output_label}]")
                 current_label = f"[{output_label}]"
         elif len(labels) > 1:
             filters.append(f"{''.join(labels)}concat=n={len(labels)}:v=0:a=1[concatenated]")
             current_label = "[concatenated]"
 
-        filters.append(
-            f"{current_label}apad,atrim=duration={_number(plan.video.duration_seconds)}[aout]"
-        )
+        filters.append(f"{current_label}apad,atrim=duration={_number(plan.video.duration_seconds)}[aout]")
         return filters, "[aout]"
 
 
@@ -364,16 +350,12 @@ class FFmpegRenderer:
         if plan.output_path.exists() and not plan.overwrite:
             raise FileExistsError(f"Output already exists: {plan.output_path}")
         plan.output_path.parent.mkdir(parents=True, exist_ok=True)
-        temp_output = plan.output_path.with_name(
-            f".{plan.output_path.stem}.{uuid4().hex}.tmp{plan.output_path.suffix}"
-        )
+        temp_output = plan.output_path.with_name(f".{plan.output_path.stem}.{uuid4().hex}.tmp{plan.output_path.suffix}")
         temp_plan = replace(plan, output_path=temp_output, overwrite=True)
 
         try:
             with tempfile.TemporaryDirectory(prefix="recordersync-") as temp_dir:
-                session_by_id = {
-                    segment.session.id: segment.session for segment in plan.resolved_segments
-                }
+                session_by_id = {segment.session.id: segment.session for segment in plan.resolved_segments}
                 manifest_paths: dict[str, Path] = {}
                 for index, (session_id, session) in enumerate(session_by_id.items(), start=1):
                     manifest_path = Path(temp_dir) / f"audio-concat-{index}.txt"
@@ -391,8 +373,7 @@ class FFmpegRenderer:
                     )
                     if software.returncode != 0:
                         raise RenderError(
-                            "FFmpeg render failed with VideoToolbox and libx265: "
-                            f"{software.stderr.strip()}"
+                            f"FFmpeg render failed with VideoToolbox and libx265: {software.stderr.strip()}"
                         )
             if not temp_output.is_file():
                 raise RenderError("FFmpeg reported success but produced no output file")

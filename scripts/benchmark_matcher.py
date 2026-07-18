@@ -74,9 +74,7 @@ def main() -> int:
             options,
         )
         timings.append(time.perf_counter() - match_started)
-        if result.external_start_seconds is None or (
-            args.partial and result.status is not MatchStatus.PARTIAL
-        ):
+        if result.external_start_seconds is None or (args.partial and result.status is not MatchStatus.PARTIAL):
             raise RuntimeError(f"Synthetic clip {index} did not match")
 
     elapsed = time.perf_counter() - started

@@ -99,11 +99,7 @@ def build_render_plan(
     resolved_sessions = (session,) if isinstance(session, RecordingSession) else tuple(session)
     session_by_id = {item.id: item for item in resolved_sessions}
     if match.segments:
-        missing = {
-            segment.session_id
-            for segment in match.segments
-            if segment.session_id not in session_by_id
-        }
+        missing = {segment.session_id for segment in match.segments if segment.session_id not in session_by_id}
         if missing:
             raise ValueError("Match does not belong to the supplied recording sessions")
         render_segments = tuple(
@@ -117,27 +113,17 @@ def build_render_plan(
             for segment in match.segments
         )
     else:
-        if (
-            match.session_id is None
-            or match.external_start_seconds is None
-            or match.session_id not in session_by_id
-        ):
+        if match.session_id is None or match.external_start_seconds is None or match.session_id not in session_by_id:
             raise ValueError("Match does not belong to the supplied recording session")
         render_segments = ()
 
-    primary_session = (
-        render_segments[0].session if render_segments else session_by_id[match.session_id or ""]
-    )
+    primary_session = render_segments[0].session if render_segments else session_by_id[match.session_id or ""]
     external_start = (
-        render_segments[0].external_start_seconds
-        if render_segments
-        else match.external_start_seconds or 0.0
+        render_segments[0].external_start_seconds if render_segments else match.external_start_seconds or 0.0
     )
     tempo_ratio = render_segments[0].tempo_ratio if render_segments else match.tempo_ratio
     resolved_camera_volume = (
-        camera_audio_volume
-        if camera_audio_volume is not None
-        else (1.0 if mode is RenderMode.FALLBACK else 0.1)
+        camera_audio_volume if camera_audio_volume is not None else (1.0 if mode is RenderMode.FALLBACK else 0.1)
     )
     return RenderPlan(
         video=video,

@@ -21,11 +21,7 @@ def _stream(payload: dict[str, Any], codec_type: str) -> dict[str, Any]:
     streams = payload.get("streams", [])
     if not isinstance(streams, list):
         raise TypeError("streams must be a list")
-    return next(
-        stream
-        for stream in streams
-        if isinstance(stream, dict) and stream.get("codec_type") == codec_type
-    )
+    return next(stream for stream in streams if isinstance(stream, dict) and stream.get("codec_type") == codec_type)
 
 
 def _audio_rms(path: Path, start_seconds: float) -> float:

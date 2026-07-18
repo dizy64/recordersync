@@ -82,9 +82,7 @@ def test_파이프라인_분석은_세션을_찾고_영상과_매칭한다(tmp_p
 
     tools = MagicMock(spec=FFmpegTools)
     tools.probe_audio.return_value = AudioChunk(audio_path, 35, 48_000, 2, "pcm_f32le", None)
-    tools.build_session_timeline.return_value = FeatureTimeline(
-        "session-001", session_features, 0.05
-    )
+    tools.build_session_timeline.return_value = FeatureTimeline("session-001", session_features, 0.05)
     tools.probe_video.return_value = VideoInfo(video_path, 5, 3840, 2160, True, "bt709")
     tools.extract_features.return_value = video_features
     selection_callback = MagicMock()

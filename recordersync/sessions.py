@@ -66,6 +66,5 @@ def group_recording_sessions(
             grouped[-1].append(chunk)
 
     return [
-        RecordingSession(id=f"session-{index:03d}", chunks=tuple(group))
-        for index, group in enumerate(grouped, start=1)
+        RecordingSession(id=f"session-{index:03d}", chunks=tuple(group)) for index, group in enumerate(grouped, start=1)
     ]

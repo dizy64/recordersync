@@ -27,30 +27,20 @@ class ReportLanguage(StrEnum):
 
 
 _KOREAN_REASONS = {
-    "All recording sessions are shorter than the video feature": (
-        "모든 녹음 세션이 영상 오디오 특징보다 짧습니다."
-    ),
-    "Match confidence is below the configured threshold": (
-        "매칭 신뢰도가 설정된 기준보다 낮습니다."
-    ),
+    "All recording sessions are shorter than the video feature": "모든 녹음 세션이 영상 오디오 특징보다 짧습니다.",
+    "Match confidence is below the configured threshold": "매칭 신뢰도가 설정된 기준보다 낮습니다.",
     "Best match is not sufficiently distinct from the runner-up": (
         "최상위 후보와 차순위 후보의 차이가 충분하지 않습니다."
     ),
-    "Camera audio is required for automatic matching": (
-        "자동 매칭에는 카메라 오디오가 필요합니다."
-    ),
+    "Camera audio is required for automatic matching": "자동 매칭에는 카메라 오디오가 필요합니다.",
     "Matched result is missing render metadata": "매칭 결과에 렌더 메타데이터가 없습니다.",
-    "Output path must not overwrite the source video": (
-        "출력 경로는 원본 영상을 덮어쓸 수 없습니다."
-    ),
+    "Output path must not overwrite the source video": "출력 경로는 원본 영상을 덮어쓸 수 없습니다.",
     "FFmpeg reported success but produced no output file": (
         "FFmpeg가 성공을 보고했지만 출력 파일을 만들지 않았습니다."
     ),
     "mix mode requires camera audio": "mix 모드에는 카메라 오디오가 필요합니다.",
     "fallback mode requires camera audio": "fallback 모드에는 카메라 오디오가 필요합니다.",
-    "Only part of the camera audio matched the external recording": (
-        "카메라 오디오의 일부만 외부 녹음과 일치합니다."
-    ),
+    "Only part of the camera audio matched the external recording": "카메라 오디오의 일부만 외부 녹음과 일치합니다.",
 }
 
 _KOREAN_REASON_PREFIXES = {
@@ -61,9 +51,7 @@ _KOREAN_REASON_PREFIXES = {
     "Failed to probe ": "미디어 정보를 읽지 못했습니다: ",
     "Invalid ffprobe JSON for ": "ffprobe JSON이 올바르지 않습니다: ",
     "Invalid ffprobe payload for ": "ffprobe 결과가 올바르지 않습니다: ",
-    "Timed out extracting audio features: ": (
-        "오디오 특징을 추출하는 중 시간 제한을 초과했습니다: "
-    ),
+    "Timed out extracting audio features: ": "오디오 특징을 추출하는 중 시간 제한을 초과했습니다: ",
     "Failed to decode audio from ": "오디오를 디코딩하지 못했습니다: ",
     "Decoded audio is empty: ": "디코딩한 오디오가 비어 있습니다: ",
     "FFmpeg render failed with VideoToolbox and libx265: ": (
@@ -75,30 +63,20 @@ _KOREAN_REASON_PREFIXES = {
 _RECOMMENDATION_REASONS = {
     ReportLanguage.KO: {
         RecommendationReason.FULL_MATCH: "카메라 오디오 전체가 외부 녹음과 일치합니다.",
-        RecommendationReason.RELIABLE_PARTIAL: ("충분히 길고 넓은 부분 매칭이 확인되었습니다."),
-        RecommendationReason.LOW_CONFIDENCE: ("부분 매칭 신뢰도가 안전 추천 기준보다 낮습니다."),
-        RecommendationReason.LOW_PEAK_MARGIN: (
-            "부분 매칭 후보가 다른 후보와 충분히 구분되지 않습니다."
-        ),
-        RecommendationReason.LOW_COVERAGE: (
-            "일치 구간이 영상의 10%보다 적어 오탐 가능성이 있습니다."
-        ),
-        RecommendationReason.SHORT_SEGMENTS: ("연속 일치 구간이 추천에 필요한 길이보다 짧습니다."),
+        RecommendationReason.RELIABLE_PARTIAL: "충분히 길고 넓은 부분 매칭이 확인되었습니다.",
+        RecommendationReason.LOW_CONFIDENCE: "부분 매칭 신뢰도가 안전 추천 기준보다 낮습니다.",
+        RecommendationReason.LOW_PEAK_MARGIN: "부분 매칭 후보가 다른 후보와 충분히 구분되지 않습니다.",
+        RecommendationReason.LOW_COVERAGE: "일치 구간이 영상의 10%보다 적어 오탐 가능성이 있습니다.",
+        RecommendationReason.SHORT_SEGMENTS: "연속 일치 구간이 추천에 필요한 길이보다 짧습니다.",
         RecommendationReason.UNMATCHED: "신뢰할 수 있는 일치 구간이 없습니다.",
         RecommendationReason.AMBIGUOUS: "후보가 불분명해 자동 처리를 권장하지 않습니다.",
         RecommendationReason.ERROR: "분석 오류가 있어 처리를 권장하지 않습니다.",
     },
     ReportLanguage.EN: {
-        RecommendationReason.FULL_MATCH: ("The full camera audio matches the external recording."),
-        RecommendationReason.RELIABLE_PARTIAL: (
-            "A sufficiently long and well-covered partial match is available."
-        ),
-        RecommendationReason.LOW_CONFIDENCE: (
-            "Partial-match confidence is below the safe recommendation threshold."
-        ),
-        RecommendationReason.LOW_PEAK_MARGIN: (
-            "The partial match is not sufficiently distinct from other candidates."
-        ),
+        RecommendationReason.FULL_MATCH: "The full camera audio matches the external recording.",
+        RecommendationReason.RELIABLE_PARTIAL: "A sufficiently long and well-covered partial match is available.",
+        RecommendationReason.LOW_CONFIDENCE: "Partial-match confidence is below the safe recommendation threshold.",
+        RecommendationReason.LOW_PEAK_MARGIN: "The partial match is not sufficiently distinct from other candidates.",
         RecommendationReason.LOW_COVERAGE: (
             "Matched segments cover less than 10% of the video and may be false positives."
         ),
@@ -106,12 +84,8 @@ _RECOMMENDATION_REASONS = {
             "Contiguous matched segments are too short for an automatic recommendation."
         ),
         RecommendationReason.UNMATCHED: "No reliable matching segment is available.",
-        RecommendationReason.AMBIGUOUS: (
-            "The candidates are ambiguous, so automatic processing is not recommended."
-        ),
-        RecommendationReason.ERROR: (
-            "An analysis error prevents an automatic processing recommendation."
-        ),
+        RecommendationReason.AMBIGUOUS: "The candidates are ambiguous, so automatic processing is not recommended.",
+        RecommendationReason.ERROR: "An analysis error prevents an automatic processing recommendation.",
     },
 }
 
@@ -264,33 +238,23 @@ class MatchReport:
             )
             if is_partial:
                 segment_count = (
-                    f"{len(match.segments)}개"
-                    if language is ReportLanguage.KO
-                    else str(len(match.segments))
+                    f"{len(match.segments)}개" if language is ReportLanguage.KO else str(len(match.segments))
                 )
                 line = (
-                    f"{line} | {coverage_label}: {match.coverage_ratio * 100:.1f}% | "
-                    f"{segment_label}: {segment_count}"
+                    f"{line} | {coverage_label}: {match.coverage_ratio * 100:.1f}% | {segment_label}: {segment_count}"
                 )
             elif not is_matched:
                 reason = _translate_reason(match.reason, language) or missing_reason
                 line = f"{line} | {reason_label}: {reason}"
-            recommendation_value = (
-                recommendation.mode.value if recommendation.mode is not None else hold
-            )
+            recommendation_value = recommendation.mode.value if recommendation.mode is not None else hold
             line = f"{line} | {recommendation_label}: {recommendation_value}"
             if is_partial:
-                line = (
-                    f"{line} | {recommendation_reason_label}: "
-                    f"{_recommendation_reason(recommendation, language)}"
-                )
+                line = f"{line} | {recommendation_reason_label}: {_recommendation_reason(recommendation, language)}"
             lines.append(line)
         if self.include_recommended_command:
             lines.append("")
             if self.recommended_command is not None:
-                command_label = (
-                    "추천 실행" if language is ReportLanguage.KO else "Recommended command"
-                )
+                command_label = "추천 실행" if language is ReportLanguage.KO else "Recommended command"
                 lines.extend((f"{command_label}:", f"  {shlex.join(self.recommended_command)}"))
             elif language is ReportLanguage.KO:
                 lines.append("추천 실행 명령 없음: 신뢰할 수 있는 매칭이 없습니다.")

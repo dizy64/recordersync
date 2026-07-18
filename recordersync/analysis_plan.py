@@ -237,9 +237,7 @@ def _load_session(value: object, index: int) -> RecordingSession:
         chunks.append(
             AudioChunk(
                 path=_validated_path(chunk, chunk_field),
-                duration_seconds=_number(
-                    chunk.get("duration_seconds"), f"{chunk_field}.duration_seconds"
-                ),
+                duration_seconds=_number(chunk.get("duration_seconds"), f"{chunk_field}.duration_seconds"),
                 sample_rate=_integer(chunk.get("sample_rate"), f"{chunk_field}.sample_rate"),
                 channels=_integer(chunk.get("channels"), f"{chunk_field}.channels"),
                 codec=_string(chunk.get("codec"), f"{chunk_field}.codec"),
@@ -270,12 +268,8 @@ def _load_segment(value: object, match_index: int, segment_index: int) -> AudioM
     payload = _mapping(value, field)
     return AudioMatchSegment(
         session_id=_string(payload.get("session_id"), f"{field}.session_id"),
-        video_start_seconds=_number(
-            payload.get("video_start_seconds"), f"{field}.video_start_seconds"
-        ),
-        external_start_seconds=_number(
-            payload.get("external_start_seconds"), f"{field}.external_start_seconds"
-        ),
+        video_start_seconds=_number(payload.get("video_start_seconds"), f"{field}.video_start_seconds"),
+        external_start_seconds=_number(payload.get("external_start_seconds"), f"{field}.external_start_seconds"),
         duration_seconds=_number(payload.get("duration_seconds"), f"{field}.duration_seconds"),
         tempo_ratio=_number(payload.get("tempo_ratio"), f"{field}.tempo_ratio"),
         correlation=_number(payload.get("correlation"), f"{field}.correlation"),
@@ -289,9 +283,7 @@ def _load_match(value: object, index: int) -> AudioMatch:
     payload = _mapping(value, field)
     segments = tuple(
         _load_segment(segment, index, segment_index)
-        for segment_index, segment in enumerate(
-            _sequence(payload.get("segments"), f"{field}.segments")
-        )
+        for segment_index, segment in enumerate(_sequence(payload.get("segments"), f"{field}.segments"))
     )
     return AudioMatch(
         video_path=Path(_string(payload.get("video"), f"{field}.video")).resolve(),
@@ -336,9 +328,7 @@ def load_analysis_report(path: Path, *, expected_video_dir: Path) -> AnalysisBun
 
     sessions = tuple(
         _load_session(value, index)
-        for index, value in enumerate(
-            _sequence(inputs.get("audio_sessions"), "analysis_inputs.audio_sessions")
-        )
+        for index, value in enumerate(_sequence(inputs.get("audio_sessions"), "analysis_inputs.audio_sessions"))
     )
     videos = tuple(
         _load_video(value, index)
@@ -346,17 +336,14 @@ def load_analysis_report(path: Path, *, expected_video_dir: Path) -> AnalysisBun
     )
     resolved_video_dir = expected_video_dir.resolve()
     if any(video.path.parent != resolved_video_dir for video in videos):
-        raise ValueError(
-            f"Analysis report does not belong to video directory: {resolved_video_dir}"
-        )
+        raise ValueError(f"Analysis report does not belong to video directory: {resolved_video_dir}")
     matches = tuple(
         _load_match(value, index)
         for index, value in enumerate(_sequence(inputs.get("matches"), "analysis_inputs.matches"))
     )
     video_paths = {video.path for video in videos}
     if any(
-        match.status in {MatchStatus.MATCHED, MatchStatus.PARTIAL}
-        and match.video_path not in video_paths
+        match.status in {MatchStatus.MATCHED, MatchStatus.PARTIAL} and match.video_path not in video_paths
         for match in matches
     ):
         raise ValueError("Analysis report is missing render metadata for a matched video")
