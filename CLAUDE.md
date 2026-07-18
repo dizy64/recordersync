@@ -32,6 +32,7 @@
 - 원본 미디어를 수정·이동·삭제하지 않는다.
 - `ambiguous`, `unmatched`, `error` 결과는 렌더하지 않는다. `partial`은 사용자가
   `fallback`을 명시한 경우에만 렌더한다.
+- dry-run과 실제 process의 렌더 대상 판정은 `is_renderable_match()` 정책을 공유한다.
 - 사용자가 명시하지 않은 mix, fallback, overwrite를 자동 선택하지 않는다.
 - 레코더 조각은 중간 대용량 파일로 합치지 않고 논리 세션과 concat 입력으로 다룬다.
 - 여러 영상이 같은 외부 오디오 구간에 매칭되는 것을 허용한다.

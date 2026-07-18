@@ -17,7 +17,7 @@ from recordersync.models import (
     MatchStatus,
     RecordingSession,
 )
-from recordersync.pipeline import AnalysisBundle, RecorderSyncPipeline
+from recordersync.pipeline import AnalysisBundle, RecorderSyncPipeline, is_renderable_match
 from recordersync.render import FFmpegRenderer, RenderMode
 
 
@@ -29,6 +29,40 @@ def _features() -> tuple[np.ndarray, np.ndarray]:
     session[:, 250:350] += video
     session = (session - session.mean(axis=1, keepdims=True)) / session.std(axis=1, keepdims=True)
     return video, session
+
+
+def test_렌더_대상_정책은_상태와_모드와_추천_기준을_함께_판단한다() -> None:
+    matched = AudioMatch(Path("full.mov"), 100, MatchStatus.MATCHED)
+    safe_partial = AudioMatch(
+        Path("safe.mov"),
+        100,
+        MatchStatus.PARTIAL,
+        confidence=0.9,
+        peak_margin=0.1,
+        segments=(AudioMatchSegment("session-001", 10, 20, 30, confidence=0.9),),
+    )
+    held_partial = AudioMatch(
+        Path("held.mov"),
+        100,
+        MatchStatus.PARTIAL,
+        confidence=0.9,
+        peak_margin=0.1,
+        segments=(AudioMatchSegment("session-001", 10, 20, 5, confidence=0.9),),
+    )
+    unmatched = AudioMatch(Path("none.mov"), 100, MatchStatus.UNMATCHED)
+
+    cases = (
+        ("전체 일치", matched, RenderMode.REPLACE, True, True),
+        ("일반 폴백 부분 일치", safe_partial, RenderMode.FALLBACK, False, True),
+        ("추천된 부분 일치", safe_partial, RenderMode.FALLBACK, True, True),
+        ("보류된 부분 일치", held_partial, RenderMode.FALLBACK, True, False),
+        ("폴백이 아닌 부분 일치", safe_partial, RenderMode.MIX, False, False),
+        ("불일치", unmatched, RenderMode.FALLBACK, False, False),
+    )
+
+    for label, match, mode, recommended_only, expected in cases:
+        actual = is_renderable_match(match, mode, recommended_only=recommended_only)
+        assert actual is expected, label
 
 
 def test_파이프라인_분석은_세션을_찾고_영상과_매칭한다(tmp_path: Path) -> None:

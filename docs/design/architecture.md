@@ -140,6 +140,8 @@ REPORT_VERSION 호환성을 함께 검토한다.
 
 추천은 분석 결과의 안내 메타데이터이며 match 상태, 종료 코드, 렌더 허용 정책을 바꾸지
 않는다. 사용자가 `process --mode ...`를 명시해야만 렌더가 시작된다.
+CLI dry-run과 실제 pipeline process는 `is_renderable_match()`를 함께 사용해 `matched`,
+fallback `partial`, `--recommended-only`의 출력 대상이 서로 달라지지 않도록 한다.
 
 CLI는 영상별 추천을 배치 단위 명령으로 집계한다. 안전한 partial 추천이 하나라도 있으면
 전체 일치 영상도 전 구간 외부음으로 처리할 수 있는 `process --mode fallback`을 추천하고,

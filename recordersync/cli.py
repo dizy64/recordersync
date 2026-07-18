@@ -12,11 +12,10 @@ from recordersync import __version__
 from recordersync.analysis_plan import load_analysis_report, write_analysis_report
 from recordersync.matching import MatchOptions
 from recordersync.models import AudioMatch, MatchStatus
-from recordersync.pipeline import AnalysisBundle, RecorderSyncPipeline
+from recordersync.pipeline import AnalysisBundle, RecorderSyncPipeline, is_renderable_match
 from recordersync.recommendation import (
     RecommendationMode,
     recommend_batch_mode,
-    recommend_mode,
 )
 from recordersync.render import RenderMode, resolve_output_path, validate_output_affix
 from recordersync.report import MatchReport, ReportLanguage
@@ -271,15 +270,7 @@ def _dry_run_report(
                     prefix=output_prefix,
                     suffix=output_suffix,
                 )
-                if match.status is MatchStatus.MATCHED
-                or (
-                    match.status is MatchStatus.PARTIAL
-                    and mode is RenderMode.FALLBACK
-                    and (
-                        not recommended_only
-                        or recommend_mode(match).mode is RecommendationMode.FALLBACK
-                    )
-                )
+                if is_renderable_match(match, mode, recommended_only=recommended_only)
                 else None
             ),
         )
