@@ -225,6 +225,10 @@ sessions = discover_sessions(Path("~/Recordings/day1").expanduser())
 matches = match_videos(video_paths, sessions)
 ```
 
+`match_videos()`는 영상 하나의 probe·특징 추출·매칭 실패를 해당 영상의 `error` 결과로
+반환하고 나머지 영상을 계속 분석합니다. 세션 타임라인 생성처럼 배치 전체에 공통된
+선행 단계가 실패하면 예외를 그대로 전달합니다.
+
 가장 단순한 연동은 RecorderSync가 만든 표준 개별 MP4 목록을 TubeArchive의 기존
 병합·업로드 경로에 전달하는 것입니다. 매칭 결과를 Transcoder가 직접 소비하려면
 전체 매칭의 `session_id`, `external_start_seconds`, `tempo_ratio`뿐 아니라 부분 매칭의
