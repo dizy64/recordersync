@@ -658,8 +658,10 @@ def match_video_features(
             segments=(full_segment,),
         )
 
+    if full_match is not None:
+        return full_match
     if not resolved_options.enable_partial:
-        return full_match or _failed_match(video_path, duration_seconds, full_score)
+        return _failed_match(video_path, duration_seconds, full_score)
 
     segments = _find_partial_segments(
         video_features,
@@ -671,14 +673,7 @@ def match_video_features(
         full_tempo_ratio=full_tempo_ratio,
     )
     if not segments:
-        return full_match or _failed_match(video_path, duration_seconds, full_score)
-    if (
-        full_match is not None
-        and len(segments) == 1
-        and segments[0].video_start_seconds <= 1e-6
-        and segments[0].video_end_seconds >= duration_seconds - 1e-6
-    ):
-        return full_match
+        return _failed_match(video_path, duration_seconds, full_score)
 
     matched_duration = sum(segment.duration_seconds for segment in segments)
     status = (

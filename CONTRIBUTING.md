@@ -73,7 +73,7 @@ worktree로 복사하지 않는다.
 - 여러 카메라가 같은 외부 구간에 매칭될 수 있다는 불변식을 유지한다.
 - 출력 파일이 있는 경우 `--overwrite` 없이 보존되는지 검증한다.
 
-상세 케이스 지도와 예시는 [docs/TESTING.md](docs/TESTING.md)를 따른다.
+상세 케이스 지도와 예시는 [테스트 전략](docs/development/testing.md)을 따른다.
 
 ## 검증 명령
 

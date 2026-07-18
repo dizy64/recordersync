@@ -37,7 +37,7 @@ commands and results
 - [ ] CLI/API/JSON 변경 시 관련 문서 갱신
 - [ ] REPORT_VERSION 변경 필요 여부 검토
 - [ ] TubeArchive 연동 영향 검토
-- [ ] `CLAUDE.md` 또는 `docs/HANDOFF.md` 갱신 필요 여부 검토
+- [ ] `CLAUDE.md` 또는 `docs/project/handoff.md` 갱신 필요 여부 검토
 
 ## 남은 위험
 

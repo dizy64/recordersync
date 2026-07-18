@@ -15,6 +15,7 @@ from recordersync.media import (
     discover_video_files,
 )
 from recordersync.models import AudioMatch, MatchStatus, RecordingSession
+from recordersync.recommendation import RecommendationMode, recommend_mode
 from recordersync.render import (
     FFmpegRenderer,
     RenderMode,
@@ -130,6 +131,7 @@ class RecorderSyncPipeline:
         output_dir: Path,
         *,
         mode: RenderMode = RenderMode.REPLACE,
+        recommended_only: bool = False,
         camera_audio_volume: float | None = None,
         external_audio_volume: float = 1.0,
         overwrite: bool = False,
@@ -140,11 +142,15 @@ class RecorderSyncPipeline:
         sessions = {session.id: session for session in bundle.sessions}
         videos = {video.path: video for video in bundle.videos}
         processed: list[AudioMatch] = []
-        render_total = sum(
-            match.status is MatchStatus.MATCHED
-            or (match.status is MatchStatus.PARTIAL and mode is RenderMode.FALLBACK)
-            for match in bundle.matches
-        )
+
+        def is_renderable(match: AudioMatch) -> bool:
+            if match.status is MatchStatus.MATCHED:
+                return True
+            if match.status is not MatchStatus.PARTIAL or mode is not RenderMode.FALLBACK:
+                return False
+            return not recommended_only or recommend_mode(match).mode is RecommendationMode.FALLBACK
+
+        render_total = sum(is_renderable(match) for match in bundle.matches)
         render_completed = 0
         resolved_camera_volume = (
             camera_audio_volume
@@ -155,10 +161,7 @@ class RecorderSyncPipeline:
             progress_callback("render", 0, render_total, "")
 
         for match in bundle.matches:
-            is_renderable = match.status is MatchStatus.MATCHED or (
-                match.status is MatchStatus.PARTIAL and mode is RenderMode.FALLBACK
-            )
-            if not is_renderable:
+            if not is_renderable(match):
                 processed.append(match)
                 continue
             segment_sessions_exist = all(

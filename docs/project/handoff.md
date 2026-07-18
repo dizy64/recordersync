@@ -8,26 +8,26 @@
 - 최초 기능 완료 커밋: `3873f62`
 - Python: 3.14+
 - 플랫폼: macOS
-- 자동 테스트: 단위 테스트 84개(기준 커버리지 90%), 합성 FFmpeg E2E 3개
-- 성능 기준: 12시간·영상 200개, 일반 31.623초/실제 부분 160.084초, p95
-  0.159초/0.805초, p99 0.160초/0.810초, peak RSS 288.3MB/288.5MB
+- 자동 테스트: 단위 테스트 107개(기준 커버리지 91%), 합성 FFmpeg E2E 3개
+- 성능 기준: 12시간·영상 200개, 일반 31.683초/실제 부분 160.178초, p95
+  0.159초/0.806초, p99 0.162초/0.809초, peak RSS 287.5MB/288.5MB
   (2026-07-17 Apple Silicon)
 
 현재 구현은 분할 녹음 세션 구성, 영상별 FFT NCC 전체/부분/다중 구간 매칭, 반복 후보
 거부, 구간별 clock drift, replace/mix/fallback과 두 오디오 볼륨,
-VideoToolbox/libx265 렌더, 선택 파일/진행률, 기본 사람용 분석 목록과 opt-in JSON v2
-리포트, 공개 Python API를 포함한다.
+VideoToolbox/libx265 렌더, 선택 파일/진행률, 기본 부분 분석, 사람용 분석 목록과 보수적인
+처리 모드·배치 명령 추천, opt-in JSON v2 리포트, 공개 Python API를 포함한다.
 TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 
 ## 먼저 읽을 문서
 
-1. [CONCEPT.md](CONCEPT.md): 제품 범위와 안전 정책
-2. [ARCHITECTURE.md](ARCHITECTURE.md): 알고리즘, 모듈 경계, 불변식
-3. [../CONTRIBUTING.md](../CONTRIBUTING.md): worktree, TDD, 검증
-4. [TESTING.md](TESTING.md): 테스트 케이스 작성법
-5. [OPERATIONS.md](OPERATIONS.md): 전역 설치, 실행, 문제 해결
-6. [REPORT_SCHEMA.md](REPORT_SCHEMA.md): 외부 연동 JSON 계약
-7. [../SECURITY.md](../SECURITY.md): 미디어·리포트 개인정보와 보안
+1. [제품 컨셉](../product/concept.md): 제품 범위와 안전 정책
+2. [아키텍처](../design/architecture.md): 알고리즘, 모듈 경계, 불변식
+3. [CONTRIBUTING.md](../../CONTRIBUTING.md): worktree, TDD, 검증
+4. [테스트 전략](../development/testing.md): 테스트 케이스 작성법
+5. [운영 가이드](../operations/guide.md): 전역 설치, 실행, 문제 해결
+6. [리포트 스키마](../reference/report-schema.md): 외부 연동 JSON 계약
+7. [SECURITY.md](../../SECURITY.md): 미디어·리포트 개인정보와 보안
 
 ## 변경하면 안 되는 핵심 불변식
 
@@ -46,6 +46,9 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 - 자동 테스트에 실제 사용자 미디어나 네트워크를 넣지 않는다.
 - 선택 파일/진행률은 stderr로 분리한다. `analyze`는 기본 사람용 목록이며 `--json`에서만
   상세 JSON을 stdout에 출력한다. `process` stdout과 `--report` 파일은 JSON을 유지한다.
+- 분석 추천은 안내만 제공하며 process 모드, 종료 코드, 렌더 여부를 자동으로 바꾸지 않는다.
+- fallback 추천 명령은 `--recommended-only`로 추천 기준 미달 partial을 렌더하지 않는다.
+- 전체 일치 성공 시 부분 탐색을 건너뛰고, `--full-only`은 모든 부분 탐색을 생략한다.
 
 이 불변식을 바꾸는 요구는 단순 리팩터가 아니라 제품 정책 변경이다. 별도 합의, RED
 테스트, 문서와 REPORT_VERSION 영향을 먼저 정리한다.
@@ -71,6 +74,8 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
   않는다.
 - 부분 탐색은 기본 5초 창이므로 그보다 짧은 실제 일치 구간과 급격한 구간 내부 drift를
   놓칠 수 있다. `--min-partial-seconds`를 낮추면 오탐 위험도 함께 커진다.
+- fallback 추천의 75% confidence, 0.05 peak margin, 10% coverage, 상대/절대 연속 길이
+  기준은 제한된 실파일 calibration 결과이므로 레코더·공연 유형이 달라지면 재검증이 필요하다.
 
 ### 렌더와 운영
 
@@ -148,7 +153,7 @@ GitHub PR에서 병합한다.
 
 ## 배포·전역 설치 인수인계
 
-전역 명령 설치와 강제 갱신은 [OPERATIONS.md](OPERATIONS.md)를 따른다. main 변경 후
+전역 명령 설치와 강제 갱신은 [운영 가이드](../operations/guide.md)를 따른다. main 변경 후
 버전이 같아 uv가 생략할 수 있으므로 로컬 개발 배포는 다음 명령이 기준이다.
 
 ```bash

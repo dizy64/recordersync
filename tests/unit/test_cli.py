@@ -22,7 +22,7 @@ def test_인자_없는_메인은_도움말을_출력하고_성공을_반환한�
     assert "usage: recordersync" in stdout
     assert "recordersync analyze VIDEO_DIR" in stdout
     assert "recordersync process VIDEO_DIR" in stdout
-    assert "--partial" in stdout
+    assert "--full-only" in stdout
     assert "--mode fallback" in stdout
 
 
@@ -40,6 +40,19 @@ def test_처리_도움말은_두_오디오_볼륨_옵션을_안내한다(
     assert "외부 보이스레코더 오디오 볼륨" in stdout
     assert "--mode {replace,mix,fallback}" in stdout
     assert "--min-partial-seconds" in stdout
+    assert "--recommended-only" in stdout
+
+
+def test_분석_도움말은_처리_모드_추천을_안내한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        build_parser().parse_args(["analyze", "--help"])
+
+    assert exit_info.value.code == 0
+    stdout = capsys.readouterr().out
+    assert "fallback 추천을 분석합니다(기본 동작)" in stdout
+    assert "--full-only" in stdout
 
 
 def test_처리_CLI는_안전한_교체_정책을_기본값으로_사용한다() -> None:
@@ -58,17 +71,32 @@ def test_처리_CLI는_안전한_교체_정책을_기본값으로_사용한다()
     assert args.report_language == "ko"
     assert args.output_prefix == ""
     assert args.output_suffix == ""
+    assert not args.recommended_only
     assert not args.json
     assert not args.overwrite
 
 
 def test_부분_분석과_폴백_처리는_구간_매칭을_활성화한다() -> None:
+    default_analyze_args = build_parser().parse_args(["analyze", "/video"])
     analyze_args = build_parser().parse_args(["analyze", "/video", "--partial"])
+    full_only_args = build_parser().parse_args(["analyze", "/video", "--full-only"])
     process_args = build_parser().parse_args(["process", "/video", "--mode", "fallback"])
 
+    assert default_analyze_args.partial
     assert analyze_args.partial
+    assert not full_only_args.partial
     assert process_args.mode == "fallback"
     assert process_args.camera_audio_volume is None
+
+
+def test_추천_전용_처리는_폴백_모드에서만_허용한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(["process", "/video", "--recommended-only"])
+
+    assert exit_info.value.code == 2
+    assert "--recommended-only requires --mode fallback" in capsys.readouterr().err
 
 
 def test_처리_CLI는_오디오_디렉터리_생략을_허용한다() -> None:
@@ -147,8 +175,10 @@ def test_메인_분석은_기본적으로_사람용_요약을_출력한다(
     assert exit_code == 0
     stdout = capsys.readouterr().out
     assert "분석 결과: 1/1개 매칭 (100.0%)" in stdout
-    assert "- clip.mov | 매칭 여부: 성공 | 매칭률: 0.0%" in stdout
+    assert "- clip.mov | 매칭 여부: 성공 | 매칭률: 0.0% | 추천: replace" in stdout
+    assert "추천 실행:\n  recordersync process /video --audio-dir /audio" in stdout
     assert '"matched"' not in stdout
+    assert pipeline.analyze.call_args.kwargs["match_options"].enable_partial
 
 
 def test_메인_분석은_요청할_때만_JSON을_출력한다(
@@ -166,9 +196,125 @@ def test_메인_분석은_요청할_때만_JSON을_출력한다(
         exit_code = main(["analyze", "/media", "--json"])
 
     assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["summary"]["matched"] == 1
+    assert payload["matches"][0]["recommended_mode"] == "replace"
+    assert payload["recommended_command"] == ["recordersync", "process", "/media"]
+
+
+def test_메인_부분_분석은_안전한_구간에_fallback을_추천한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    match = AudioMatch(
+        Path("clip.mov"),
+        100,
+        MatchStatus.PARTIAL,
+        confidence=0.9,
+        peak_margin=0.1,
+        segments=(
+            AudioMatchSegment(
+                "session-001",
+                10,
+                20,
+                30,
+                confidence=0.9,
+                peak_margin=0.1,
+            ),
+        ),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = AnalysisBundle((), (), (match,))
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(["analyze", "/media"])
+
+    assert exit_code == 2
     stdout = capsys.readouterr().out
-    assert '"matched": 1' in stdout
-    assert "분석 결과:" not in stdout
+    assert "매칭 여부: 부분" in stdout
+    assert "추천: fallback" in stdout
+    assert (
+        "추천 실행:\n  recordersync process /media --mode fallback "
+        "--recommended-only --min-partial-seconds 25" in stdout
+    )
+    assert pipeline.analyze.call_args.kwargs["match_options"].enable_partial
+
+
+def test_메인_분석은_입력_옵션과_배치_상태에_맞는_JSON_명령을_추천한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    partial = AudioMatch(
+        Path("partial.mov"),
+        100,
+        MatchStatus.PARTIAL,
+        confidence=0.9,
+        peak_margin=0.1,
+        segments=(AudioMatchSegment("session-001", 10, 20, 30, confidence=0.9),),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = AnalysisBundle(
+        (),
+        (),
+        (AudioMatch(Path("full.mov"), 100, MatchStatus.MATCHED), partial),
+    )
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(
+            [
+                "analyze",
+                "/video dir",
+                "--audio-dir",
+                "/audio dir",
+                "--output-dir",
+                "/output dir",
+                "--min-confidence",
+                "0.8",
+                "--min-peak-margin",
+                "0.1",
+                "--session-gap-seconds",
+                "20",
+                "--json",
+            ]
+        )
+
+    assert exit_code == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["recommended_command"] == [
+        "recordersync",
+        "process",
+        "/video dir",
+        "--audio-dir",
+        "/audio dir",
+        "--output-dir",
+        "/output dir",
+        "--min-confidence",
+        "0.8",
+        "--min-peak-margin",
+        "0.1",
+        "--session-gap-seconds",
+        "20",
+        "--mode",
+        "fallback",
+        "--recommended-only",
+        "--min-partial-seconds",
+        "25",
+    ]
+
+
+def test_메인_분석은_처리할_매칭이_없으면_명령을_추천하지_않는다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = AnalysisBundle(
+        (),
+        (),
+        (AudioMatch(Path("clip.mov"), 100, MatchStatus.UNMATCHED),),
+    )
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(["analyze", "/media"])
+
+    assert exit_code == 2
+    assert "추천 실행 명령 없음" in capsys.readouterr().out
 
 
 def test_메인_분석은_사람용_요약을_출력하면서_JSON_리포트를_작성한다(
@@ -325,6 +471,37 @@ def test_메인_폴백_모의_실행은_부분_매칭을_성공으로_처리한�
     assert '"status": "partial"' in stdout
     assert '"output": "/video/replace/clip.mp4"' in stdout
     assert pipeline.analyze.call_args.kwargs["match_options"].enable_partial
+    pipeline.process.assert_not_called()
+
+
+def test_메인_추천_전용_폴백은_보류된_부분_매칭을_처리하지_않는다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    match = AudioMatch(
+        Path("clip.mov"),
+        100,
+        MatchStatus.PARTIAL,
+        confidence=0.9,
+        peak_margin=0.1,
+        segments=(AudioMatchSegment("session-001", 2, 4, 5, confidence=0.9),),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = AnalysisBundle((), (), (match,))
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(
+            [
+                "process",
+                "/video",
+                "--mode",
+                "fallback",
+                "--recommended-only",
+                "--dry-run",
+            ]
+        )
+
+    assert exit_code == 2
+    assert '"output": null' in capsys.readouterr().out
     pipeline.process.assert_not_called()
 
 
