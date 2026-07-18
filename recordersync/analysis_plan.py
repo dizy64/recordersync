@@ -9,7 +9,7 @@ from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Never
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import ValidationError
 
 from recordersync.media import VideoInfo
@@ -194,7 +194,10 @@ def _report_validator() -> Draft202012Validator:
     schema_path = packaged_path if packaged_path.is_file() else source_path
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
-    return Draft202012Validator(schema)
+    return Draft202012Validator(
+        schema,
+        format_checker=FormatChecker(formats=["date-time"]),
+    )
 
 
 def _validate_report_schema(payload: object) -> None:
