@@ -25,16 +25,21 @@ def _package_version(root: Path) -> str:
     source = (root / "recordersync" / "__init__.py").read_text(encoding="utf-8")
     module = ast.parse(source)
     for statement in module.body:
-        if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+        if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+            target = statement.targets[0]
+            value = statement.value
+        elif isinstance(statement, ast.AnnAssign):
+            target = statement.target
+            value = statement.value
+        else:
             continue
-        target = statement.targets[0]
         if (
             isinstance(target, ast.Name)
             and target.id == "__version__"
-            and isinstance(statement.value, ast.Constant)
-            and isinstance(statement.value.value, str)
+            and isinstance(value, ast.Constant)
+            and isinstance(value.value, str)
         ):
-            return statement.value.value
+            return value.value
     raise ValueError("recordersync/__init__.py에서 __version__ 선언을 찾을 수 없습니다")
 
 

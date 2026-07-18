@@ -37,6 +37,18 @@ def test_일반_검사는_태그_없이_두_패키지_버전만_검증한다(tmp
     assert version == "0.4.0"
 
 
+def test_릴리스는_타입_표기된_패키지_버전도_검증한다(tmp_path: Path) -> None:
+    _write_versions(tmp_path, project="0.4.0", package="0.4.0")
+    (tmp_path / "recordersync" / "__init__.py").write_text(
+        '__version__: str = "0.4.0"\n',
+        encoding="utf-8",
+    )
+
+    version = validate_release_version(tmp_path, "v0.4.0")
+
+    assert version == "0.4.0"
+
+
 def test_릴리스_태그는_프로젝트_버전과_다르면_거부한다(tmp_path: Path) -> None:
     _write_versions(tmp_path, project="0.4.0", package="0.4.0")
 
