@@ -1,0 +1,496 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dizy64/recordersync/raw/main/schemas/recordersync-report-v2.schema.json",
+  "title": "RecorderSync report v2",
+  "description": "RecorderSync analyze/process JSON report contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "language",
+    "created_at",
+    "summary",
+    "audio_sessions",
+    "matches"
+  ],
+  "properties": {
+    "version": {
+      "const": 2
+    },
+    "language": {
+      "enum": ["ko", "en"]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "audio_sessions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reportAudioSession"
+      }
+    },
+    "matches": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reportMatch"
+      }
+    },
+    "recommended_command": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "analysis_inputs": {
+      "$ref": "#/$defs/analysisInputs"
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "nullableNonNegativeNumber": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "matchStatus": {
+      "enum": ["matched", "partial", "unmatched", "ambiguous", "error"]
+    },
+    "tempoRatio": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 2.0
+    },
+    "correlation": {
+      "type": "number",
+      "minimum": -1.0,
+      "maximum": 1.0
+    },
+    "peakMargin": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 2.0
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "matched", "partial", "unmatched", "ambiguous", "error"],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "matched": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partial": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unmatched": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ambiguous": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "reportAudioSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "duration_seconds", "chunks"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "chunks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_id",
+        "video_start_seconds",
+        "external_start_seconds",
+        "duration_seconds",
+        "tempo_ratio",
+        "correlation",
+        "peak_margin",
+        "confidence"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "video_start_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "external_start_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "duration_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "tempo_ratio": {
+          "$ref": "#/$defs/tempoRatio"
+        },
+        "correlation": {
+          "$ref": "#/$defs/correlation"
+        },
+        "peak_margin": {
+          "$ref": "#/$defs/peakMargin"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "reportMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "video",
+        "status",
+        "session_id",
+        "external_start_seconds",
+        "duration_seconds",
+        "tempo_ratio",
+        "correlation",
+        "peak_margin",
+        "confidence",
+        "coverage_ratio",
+        "segments",
+        "reason",
+        "output",
+        "recommended_mode",
+        "recommendation_reason",
+        "recommended_options"
+      ],
+      "properties": {
+        "video": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "status": {
+          "$ref": "#/$defs/matchStatus"
+        },
+        "session_id": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "external_start_seconds": {
+          "$ref": "#/$defs/nullableNonNegativeNumber"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "tempo_ratio": {
+          "$ref": "#/$defs/tempoRatio"
+        },
+        "correlation": {
+          "$ref": "#/$defs/correlation"
+        },
+        "peak_margin": {
+          "$ref": "#/$defs/peakMargin"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "coverage_ratio": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/segment"
+          }
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "output": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "recommended_mode": {
+          "enum": ["replace", "fallback", null]
+        },
+        "recommendation_reason": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "recommended_options": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "min_partial_seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        }
+      }
+    },
+    "fingerprint": {
+      "type": "object",
+      "required": ["path", "size_bytes", "mtime_ns"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mtime_ns": {
+          "type": "integer"
+        }
+      }
+    },
+    "analysisAudioChunk": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/fingerprint"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "size_bytes",
+            "mtime_ns",
+            "duration_seconds",
+            "sample_rate",
+            "channels",
+            "codec",
+            "started_at"
+          ],
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/nonEmptyString"
+            },
+            "size_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mtime_ns": {
+              "type": "integer"
+            },
+            "duration_seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "sample_rate": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "channels": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "codec": {
+              "$ref": "#/$defs/nonEmptyString"
+            },
+            "started_at": {
+              "type": ["string", "null"],
+              "format": "date-time"
+            }
+          }
+        }
+      ]
+    },
+    "analysisAudioSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "chunks"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "chunks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/analysisAudioChunk"
+          }
+        }
+      }
+    },
+    "analysisVideo": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/fingerprint"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "size_bytes",
+            "mtime_ns",
+            "duration_seconds",
+            "width",
+            "height",
+            "has_audio",
+            "color_transfer"
+          ],
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/nonEmptyString"
+            },
+            "size_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mtime_ns": {
+              "type": "integer"
+            },
+            "duration_seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "has_audio": {
+              "type": "boolean"
+            },
+            "color_transfer": {
+              "$ref": "#/$defs/nullableString"
+            }
+          }
+        }
+      ]
+    },
+    "analysisMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "video",
+        "duration_seconds",
+        "status",
+        "session_id",
+        "external_start_seconds",
+        "tempo_ratio",
+        "correlation",
+        "peak_margin",
+        "confidence",
+        "reason",
+        "segments"
+      ],
+      "properties": {
+        "video": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "status": {
+          "$ref": "#/$defs/matchStatus"
+        },
+        "session_id": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "external_start_seconds": {
+          "$ref": "#/$defs/nullableNonNegativeNumber"
+        },
+        "tempo_ratio": {
+          "$ref": "#/$defs/tempoRatio"
+        },
+        "correlation": {
+          "$ref": "#/$defs/correlation"
+        },
+        "peak_margin": {
+          "$ref": "#/$defs/peakMargin"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/segment"
+          }
+        }
+      }
+    },
+    "analysisInputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "audio_sessions", "videos", "matches"],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "audio_sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/analysisAudioSession"
+          }
+        },
+        "videos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/analysisVideo"
+          }
+        },
+        "matches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/analysisMatch"
+          }
+        }
+      }
+    }
+  }
+}
