@@ -278,5 +278,6 @@ bash scripts/install-hooks.sh
 - [테스트 전략](docs/development/testing.md)
 - [설치·실행·운영](docs/operations/guide.md)
 - [JSON 리포트 계약](docs/reference/report-schema.md)
+- [JSON Schema v2](schemas/recordersync-report-v2.schema.json)
 - [인수인계와 다음 작업](docs/project/handoff.md)
 - [보안·개인정보](SECURITY.md)

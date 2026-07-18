@@ -7,6 +7,13 @@
 버전에서 가능하지만, 이름·타입·상태 의미·null 가능성 변경은 REPORT_VERSION 증가와
 호환성 테스트가 필요하다.
 
+기계 판독 가능한 Draft 2020-12 스키마는
+[recordersync-report-v2.schema.json](../../schemas/recordersync-report-v2.schema.json)이다.
+wheel에는 `recordersync/schemas/recordersync-report-v2.schema.json` 경로로도 포함된다.
+스키마는 필수 필드, 타입, enum, null 가능성, 수치 범위와 알 수 없는 필드를 검증한다.
+summary 합계, 구간 정렬·겹침, 세션 참조, 입력 파일 지문 같은 교차 필드·파일 시스템
+불변식은 각각 도메인 모델과 `process --analysis-report` 런타임 검증의 책임이다.
+
 JSON 키와 `status` 값은 번역하지 않는다. `reason`과 `recommendation_reason`만
 `language`에 따라 한국어 또는 영어로 직렬화한다. CLI 기본값은 `ko`이며
 `--report-language en`으로 바꿀 수 있다. 소비자는 표시 문구로 분기하지 말고 `status`,
@@ -19,6 +26,21 @@ JSON 키와 `status` 값은 번역하지 않는다. `reason`과 `recommendation_
 
 사람용 목록은 안정적인 API 스키마가 아니다. 자동화는 표시 문구를 파싱하지 말고 반드시
 `--json` 또는 `--report` 파일과 아래 버전 계약을 사용한다.
+
+개발 환경에서 리포트를 검증하는 예시는 다음과 같다.
+
+```bash
+uv run python - <<'PY'
+import json
+from pathlib import Path
+
+from jsonschema import Draft202012Validator
+
+schema = json.loads(Path("schemas/recordersync-report-v2.schema.json").read_text(encoding="utf-8"))
+report = json.loads(Path("recordersync-report.json").read_text(encoding="utf-8"))
+Draft202012Validator(schema).validate(report)
+PY
+```
 
 ## 최상위 필드
 
