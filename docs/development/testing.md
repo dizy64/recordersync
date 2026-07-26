@@ -19,7 +19,7 @@ RecorderSync의 비즈니스 정책은 단위 테스트로 검증한다. FFmpeg�
 | `test_matching.py` | 전체 조기 반환, 부분/다중 구간, 전역 재탐색 상한, 입력 검증, drift, 다중 카메라 |
 | `test_media.py` | 탐색, ffprobe 파싱, PCM, 실패, 조각 frame padding |
 | `test_render.py` | 출력명·경로 안전, 다중 구간 폴백, crossfade, 프로파일, 원자 출력 |
-| `test_pipeline.py` | 배치 분석, 공통 렌더 정책, 추천 전용 필터, 잘못된 구간의 영상별 오류 처리 |
+| `test_pipeline.py` | 배치 분석, 공통 렌더 정책, 추천 전용 필터, 잘못된 렌더 메타데이터의 영상별 오류·지역화 |
 | `test_cli.py` | 도움말, 기본 부분 분석, 분석 재사용, 배치 명령 추천, fallback, 리포트, 종료 코드 |
 | `test_analysis_plan.py` | 분석 입력 round-trip, 지문·디렉터리·버전 검증, 언어 독립성 |
 | `test_api.py` | 외부 소비자용 세션·매칭·영상별 오류 격리·영상 식별 검증·다중 세션 렌더 계획 API |

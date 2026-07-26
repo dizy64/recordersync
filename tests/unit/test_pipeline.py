@@ -328,3 +328,43 @@ def test_파이프라인은_세션_범위를_넘는_부분_구간을_영상별_�
     renderer.render.assert_not_called()
     assert report.matches[0].status is MatchStatus.ERROR
     assert report.matches[0].reason == "render segment exceeds recording session duration"
+
+
+def test_파이프라인은_없는_세션_오류들을_한국어_리포트로_제공한다(tmp_path: Path) -> None:
+    matched_video = VideoInfo(Path("matched.mov"), 10, 1920, 1080, True)
+    partial_video = VideoInfo(Path("partial.mov"), 10, 1920, 1080, True)
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("first.wav"), 20, 48_000, 2, "pcm_s24le", None),),
+    )
+    matched = AudioMatch(
+        matched_video.path,
+        10,
+        MatchStatus.MATCHED,
+        session_id="missing-session",
+        external_start_seconds=3,
+    )
+    partial = AudioMatch(
+        partial_video.path,
+        10,
+        MatchStatus.PARTIAL,
+        segments=(AudioMatchSegment("missing-session", 1, 3, 3, confidence=0.9),),
+    )
+    renderer = MagicMock(spec=FFmpegRenderer)
+
+    report = RecorderSyncPipeline(renderer=renderer).process(
+        AnalysisBundle(
+            (session,),
+            (matched_video, partial_video),
+            (matched, partial),
+        ),
+        tmp_path,
+        mode=RenderMode.FALLBACK,
+    )
+
+    renderer.render.assert_not_called()
+    assert [match.status for match in report.matches] == [MatchStatus.ERROR, MatchStatus.ERROR]
+    assert [match["reason"] for match in report.to_dict()["matches"]] == [
+        "매칭이 제공된 녹음 세션에 속하지 않습니다.",
+        "매칭이 제공된 녹음 세션들에 속하지 않습니다.",
+    ]
