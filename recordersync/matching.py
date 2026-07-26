@@ -339,11 +339,12 @@ def refine_feature_alignment(
         search_frames=search_frames,
         exclusion_frames=exclusion_frames,
     )
-    if _is_reliable_alignment(midpoint):
-        expected_midpoint = head.frame_index + midpoint_video_start * tempo_ratio
-        tolerance_frames = max(1, round(_MIDPOINT_ALIGNMENT_TOLERANCE_SECONDS / hop_seconds))
-        if abs(midpoint.frame_index - expected_midpoint) > tolerance_frames:
-            return coarse_start_frame, 1.0
+    if not _is_reliable_alignment(midpoint):
+        return coarse_start_frame, 1.0
+    expected_midpoint = head.frame_index + midpoint_video_start * tempo_ratio
+    tolerance_frames = max(1, round(_MIDPOINT_ALIGNMENT_TOLERANCE_SECONDS / hop_seconds))
+    if abs(midpoint.frame_index - expected_midpoint) > tolerance_frames:
+        return coarse_start_frame, 1.0
     return head.frame_index, tempo_ratio
 
 

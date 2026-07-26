@@ -152,6 +152,11 @@ def test_특징_정렬_보정은_클럭_드리프트를_추정한다() -> None:
     tail_reference_start = video.shape[1] - head_frames
     tail_session_start = 200 + tail_reference_start + 4
     session[:, tail_session_start : tail_session_start + head_frames] += video[:, -head_frames:]
+    midpoint_reference_start = tail_reference_start // 2
+    midpoint_session_start = 200 + midpoint_reference_start + 2
+    session[:, midpoint_session_start : midpoint_session_start + head_frames] += video[
+        :, midpoint_reference_start : midpoint_reference_start + head_frames
+    ]
 
     start_frame, tempo_ratio = refine_feature_alignment(
         _standardize(session),
@@ -187,6 +192,11 @@ def test_특징_정렬_보정은_안전한_클럭_드리프트만_적용한다(
     tail_reference_start = video.shape[1] - head_frames
     tail_session_start = 200 + tail_reference_start + tail_offset_frames
     session[:, tail_session_start : tail_session_start + head_frames] += video[:, -head_frames:]
+    midpoint_reference_start = tail_reference_start // 2
+    midpoint_session_start = 200 + midpoint_reference_start + round(tail_offset_frames / 2)
+    session[:, midpoint_session_start : midpoint_session_start + head_frames] += video[
+        :, midpoint_reference_start : midpoint_reference_start + head_frames
+    ]
 
     start_frame, tempo_ratio = refine_feature_alignment(
         _standardize(session),
@@ -199,6 +209,30 @@ def test_특징_정렬_보정은_안전한_클럭_드리프트만_적용한다(
 
     assert start_frame == 200
     assert tempo_ratio == pytest.approx(expected_ratio, abs=1e-6)
+
+
+def test_특징_정렬_보정은_중간_지점을_신뢰할_수_없으면_적용하지_않는다() -> None:
+    rng = np.random.default_rng(20260726)
+    video = _standardize(rng.normal(size=(6, 2_000)).astype(np.float32))
+    session = rng.normal(scale=0.01, size=(6, 3_000)).astype(np.float32)
+    window_frames = 400
+    coarse_start = 200
+    session[:, coarse_start : coarse_start + window_frames] += video[:, :window_frames]
+    reference_span = video.shape[1] - window_frames
+    tail_session_start = coarse_start + reference_span + 4
+    session[:, tail_session_start : tail_session_start + window_frames] += video[:, -window_frames:]
+
+    start_frame, tempo_ratio = refine_feature_alignment(
+        _standardize(session),
+        video,
+        coarse_start_frame=coarse_start,
+        hop_seconds=0.05,
+        window_seconds=20.0,
+        search_seconds=1.0,
+    )
+
+    assert start_frame == coarse_start
+    assert tempo_ratio == 1.0
 
 
 @pytest.mark.parametrize(
