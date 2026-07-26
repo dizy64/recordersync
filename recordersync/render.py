@@ -146,7 +146,7 @@ def _resolve_render_segments(
         raise ValueError("Match does not belong to the supplied recording sessions")
     return tuple(
         RenderSegment(
-            session=session_by_id[segment.session_id],
+            session=_indexed_session(session_by_id, segment.session_id),
             video_start_seconds=segment.video_start_seconds,
             external_start_seconds=segment.external_start_seconds,
             duration_seconds=segment.duration_seconds,
@@ -154,6 +154,16 @@ def _resolve_render_segments(
         )
         for segment in match.segments
     )
+
+
+def _indexed_session(
+    session_by_id: Mapping[str, RecordingSession],
+    session_id: str,
+) -> RecordingSession:
+    session = session_by_id[session_id]
+    if session.id != session_id:
+        raise ValueError("Session mapping keys must match RecordingSession.id")
+    return session
 
 
 def build_render_plan(
@@ -194,7 +204,7 @@ def build_render_plan(
         match_external_start = match.external_start_seconds
         if session_id is None or match_external_start is None or session_id not in session_by_id:
             raise ValueError("Match does not belong to the supplied recording session")
-        primary_session = session_by_id[session_id]
+        primary_session = _indexed_session(session_by_id, session_id)
         external_start = match_external_start
         tempo_ratio = match.tempo_ratio
 

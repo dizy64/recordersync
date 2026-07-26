@@ -195,6 +195,29 @@ def test_렌더_계획_생성은_미리_색인한_세션을_재사용한다() ->
     assert plan.session is session
 
 
+def test_렌더_계획_생성은_세션_인덱스와_세션_ID_불일치를_거부한다() -> None:
+    indexed_session = RecordingSession(
+        "different-session",
+        (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),
+    )
+    video = VideoInfo(Path("clip.mov"), 4, 3840, 2160, True)
+    match = AudioMatch(
+        video.path,
+        4,
+        MatchStatus.MATCHED,
+        session_id="session-001",
+        external_start_seconds=2.5,
+    )
+
+    with pytest.raises(ValueError, match=r"Session mapping keys must match RecordingSession\.id"):
+        build_render_plan(
+            match,
+            video,
+            {"session-001": indexed_session},
+            Path("replace"),
+        )
+
+
 def test_렌더_계획_생성은_부분_매칭의_여러_세션을_연결한다() -> None:
     sessions = (
         RecordingSession(
