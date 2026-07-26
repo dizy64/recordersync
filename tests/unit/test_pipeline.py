@@ -368,3 +368,27 @@ def test_파이프라인은_없는_세션_오류들을_한국어_리포트로_�
         "매칭이 제공된 녹음 세션에 속하지 않습니다.",
         "매칭이 제공된 녹음 세션들에 속하지 않습니다.",
     ]
+
+
+def test_파이프라인은_영상_메타데이터_누락을_한국어_오류로_기록한다(tmp_path: Path) -> None:
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("first.wav"), 20, 48_000, 2, "pcm_s24le", None),),
+    )
+    match = AudioMatch(
+        Path("missing-video.mov"),
+        10,
+        MatchStatus.MATCHED,
+        session_id=session.id,
+        external_start_seconds=3,
+    )
+    renderer = MagicMock(spec=FFmpegRenderer)
+
+    report = RecorderSyncPipeline(renderer=renderer).process(
+        AnalysisBundle((session,), (), (match,)),
+        tmp_path,
+    )
+
+    renderer.render.assert_not_called()
+    assert report.matches[0].status is MatchStatus.ERROR
+    assert report.to_dict()["matches"][0]["reason"] == "매칭 결과에 렌더 메타데이터가 없습니다."
