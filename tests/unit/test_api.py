@@ -256,6 +256,29 @@ def test_렌더_계획_생성은_부분_매칭의_여러_세션을_연결한다(
     ]
 
 
+def test_렌더_계획_생성은_부분_구간의_세션_인덱스와_ID_불일치를_거부한다() -> None:
+    indexed_session = RecordingSession(
+        "different-session",
+        (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),
+    )
+    video = VideoInfo(Path("clip.mov"), 10, 1920, 1080, True)
+    match = AudioMatch(
+        video.path,
+        10,
+        MatchStatus.PARTIAL,
+        segments=(AudioMatchSegment("session-001", 1, 2, 3),),
+    )
+
+    with pytest.raises(ValueError, match=r"Session mapping keys must match RecordingSession\.id"):
+        build_render_plan(
+            match,
+            video,
+            {"session-001": indexed_session},
+            Path("replace"),
+            mode=RenderMode.FALLBACK,
+        )
+
+
 def test_렌더_계획_생성은_매칭과_다른_영상을_거부한다() -> None:
     session = RecordingSession(
         "session-001",
