@@ -50,6 +50,7 @@ subprocess를 import하는 역방향 의존성을 만들지 않는다.
 
 CLI pipeline과 공개 API는 `build_render_plan()`을 공유한다. 이 경계에서 매칭의 영상
 경로와 실제 `VideoInfo.path`가 같은지 확인해 다른 영상에 매칭 결과를 적용하지 않는다.
+pipeline은 배치의 세션 ID 인덱스를 한 번 만들고 영상별 계획 생성에서 재사용한다.
 
 CLI pipeline과 공개 `match_videos()`는 영상별 probe·특징 추출·매칭의
 `MediaError`/`ValueError`를 해당 영상의 `error` 결과로 격리한다. 반면 세션 타임라인

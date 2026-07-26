@@ -152,6 +152,7 @@ class RecorderSyncPipeline:
         output_suffix: str = "",
         progress_callback: ProgressCallback | None = None,
     ) -> MatchReport:
+        sessions = {session.id: session for session in bundle.sessions}
         videos = {video.path: video for video in bundle.videos}
         processed: list[AudioMatch] = []
 
@@ -194,7 +195,7 @@ class RecorderSyncPipeline:
                 plan = build_render_plan(
                     match,
                     video,
-                    bundle.sessions,
+                    sessions,
                     output_dir,
                     mode=mode,
                     camera_audio_volume=resolved_camera_volume,

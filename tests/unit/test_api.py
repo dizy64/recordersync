@@ -171,6 +171,30 @@ def test_렌더_계획_생성은_승인된_매칭을_연결한다() -> None:
     assert plan.external_audio_volume == 0.8
 
 
+def test_렌더_계획_생성은_미리_색인한_세션을_재사용한다() -> None:
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),
+    )
+    video = VideoInfo(Path("clip.mov"), 4, 3840, 2160, True)
+    match = AudioMatch(
+        video.path,
+        4,
+        MatchStatus.MATCHED,
+        session_id=session.id,
+        external_start_seconds=2.5,
+    )
+
+    plan = build_render_plan(
+        match,
+        video,
+        {session.id: session},
+        Path("replace"),
+    )
+
+    assert plan.session is session
+
+
 def test_렌더_계획_생성은_부분_매칭의_여러_세션을_연결한다() -> None:
     sessions = (
         RecordingSession(

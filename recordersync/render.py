@@ -159,7 +159,7 @@ def _resolve_render_segments(
 def build_render_plan(
     match: AudioMatch,
     video: VideoInfo,
-    session: RecordingSession | Sequence[RecordingSession],
+    session: RecordingSession | Sequence[RecordingSession] | Mapping[str, RecordingSession],
     output_dir: Path,
     *,
     mode: RenderMode = RenderMode.REPLACE,
@@ -178,8 +178,12 @@ def build_render_plan(
     if match.video_path != video.path:
         raise ValueError("Match video path does not match supplied video")
 
-    resolved_sessions = (session,) if isinstance(session, RecordingSession) else tuple(session)
-    session_by_id = {item.id: item for item in resolved_sessions}
+    if isinstance(session, RecordingSession):
+        session_by_id: Mapping[str, RecordingSession] = {session.id: session}
+    elif isinstance(session, Mapping):
+        session_by_id = session
+    else:
+        session_by_id = {item.id: item for item in session}
     render_segments = _resolve_render_segments(match, session_by_id)
     if render_segments:
         primary_session = render_segments[0].session
