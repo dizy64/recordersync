@@ -16,6 +16,10 @@ from recordersync.models import AudioMatch, AudioMatchSegment, MatchStatus
 FloatArray = NDArray[np.float32]
 
 _BAND_EDGES_HZ = (80.0, 200.0, 400.0, 800.0, 1_600.0, 3_200.0, 4_000.0)
+_MAX_CLOCK_DRIFT_RATIO_DELTA = 0.01
+_MIN_REFINEMENT_CORRELATION = 0.5
+_MIN_REFINEMENT_PEAK_MARGIN = 0.02
+_MIDPOINT_ALIGNMENT_TOLERANCE_SECONDS = 0.15
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +99,13 @@ class _WindowMatch:
     correlation: float
     peak_margin: float
     confidence: float
+
+
+@dataclass(frozen=True, slots=True)
+class _LocalAlignment:
+    frame_index: int
+    correlation: float
+    peak_margin: float
 
 
 def _normalize_bands(features: NDArray[np.floating]) -> FloatArray:
@@ -219,13 +230,14 @@ def _top_candidates(
     return candidates
 
 
-def _find_local_start(
+def _find_local_alignment(
     session_features: FloatArray,
     reference_features: FloatArray,
     *,
     expected_start: int,
     search_frames: int,
-) -> int:
+    exclusion_frames: int,
+) -> _LocalAlignment:
     region_start = max(0, expected_start - search_frames)
     region_end = min(
         session_features.shape[1],
@@ -233,9 +245,40 @@ def _find_local_start(
     )
     region = session_features[:, region_start:region_end]
     if region.shape[1] < reference_features.shape[1]:
-        return expected_start
+        return _LocalAlignment(expected_start, -1.0, 0.0)
     curve = _correlation_curve(region, reference_features)
-    return region_start + int(np.argmax(curve))
+    best_index = int(np.argmax(curve))
+    best_correlation = float(curve[best_index])
+    masked = curve.copy()
+    left = max(0, best_index - exclusion_frames)
+    right = min(masked.size, best_index + exclusion_frames + 1)
+    masked[left:right] = -np.inf
+    second_correlation = float(np.max(masked)) if np.isfinite(masked).any() else -1.0
+    return _LocalAlignment(
+        region_start + best_index,
+        best_correlation,
+        max(0.0, best_correlation - second_correlation),
+    )
+
+
+def _find_local_start(
+    session_features: FloatArray,
+    reference_features: FloatArray,
+    *,
+    expected_start: int,
+    search_frames: int,
+) -> int:
+    return _find_local_alignment(
+        session_features,
+        reference_features,
+        expected_start=expected_start,
+        search_frames=search_frames,
+        exclusion_frames=1,
+    ).frame_index
+
+
+def _is_reliable_alignment(alignment: _LocalAlignment) -> bool:
+    return alignment.correlation >= _MIN_REFINEMENT_CORRELATION and alignment.peak_margin >= _MIN_REFINEMENT_PEAK_MARGIN
 
 
 def refine_feature_alignment(
@@ -262,26 +305,47 @@ def refine_feature_alignment(
         return coarse_start_frame, 1.0
 
     search_frames = max(1, round(search_seconds / hop_seconds))
-    head_start = _find_local_start(
+    exclusion_frames = max(1, round(1.0 / hop_seconds))
+    head = _find_local_alignment(
         session_features,
         video_features[:, :window_frames],
         expected_start=coarse_start_frame,
         search_frames=search_frames,
+        exclusion_frames=exclusion_frames,
     )
     expected_tail = coarse_start_frame + reference_span
-    tail_start = _find_local_start(
+    tail = _find_local_alignment(
         session_features,
         video_features[:, -window_frames:],
         expected_start=expected_tail,
         search_frames=search_frames,
+        exclusion_frames=exclusion_frames,
     )
-    observed_span = tail_start - head_start
+    if not _is_reliable_alignment(head) or not _is_reliable_alignment(tail):
+        return coarse_start_frame, 1.0
+
+    observed_span = tail.frame_index - head.frame_index
     if observed_span <= 0:
         return coarse_start_frame, 1.0
     tempo_ratio = observed_span / reference_span
-    if not 0.5 <= tempo_ratio <= 2.0:
+    if not 1.0 - _MAX_CLOCK_DRIFT_RATIO_DELTA <= tempo_ratio <= 1.0 + _MAX_CLOCK_DRIFT_RATIO_DELTA:
         return coarse_start_frame, 1.0
-    return head_start, tempo_ratio
+
+    midpoint_video_start = reference_span // 2
+    midpoint = _find_local_alignment(
+        session_features,
+        video_features[:, midpoint_video_start : midpoint_video_start + window_frames],
+        expected_start=coarse_start_frame + midpoint_video_start,
+        search_frames=search_frames,
+        exclusion_frames=exclusion_frames,
+    )
+    if not _is_reliable_alignment(midpoint):
+        return coarse_start_frame, 1.0
+    expected_midpoint = head.frame_index + midpoint_video_start * tempo_ratio
+    tolerance_frames = max(1, round(_MIDPOINT_ALIGNMENT_TOLERANCE_SECONDS / hop_seconds))
+    if abs(midpoint.frame_index - expected_midpoint) > tolerance_frames:
+        return coarse_start_frame, 1.0
+    return head.frame_index, tempo_ratio
 
 
 def _score_reference(

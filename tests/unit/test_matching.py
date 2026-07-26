@@ -152,6 +152,11 @@ def test_특징_정렬_보정은_클럭_드리프트를_추정한다() -> None:
     tail_reference_start = video.shape[1] - head_frames
     tail_session_start = 200 + tail_reference_start + 4
     session[:, tail_session_start : tail_session_start + head_frames] += video[:, -head_frames:]
+    midpoint_reference_start = tail_reference_start // 2
+    midpoint_session_start = 200 + midpoint_reference_start + 2
+    session[:, midpoint_session_start : midpoint_session_start + head_frames] += video[
+        :, midpoint_reference_start : midpoint_reference_start + head_frames
+    ]
 
     start_frame, tempo_ratio = refine_feature_alignment(
         _standardize(session),
@@ -164,6 +169,105 @@ def test_특징_정렬_보정은_클럭_드리프트를_추정한다() -> None:
 
     assert start_frame == 200
     assert tempo_ratio == pytest.approx((1_600 + 4) / 1_600, rel=1e-4)
+
+
+@pytest.mark.parametrize(
+    ("tail_offset_frames", "expected_ratio"),
+    [
+        pytest.param(16, 1.01, id="상한"),
+        pytest.param(17, 1.0, id="상한_초과"),
+        pytest.param(-16, 0.99, id="하한"),
+        pytest.param(-17, 1.0, id="하한_미만"),
+    ],
+)
+def test_특징_정렬_보정은_안전한_클럭_드리프트만_적용한다(
+    tail_offset_frames: int,
+    expected_ratio: float,
+) -> None:
+    rng = np.random.default_rng(20260726)
+    video = _standardize(rng.normal(size=(6, 2_000)).astype(np.float32))
+    session = rng.normal(scale=0.01, size=(6, 3_000)).astype(np.float32)
+    head_frames = 400
+    session[:, 200 : 200 + head_frames] += video[:, :head_frames]
+    tail_reference_start = video.shape[1] - head_frames
+    tail_session_start = 200 + tail_reference_start + tail_offset_frames
+    session[:, tail_session_start : tail_session_start + head_frames] += video[:, -head_frames:]
+    midpoint_reference_start = tail_reference_start // 2
+    midpoint_session_start = 200 + midpoint_reference_start + round(tail_offset_frames / 2)
+    session[:, midpoint_session_start : midpoint_session_start + head_frames] += video[
+        :, midpoint_reference_start : midpoint_reference_start + head_frames
+    ]
+
+    start_frame, tempo_ratio = refine_feature_alignment(
+        _standardize(session),
+        video,
+        coarse_start_frame=200,
+        hop_seconds=0.05,
+        window_seconds=20.0,
+        search_seconds=1.0,
+    )
+
+    assert start_frame == 200
+    assert tempo_ratio == pytest.approx(expected_ratio, abs=1e-6)
+
+
+def test_특징_정렬_보정은_중간_지점을_신뢰할_수_없으면_적용하지_않는다() -> None:
+    rng = np.random.default_rng(20260726)
+    video = _standardize(rng.normal(size=(6, 2_000)).astype(np.float32))
+    session = rng.normal(scale=0.01, size=(6, 3_000)).astype(np.float32)
+    window_frames = 400
+    coarse_start = 200
+    session[:, coarse_start : coarse_start + window_frames] += video[:, :window_frames]
+    reference_span = video.shape[1] - window_frames
+    tail_session_start = coarse_start + reference_span + 4
+    session[:, tail_session_start : tail_session_start + window_frames] += video[:, -window_frames:]
+
+    start_frame, tempo_ratio = refine_feature_alignment(
+        _standardize(session),
+        video,
+        coarse_start_frame=coarse_start,
+        hop_seconds=0.05,
+        window_seconds=20.0,
+        search_seconds=1.0,
+    )
+
+    assert start_frame == coarse_start
+    assert tempo_ratio == 1.0
+
+
+@pytest.mark.parametrize(
+    "wrong_tail_shift",
+    [
+        pytest.param(8, id="안전범위_내_불일치"),
+        pytest.param(81, id="실사례형_과도한_감속"),
+    ],
+)
+def test_특징_정렬_보정은_반복_끝_구간의_잘못된_감속을_적용하지_않는다(
+    wrong_tail_shift: int,
+) -> None:
+    rng = np.random.default_rng(20260726)
+    duration_seconds = 58.645
+    video_frames = round(duration_seconds / 0.05)
+    window_frames = video_frames // 4
+    coarse_start = 200
+    video = rng.normal(size=(6, video_frames)).astype(np.float32)
+    session = rng.normal(scale=0.02, size=(6, 2_000)).astype(np.float32)
+    session[:, coarse_start : coarse_start + video_frames] = video
+    reference_span = video_frames - window_frames
+    wrong_tail_start = coarse_start + reference_span - wrong_tail_shift
+    session[:, wrong_tail_start : wrong_tail_start + window_frames] = video[:, -window_frames:]
+
+    result = match_video_features(
+        Path("iphone.mov"),
+        duration_seconds=duration_seconds,
+        video_features=_standardize(video),
+        sessions=[FeatureTimeline("session-001", _standardize(session), 0.05)],
+        options=MatchOptions(min_confidence=0.75, min_peak_margin=0.05),
+    )
+
+    assert result.status is MatchStatus.MATCHED
+    assert result.confidence > 0.9
+    assert result.tempo_ratio == 1.0
 
 
 def test_부분_매칭은_짧은_녹음과_일치하는_연속_영상_구간을_찾는다() -> None:
