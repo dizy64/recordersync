@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 
 from recordersync.api import build_render_plan, discover_sessions, match_videos
 from recordersync.matching import FeatureTimeline, MatchOptions
@@ -205,3 +206,21 @@ def test_렌더_계획_생성은_부분_매칭의_여러_세션을_연결한다(
         "session-001",
         "session-002",
     ]
+
+
+def test_렌더_계획_생성은_매칭과_다른_영상을_거부한다() -> None:
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),
+    )
+    match = AudioMatch(
+        Path("matched.mov"),
+        4,
+        MatchStatus.MATCHED,
+        session_id=session.id,
+        external_start_seconds=2.5,
+    )
+    other_video = VideoInfo(Path("other.mov"), 4, 3840, 2160, True)
+
+    with pytest.raises(ValueError, match="Match video path does not match supplied video"):
+        build_render_plan(match, other_video, session, Path("replace"))
