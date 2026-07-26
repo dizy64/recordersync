@@ -187,6 +187,34 @@ def test_매칭_리포트는_알려진_접두사를_번역하고_알_수_없는_
     assert payload["matches"][1]["reason"] == "codec-specific diagnostic"
 
 
+def test_매칭_리포트는_렌더_계획_검증_사유를_번역한다() -> None:
+    report = MatchReport(
+        sessions=(),
+        matches=(
+            AudioMatch(
+                Path("wrong-session.mov"),
+                8,
+                MatchStatus.ERROR,
+                reason="Session mapping keys must match RecordingSession.id",
+            ),
+            AudioMatch(
+                Path("wrong-video.mov"),
+                8,
+                MatchStatus.ERROR,
+                reason="Match video path does not match supplied video",
+            ),
+        ),
+        created_at=datetime(2026, 7, 17, tzinfo=UTC),
+    )
+
+    payload = report.to_dict()
+
+    assert [match["reason"] for match in payload["matches"]] == [
+        "세션 인덱스 키는 RecordingSession.id와 일치해야 합니다.",
+        "매칭 영상 경로가 제공된 영상과 일치하지 않습니다.",
+    ]
+
+
 def test_매칭_리포트는_간결한_한국어_사람용_요약을_렌더링한다() -> None:
     report = MatchReport(
         sessions=(),

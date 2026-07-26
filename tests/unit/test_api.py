@@ -6,7 +6,9 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 
+from recordersync import api as public_api
 from recordersync.api import build_render_plan, discover_sessions, match_videos
 from recordersync.matching import FeatureTimeline, MatchOptions
 from recordersync.media import FFmpegTools, MediaError, VideoInfo
@@ -17,7 +19,7 @@ from recordersync.models import (
     MatchStatus,
     RecordingSession,
 )
-from recordersync.render import RenderMode
+from recordersync.render import RenderMode, RenderPlan, RenderSegment, resolve_output_path
 
 
 def test_세션_탐색은_오디오_디렉터리를_분석하고_그룹화한다(tmp_path: Path) -> None:
@@ -170,6 +172,53 @@ def test_렌더_계획_생성은_승인된_매칭을_연결한다() -> None:
     assert plan.external_audio_volume == 0.8
 
 
+def test_렌더_계획_생성은_미리_색인한_세션을_재사용한다() -> None:
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),
+    )
+    video = VideoInfo(Path("clip.mov"), 4, 3840, 2160, True)
+    match = AudioMatch(
+        video.path,
+        4,
+        MatchStatus.MATCHED,
+        session_id=session.id,
+        external_start_seconds=2.5,
+    )
+
+    plan = build_render_plan(
+        match,
+        video,
+        {session.id: session},
+        Path("replace"),
+    )
+
+    assert plan.session is session
+
+
+def test_렌더_계획_생성은_세션_인덱스와_세션_ID_불일치를_거부한다() -> None:
+    indexed_session = RecordingSession(
+        "different-session",
+        (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),
+    )
+    video = VideoInfo(Path("clip.mov"), 4, 3840, 2160, True)
+    match = AudioMatch(
+        video.path,
+        4,
+        MatchStatus.MATCHED,
+        session_id="session-001",
+        external_start_seconds=2.5,
+    )
+
+    with pytest.raises(ValueError, match=r"Session mapping keys must match RecordingSession\.id"):
+        build_render_plan(
+            match,
+            video,
+            {"session-001": indexed_session},
+            Path("replace"),
+        )
+
+
 def test_렌더_계획_생성은_부분_매칭의_여러_세션을_연결한다() -> None:
     sessions = (
         RecordingSession(
@@ -205,3 +254,51 @@ def test_렌더_계획_생성은_부분_매칭의_여러_세션을_연결한다(
         "session-001",
         "session-002",
     ]
+
+
+def test_렌더_계획_생성은_부분_구간의_세션_인덱스와_ID_불일치를_거부한다() -> None:
+    indexed_session = RecordingSession(
+        "different-session",
+        (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),
+    )
+    video = VideoInfo(Path("clip.mov"), 10, 1920, 1080, True)
+    match = AudioMatch(
+        video.path,
+        10,
+        MatchStatus.PARTIAL,
+        segments=(AudioMatchSegment("session-001", 1, 2, 3),),
+    )
+
+    with pytest.raises(ValueError, match=r"Session mapping keys must match RecordingSession\.id"):
+        build_render_plan(
+            match,
+            video,
+            {"session-001": indexed_session},
+            Path("replace"),
+            mode=RenderMode.FALLBACK,
+        )
+
+
+def test_렌더_계획_생성은_매칭과_다른_영상을_거부한다() -> None:
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),
+    )
+    match = AudioMatch(
+        Path("matched.mov"),
+        4,
+        MatchStatus.MATCHED,
+        session_id=session.id,
+        external_start_seconds=2.5,
+    )
+    other_video = VideoInfo(Path("other.mov"), 4, 3840, 2160, True)
+
+    with pytest.raises(ValueError, match="Match video path does not match supplied video"):
+        build_render_plan(match, other_video, session, Path("replace"))
+
+
+def test_공개_API는_기존_렌더_타입과_함수_경로를_유지한다() -> None:
+    assert public_api.RenderMode is RenderMode
+    assert public_api.RenderPlan is RenderPlan
+    assert public_api.RenderSegment is RenderSegment
+    assert public_api.resolve_output_path is resolve_output_path

@@ -38,15 +38,19 @@ CLI와 다른 애플리케이션은 `pipeline.py` 또는 `api.py`를 호출한�
 | `matching.py` | 특징 생성, FFT NCC, confidence, drift | `match_video_features()` |
 | `recommendation.py` | 매칭 결과의 보수적인 처리 모드 추천 | `recommend_mode()` |
 | `media.py` | 파일 탐색, ffprobe, PCM/특징 추출 | `FFmpegTools`, `VideoInfo` |
-| `render.py` | concat 매니페스트, FFmpeg 명령, 원자적 출력 | `RenderPlan`, `FFmpegRenderer` |
+| `render.py` | 매칭의 렌더 계획 변환, concat 매니페스트, FFmpeg 명령, 원자적 출력 | `build_render_plan()`, `RenderPlan`, `FFmpegRenderer` |
 | `report.py` | 버전 있는 JSON 계약 | `MatchReport` |
 | `analysis_plan.py` | 분석 입력 지문 저장·검증과 번들 복원 | `write_analysis_report()`, `load_analysis_report()` |
 | `pipeline.py` | 디렉터리 단위 분석·처리 orchestration | `RecorderSyncPipeline` |
-| `api.py` | TubeArchive 등 외부 소비자를 위한 얇은 API | `discover_sessions()`, `match_videos()` |
+| `api.py` | TubeArchive 등 외부 소비자를 위한 얇은 API | `discover_sessions()`, `match_videos()`, `build_render_plan()` |
 | `cli.py` | argparse, 출력, 종료 코드 | `main()` |
 
 의존 방향은 CLI/API → pipeline/domain → media/render다. 매칭 도메인이 CLI나
 subprocess를 import하는 역방향 의존성을 만들지 않는다.
+
+CLI pipeline과 공개 API는 `build_render_plan()`을 공유한다. 이 경계에서 매칭의 영상
+경로와 실제 `VideoInfo.path`가 같은지 확인해 다른 영상에 매칭 결과를 적용하지 않는다.
+pipeline은 배치의 세션 ID 인덱스를 한 번 만들고 영상별 계획 생성에서 재사용한다.
 
 CLI pipeline과 공개 `match_videos()`는 영상별 probe·특징 추출·매칭의
 `MediaError`/`ValueError`를 해당 영상의 `error` 결과로 격리한다. 반면 세션 타임라인

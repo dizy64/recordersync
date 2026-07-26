@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
 
 from recordersync.media import VideoInfo
-from recordersync.models import RecordingSession
+from recordersync.models import AudioMatch, MatchStatus, RecordingSession
 
 
 class RenderError(RuntimeError):
@@ -135,6 +135,99 @@ def resolve_output_path(
     safe_prefix = validate_output_affix(prefix)
     safe_suffix = validate_output_affix(suffix)
     return output_dir / f"{safe_prefix}{video_path.stem}{safe_suffix}.mp4"
+
+
+def _resolve_render_segments(
+    match: AudioMatch,
+    session_by_id: Mapping[str, RecordingSession],
+) -> tuple[RenderSegment, ...]:
+    missing = {segment.session_id for segment in match.segments if segment.session_id not in session_by_id}
+    if missing:
+        raise ValueError("Match does not belong to the supplied recording sessions")
+    return tuple(
+        RenderSegment(
+            session=_indexed_session(session_by_id, segment.session_id),
+            video_start_seconds=segment.video_start_seconds,
+            external_start_seconds=segment.external_start_seconds,
+            duration_seconds=segment.duration_seconds,
+            tempo_ratio=segment.tempo_ratio,
+        )
+        for segment in match.segments
+    )
+
+
+def _indexed_session(
+    session_by_id: Mapping[str, RecordingSession],
+    session_id: str,
+) -> RecordingSession:
+    session = session_by_id[session_id]
+    if session.id != session_id:
+        raise ValueError("Session mapping keys must match RecordingSession.id")
+    return session
+
+
+def build_render_plan(
+    match: AudioMatch,
+    video: VideoInfo,
+    session: RecordingSession | Sequence[RecordingSession] | Mapping[str, RecordingSession],
+    output_dir: Path,
+    *,
+    mode: RenderMode = RenderMode.REPLACE,
+    camera_audio_volume: float | None = None,
+    external_audio_volume: float = 1.0,
+    overwrite: bool = False,
+    output_prefix: str = "",
+    output_suffix: str = "",
+) -> RenderPlan:
+    """승인된 매칭과 미디어 메타데이터를 검증하고 렌더 계획으로 변환한다."""
+
+    if match.status is MatchStatus.PARTIAL and mode is not RenderMode.FALLBACK:
+        raise ValueError("Partial audio can only be rendered in fallback mode")
+    if match.status not in {MatchStatus.MATCHED, MatchStatus.PARTIAL}:
+        raise ValueError("Only matched or partial audio can be rendered")
+    if match.video_path != video.path:
+        raise ValueError("Match video path does not match supplied video")
+
+    if isinstance(session, RecordingSession):
+        session_by_id: Mapping[str, RecordingSession] = {session.id: session}
+    elif isinstance(session, Mapping):
+        session_by_id = session
+    else:
+        session_by_id = {item.id: item for item in session}
+    render_segments = _resolve_render_segments(match, session_by_id)
+    if render_segments:
+        primary_session = render_segments[0].session
+        external_start = render_segments[0].external_start_seconds
+        tempo_ratio = render_segments[0].tempo_ratio
+    else:
+        session_id = match.session_id
+        match_external_start = match.external_start_seconds
+        if session_id is None or match_external_start is None or session_id not in session_by_id:
+            raise ValueError("Match does not belong to the supplied recording session")
+        primary_session = _indexed_session(session_by_id, session_id)
+        external_start = match_external_start
+        tempo_ratio = match.tempo_ratio
+
+    resolved_camera_volume = (
+        camera_audio_volume if camera_audio_volume is not None else (1.0 if mode is RenderMode.FALLBACK else 0.1)
+    )
+    return RenderPlan(
+        video=video,
+        session=primary_session,
+        output_path=resolve_output_path(
+            video.path,
+            output_dir,
+            prefix=output_prefix,
+            suffix=output_suffix,
+        ),
+        external_start_seconds=external_start,
+        tempo_ratio=tempo_ratio,
+        mode=mode,
+        camera_audio_volume=resolved_camera_volume,
+        external_audio_volume=external_audio_volume,
+        overwrite=overwrite,
+        segments=render_segments if mode is RenderMode.FALLBACK else (),
+    )
 
 
 def _number(value: float) -> str:
