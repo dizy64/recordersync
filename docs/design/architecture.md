@@ -154,15 +154,19 @@ fallback 추천에는 `--recommended-only`를 넣어 같은 배치의 기준 미
 ## 정밀 시작점과 clock drift
 
 30초 미만 클립은 coarse offset을 그대로 사용한다. 긴 클립은 앞뒤 특징 창을 coarse
-위치 주변 기본 ±5초에서 다시 검색한다. 앞 창과 뒤 창의 외부 span을 영상 span으로
-나눈 값이 `tempo_ratio`다.
+위치 주변 기본 ±5초에서 다시 검색한다. 두 기준점은 correlation 0.5와 peak margin
+0.02를 통과해야 하며, 신뢰할 수 있는 중간 기준점이 있으면 앞뒤 선형 모델과 150ms
+이내로 일치해야 한다. 앞 창과 뒤 창의 외부 span을 영상 span으로 나눈 값이
+`tempo_ratio`다.
 
 ```text
 tempo_ratio = external_feature_span / video_feature_span
 ```
 
-FFmpeg `atempo`에 그대로 전달하므로 1보다 크면 외부 음원을 빠르게 재생한다. 현재
-허용 범위는 FFmpeg 단일 `atempo`가 처리할 수 있는 0.5~2.0이다.
+FFmpeg `atempo`에 그대로 전달하므로 1보다 크면 외부 음원을 빠르게 재생한다. 동시에
+녹음한 기기의 clock drift로 인정하는 안전 범위는 0.99~1.01이다. 기준점 신뢰도·중간
+일관성·안전 범위 중 하나라도 충족하지 못하면 반복 음악의 다른 구간을 drift로 오인하지
+않도록 시작점과 속도 보정을 적용하지 않고 coarse offset과 `tempo_ratio=1.0`을 사용한다.
 
 ## 렌더링
 

@@ -30,6 +30,12 @@ class PartialSyntheticProject:
     video_path: Path
 
 
+@dataclass(frozen=True, slots=True)
+class DriftSyntheticProject:
+    video_dir: Path
+    audio_dir: Path
+
+
 def run_command(command: list[str], *, timeout: int = FFMPEG_TIMEOUT_SECONDS) -> str:
     result = subprocess.run(
         command,
@@ -310,3 +316,86 @@ def partial_synthetic_project(
         ]
     )
     return PartialSyntheticProject(video_dir, audio_dir, output_dir, video_path)
+
+
+@pytest.fixture(scope="module")
+def drift_synthetic_project(tmp_path_factory: pytest.TempPathFactory) -> DriftSyntheticProject:
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("ffmpeg and ffprobe are required")
+
+    root = tmp_path_factory.mktemp("recordersync-drift-e2e")
+    video_dir = root / "video"
+    audio_dir = root / "audio"
+    video_dir.mkdir()
+    audio_dir.mkdir()
+    camera_audio = root / "camera.wav"
+
+    run_command(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "anoisesrc=color=pink:seed=20260726:duration=31:sample_rate=48000",
+            "-c:a",
+            "pcm_s16le",
+            str(camera_audio),
+        ]
+    )
+    run_command(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(camera_audio),
+            "-filter_complex",
+            (
+                "[0:a]atrim=start=0:end=19.25,asetpts=PTS-STARTPTS[a0];"
+                "[0:a]atrim=start=23.25:end=31,asetpts=PTS-STARTPTS[a1];"
+                "[0:a]atrim=start=27:end=31,asetpts=PTS-STARTPTS[a2];"
+                "[a0][a1][a2]concat=n=3:v=0:a=1[out]"
+            ),
+            "-map",
+            "[out]",
+            "-c:a",
+            "pcm_s16le",
+            str(audio_dir / "REC.wav"),
+        ]
+    )
+    run_command(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(camera_audio),
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=64x64:r=24:d=31",
+            "-map",
+            "1:v:0",
+            "-map",
+            "0:a:0",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-shortest",
+            str(video_dir / "iphone.mov"),
+        ]
+    )
+    return DriftSyntheticProject(video_dir, audio_dir)

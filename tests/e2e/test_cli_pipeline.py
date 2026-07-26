@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from .conftest import PartialSyntheticProject, SyntheticProject, probe_media
+from .conftest import DriftSyntheticProject, PartialSyntheticProject, SyntheticProject, probe_media
 
 pytestmark = pytest.mark.e2e
 
@@ -276,3 +276,31 @@ def test_폴백_처리는_다중_부분_구간만_레코더_오디오로_교체�
     final_source_stat = partial_synthetic_project.video_path.stat()
     assert final_source_stat.st_size == source_stat.st_size
     assert final_source_stat.st_mtime_ns == source_stat.st_mtime_ns
+
+
+def test_분석_CLI는_반복_끝_구간을_과도한_클럭_드리프트로_적용하지_않는다(
+    drift_synthetic_project: DriftSyntheticProject,
+) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "recordersync",
+            "analyze",
+            str(drift_synthetic_project.video_dir),
+            "--audio-dir",
+            str(drift_synthetic_project.audio_dir),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=180,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    match = payload["matches"][0]
+    assert match["status"] == "matched"
+    assert match["confidence"] > 0.8
+    assert match["tempo_ratio"] == 1.0
