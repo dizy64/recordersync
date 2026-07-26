@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # CLAUDE_MODEL을 secrets 또는 repository variable로 지정하면 리뷰 모델을 바꿀 수 있다.
-      # 둘 다 없으면 Sonnet 5로 폴백한다.
-      CLAUDE_MODEL: ${{ secrets.CLAUDE_MODEL || vars.CLAUDE_MODEL || 'claude-sonnet-5' }}
+      # CLAUDE_MODEL repository variable을 지정하면 리뷰 모델을 바꿀 수 있다.
+      # 없으면 Sonnet 5로 폴백한다.
+      CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL || 'claude-sonnet-5' }}
     steps:
       - uses: actions/checkout@v6
         with:
