@@ -13,6 +13,10 @@ jobs:
   review:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # CLAUDE_MODEL을 secrets 또는 repository variable로 지정하면 리뷰 모델을 바꿀 수 있다.
+      # 둘 다 없으면 Sonnet 5로 폴백한다.
+      CLAUDE_MODEL: ${{ secrets.CLAUDE_MODEL || vars.CLAUDE_MODEL || 'claude-sonnet-5' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -48,4 +52,5 @@ jobs:
             GitHub 코멘트로만 결과를 남기고, 메시지 텍스트로 리뷰 내용을 출력하지 마세요.
 
           claude_args: |
+            --model "${{ env.CLAUDE_MODEL }}"
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
