@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from recordersync import api as public_api
 from recordersync.api import build_render_plan, discover_sessions, match_videos
 from recordersync.matching import FeatureTimeline, MatchOptions
 from recordersync.media import FFmpegTools, MediaError, VideoInfo
@@ -18,7 +19,7 @@ from recordersync.models import (
     MatchStatus,
     RecordingSession,
 )
-from recordersync.render import RenderMode
+from recordersync.render import RenderMode, RenderPlan, RenderSegment, resolve_output_path
 
 
 def test_세션_탐색은_오디오_디렉터리를_분석하고_그룹화한다(tmp_path: Path) -> None:
@@ -271,3 +272,10 @@ def test_렌더_계획_생성은_매칭과_다른_영상을_거부한다() -> No
 
     with pytest.raises(ValueError, match="Match video path does not match supplied video"):
         build_render_plan(match, other_video, session, Path("replace"))
+
+
+def test_공개_API는_기존_렌더_타입과_함수_경로를_유지한다() -> None:
+    assert public_api.RenderMode is RenderMode
+    assert public_api.RenderPlan is RenderPlan
+    assert public_api.RenderSegment is RenderSegment
+    assert public_api.resolve_output_path is resolve_output_path

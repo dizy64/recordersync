@@ -8,8 +8,18 @@ from pathlib import Path
 from recordersync.matching import MatchOptions, match_video_features
 from recordersync.media import FFmpegTools, MediaError, discover_audio_files
 from recordersync.models import AudioMatch, MatchStatus, RecordingSession
-from recordersync.render import build_render_plan as build_render_plan
+from recordersync.render import RenderMode, RenderPlan, RenderSegment, build_render_plan, resolve_output_path
 from recordersync.sessions import group_recording_sessions
+
+__all__ = (
+    "RenderMode",
+    "RenderPlan",
+    "RenderSegment",
+    "build_render_plan",
+    "discover_sessions",
+    "match_videos",
+    "resolve_output_path",
+)
 
 
 def discover_sessions(

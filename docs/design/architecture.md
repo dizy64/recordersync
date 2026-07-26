@@ -42,7 +42,7 @@ CLI와 다른 애플리케이션은 `pipeline.py` 또는 `api.py`를 호출한�
 | `report.py` | 버전 있는 JSON 계약 | `MatchReport` |
 | `analysis_plan.py` | 분석 입력 지문 저장·검증과 번들 복원 | `write_analysis_report()`, `load_analysis_report()` |
 | `pipeline.py` | 디렉터리 단위 분석·처리 orchestration | `RecorderSyncPipeline` |
-| `api.py` | TubeArchive 등 외부 소비자를 위한 얇은 API | `discover_sessions()`, `match_videos()` |
+| `api.py` | TubeArchive 등 외부 소비자를 위한 얇은 API | `discover_sessions()`, `match_videos()`, `build_render_plan()` |
 | `cli.py` | argparse, 출력, 종료 코드 | `main()` |
 
 의존 방향은 CLI/API → pipeline/domain → media/render다. 매칭 도메인이 CLI나
