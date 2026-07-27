@@ -151,7 +151,8 @@ def test_교체_명령_생성은_tubearchive_프로필을_사용한다() -> None
     assert "-fps_mode:v passthrough" in joined
     assert "-c:a aac -b:a 256k -ar 48000" in joined
     assert "[external]" in joined
-    assert "aresample=48000,aformat=channel_layouts=stereo" in joined
+    assert "volume=1,atempo=1.0002" in joined
+    assert "aformat=channel_layouts=stereo" not in joined
     assert "amix" not in joined
     assert "scale=" not in joined
     assert "pad=" not in joined
@@ -501,7 +502,7 @@ def test_믹스_명령_생성은_카메라_오디오를_요청한_볼륨으로_�
 
     assert "-y" in command[:8]
     assert "volume=0.08" in joined
-    assert "volume=0.65,aresample=48000,aformat=channel_layouts=stereo,atempo=1" in joined
+    assert "volume=0.65,atempo=1" in joined
     assert "amix=inputs=2" in joined
     assert "scale=" not in joined
     assert "pad=" not in joined

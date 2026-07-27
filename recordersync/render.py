@@ -312,7 +312,6 @@ class FFmpegCommandBuilder:
         if include_gain:
             if plan.audio_level_policy is None:
                 filters.append(f"volume={_number(plan.external_audio_volume)}")
-                filters.extend(("aresample=48000", "aformat=channel_layouts=stereo"))
             else:
                 if plan.external_audio_gain_db is None:
                     raise ValueError("loudness-safe render requires measured static gain")
