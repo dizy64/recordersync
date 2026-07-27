@@ -12,9 +12,17 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
 from recordersync.analysis_plan import write_analysis_report
+from recordersync.audio_levels import (
+    AudioLevelMetrics,
+    AudioLevelPolicy,
+    AudioLevelReport,
+    OutputChannelLayout,
+    decide_static_gain,
+)
 from recordersync.media import VideoInfo
 from recordersync.models import AudioChunk, AudioMatch, MatchStatus, RecordingSession
 from recordersync.pipeline import AnalysisBundle
+from recordersync.report import MatchReport
 
 SCHEMA_PATH = Path(__file__).parents[2] / "schemas" / "recordersync-report-v2.schema.json"
 REPORT_DOCUMENT_PATH = Path(__file__).parents[2] / "docs" / "reference" / "report-schema.md"
@@ -77,6 +85,96 @@ def test_리포트_스키마는_일반과_재사용_분석_리포트를_검증�
     write_analysis_report(bundle.report(), bundle, report_path)
 
     validator.validate(json.loads(report_path.read_text(encoding="utf-8")))
+
+
+def test_리포트_스키마는_음량_안전_처리_결과를_검증한다(
+    schema: dict[str, object],
+    bundle: AnalysisBundle,
+) -> None:
+    policy = AudioLevelPolicy(-16.0, -1.0, OutputChannelLayout.STEREO, 0.5)
+    input_metrics = AudioLevelMetrics(2, 48_000, -20.0, 7.0, -8.1, -8.0, 10.0, "pcm_f32le")
+    output_metrics = AudioLevelMetrics(2, 48_000, -16.1, 7.0, -1.2, -1.1, 10.0, "aac")
+    report = MatchReport(
+        sessions=bundle.sessions,
+        matches=bundle.matches,
+        audio_levels=(
+            AudioLevelReport(
+                policy=policy,
+                input_metrics=input_metrics,
+                decision=decide_static_gain(input_metrics, policy),
+                output_metrics=output_metrics,
+            ),
+        ),
+    )
+
+    Draft202012Validator(schema).validate(report.to_dict())
+
+
+def test_리포트_스키마는_gain_충돌과_입력_분석_실패를_검증한다(
+    schema: dict[str, object],
+    bundle: AnalysisBundle,
+) -> None:
+    policy = AudioLevelPolicy(-7.3, -1.0, OutputChannelLayout.STEREO, 0.5)
+    input_metrics = AudioLevelMetrics(2, 48_000, -11.1, 10.6, 7.6, 7.7, 10.0, "aac")
+    conflict = AudioLevelReport(
+        policy=policy,
+        input_metrics=input_metrics,
+        decision=decide_static_gain(input_metrics, policy),
+        validation_failures=("loudness target conflicts with true-peak ceiling",),
+    )
+    analysis_failure = AudioLevelReport(
+        policy=policy,
+        validation_failures=("input analysis error: corrupt frame",),
+    )
+    validator = Draft202012Validator(schema)
+
+    for audio_levels in (conflict, analysis_failure):
+        report = MatchReport(
+            sessions=bundle.sessions,
+            matches=bundle.matches,
+            audio_levels=(audio_levels,),
+        )
+        validator.validate(report.to_dict())
+
+
+@pytest.mark.parametrize(
+    ("output", "passed", "failures"),
+    [
+        (None, True, []),
+        ("keep", False, []),
+        ("keep", True, ["unexpected failure"]),
+    ],
+)
+def test_리포트_스키마는_음량_검증_상태의_모순을_거부한다(
+    schema: dict[str, object],
+    bundle: AnalysisBundle,
+    output: object,
+    passed: bool,
+    failures: list[str],
+) -> None:
+    policy = AudioLevelPolicy(-16.0, -1.0, OutputChannelLayout.STEREO, 0.5)
+    input_metrics = AudioLevelMetrics(2, 48_000, -20.0, 7.0, -8.1, -8.0, 10.0, "pcm_f32le")
+    output_metrics = AudioLevelMetrics(2, 48_000, -16.1, 7.0, -1.2, -1.1, 10.0, "aac")
+    report = MatchReport(
+        sessions=bundle.sessions,
+        matches=bundle.matches,
+        audio_levels=(
+            AudioLevelReport(
+                policy=policy,
+                input_metrics=input_metrics,
+                decision=decide_static_gain(input_metrics, policy),
+                output_metrics=output_metrics,
+            ),
+        ),
+    )
+    payload = report.to_dict()
+    levels = payload["matches"][0]["audio_levels"]
+    levels["validation"] = {"passed": passed, "failures": failures}
+    if output is None:
+        levels["output"] = None
+
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schema).validate(payload)
 
 
 def test_리포트_스키마는_정의되지_않은_매칭_상태를_거부한다(

@@ -6,6 +6,15 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
+from recordersync.audio_levels import (
+    AudioLevelMetrics,
+    AudioLevelPolicy,
+    AudioLevelReport,
+    OutputChannelLayout,
+    decide_static_gain,
+)
 from recordersync.models import (
     AudioChunk,
     AudioMatch,
@@ -13,7 +22,7 @@ from recordersync.models import (
     MatchStatus,
     RecordingSession,
 )
-from recordersync.report import MatchReport, ReportLanguage
+from recordersync.report import MatchReport, ReportLanguage, format_audio_level_summary
 
 
 def test_매칭_리포트는_세션과_매칭과_요약을_직렬화한다() -> None:
@@ -63,6 +72,138 @@ def test_매칭_리포트는_세션과_매칭과_요약을_직렬화한다() -> 
     assert payload["matches"][0]["recommended_options"] == {}
     assert payload["matches"][1]["reason"] == "최상위 후보와 차순위 후보의 차이가 충분하지 않습니다."
     assert payload["matches"][1]["recommended_mode"] is None
+    assert "audio_levels" not in payload["matches"][0]
+
+
+def test_처리_리포트는_음량_측정_gain_결정과_최종_AAC_검증을_직렬화한다() -> None:
+    match = AudioMatch(
+        Path("clip.mov"),
+        30,
+        MatchStatus.MATCHED,
+        session_id="session-001",
+        external_start_seconds=2.5,
+        output_path=Path("replace/clip.mp4"),
+    )
+    policy = AudioLevelPolicy(
+        target_lufs=-16.0,
+        maximum_true_peak_dbtp=-1.0,
+        output_channel_layout=OutputChannelLayout.STEREO,
+        loudness_tolerance_lu=0.5,
+    )
+    input_metrics = AudioLevelMetrics(2, 48_000, -20.0, 7.0, -8.1, -8.0, 30.0, "pcm_f32le")
+    output_metrics = AudioLevelMetrics(2, 48_000, -16.2, 7.0, -1.2, -1.1, 30.0, "aac")
+    audio_levels = AudioLevelReport(
+        policy=policy,
+        input_metrics=input_metrics,
+        decision=decide_static_gain(input_metrics, policy),
+        output_metrics=output_metrics,
+    )
+    report = MatchReport(
+        sessions=(),
+        matches=(match,),
+        audio_levels=(audio_levels,),
+        created_at=datetime(2026, 7, 27, tzinfo=UTC),
+    )
+
+    payload = report.to_dict()
+
+    assert payload["matches"][0]["audio_levels"] == {
+        "policy": {
+            "target_lufs": -16.0,
+            "maximum_true_peak_dbtp": -1.0,
+            "output_channel_layout": "stereo",
+            "loudness_tolerance_lu": 0.5,
+            "dynamics": "none",
+        },
+        "input": {
+            "channels": 2,
+            "sample_rate": 48_000,
+            "integrated_loudness_lufs": -20.0,
+            "loudness_range_lu": 7.0,
+            "sample_peak_dbfs": -8.1,
+            "true_peak_dbtp": -8.0,
+            "duration_seconds": 30.0,
+            "codec": "pcm_f32le",
+            "decoder_error": None,
+        },
+        "decision": {
+            "requested_gain_db": 4.0,
+            "maximum_safe_gain_db": 7.0,
+            "applied_gain_db": 4.0,
+            "expected_true_peak_dbtp": -4.0,
+            "conflict_db": 0.0,
+            "limiter_free_lufs": -13.0,
+        },
+        "output": {
+            "channels": 2,
+            "sample_rate": 48_000,
+            "integrated_loudness_lufs": -16.2,
+            "loudness_range_lu": 7.0,
+            "sample_peak_dbfs": -1.2,
+            "true_peak_dbtp": -1.1,
+            "duration_seconds": 30.0,
+            "codec": "aac",
+            "decoder_error": None,
+        },
+        "validation": {"passed": True, "failures": []},
+    }
+    assert format_audio_level_summary(match, audio_levels) == (
+        "clip.mov | 음량 검증: 통과 | 입력: -20.0 LUFS / -8.0 dBTP | gain: +4.0 dB | 출력: -16.2 LUFS / -1.1 dBTP"
+    )
+
+
+def test_사람용_음량_요약은_peak_충돌의_필수_판정값을_표시한다() -> None:
+    match = AudioMatch(Path("clip.mov"), 30, MatchStatus.ERROR)
+    policy = AudioLevelPolicy(-7.3, -1.0, OutputChannelLayout.MONO, 0.5)
+    input_metrics = AudioLevelMetrics(1, 48_000, -11.1, 10.6, 7.73, 7.7, 30.0, "aac")
+    audio_levels = AudioLevelReport(
+        policy=policy,
+        input_metrics=input_metrics,
+        decision=decide_static_gain(input_metrics, policy),
+        validation_failures=("loudness target conflicts with true-peak ceiling",),
+    )
+
+    assert format_audio_level_summary(match, audio_levels) == (
+        "clip.mov | 음량 검증: 실패 | 입력: -11.1 LUFS / 7.7 dBTP | "
+        "목표 gain: +3.8 dB | 안전 gain: -8.7 dB | 초과: 12.5 dB | "
+        "limiter 없이 가능한 음량: -19.8 LUFS | 출력: 없음"
+    )
+
+
+def test_사람용_음량_요약은_입력_분석_실패를_표시한다() -> None:
+    match = AudioMatch(Path("clip.mov"), 30, MatchStatus.ERROR)
+    policy = AudioLevelPolicy(-16.0, -1.0, OutputChannelLayout.MONO, 0.5)
+    audio_levels = AudioLevelReport(
+        policy=policy,
+        validation_failures=("input analysis error: invalid frame",),
+    )
+
+    assert format_audio_level_summary(match, audio_levels) == (
+        "clip.mov | 음량 검증: 실패 | 입력: 측정 실패 | 출력: 없음 | 실패: input analysis error: invalid frame"
+    )
+
+
+@pytest.mark.parametrize(
+    ("reason", "translated"),
+    [
+        (
+            "Loudness target conflicts with true-peak ceiling",
+            "목표 음량과 true peak 제한이 충돌합니다.",
+        ),
+        ("Input audio analysis failed", "입력 오디오 음량 분석에 실패했습니다."),
+        ("Final AAC validation failed", "최종 AAC 음량 검증에 실패했습니다."),
+    ],
+)
+def test_음량_안전_오류_사유는_한국어로_직렬화한다(
+    reason: str,
+    translated: str,
+) -> None:
+    report = MatchReport(
+        sessions=(),
+        matches=(AudioMatch(Path("clip.mov"), 30, MatchStatus.ERROR, reason=reason),),
+    )
+
+    assert report.to_dict()["matches"][0]["reason"] == translated
 
 
 def test_매칭_리포트는_부분_구간과_레코더_사용률을_표시한다() -> None:

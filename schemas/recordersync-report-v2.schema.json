@@ -269,6 +269,256 @@
               "exclusiveMinimum": 0
             }
           }
+        },
+        "audio_levels": {
+          "$ref": "#/$defs/audioLevels"
+        }
+      }
+    },
+    "audioMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "channels",
+        "sample_rate",
+        "integrated_loudness_lufs",
+        "loudness_range_lu",
+        "sample_peak_dbfs",
+        "true_peak_dbtp",
+        "duration_seconds",
+        "codec",
+        "decoder_error"
+      ],
+      "properties": {
+        "channels": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sample_rate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "integrated_loudness_lufs": {
+          "type": "number"
+        },
+        "loudness_range_lu": {
+          "type": "number",
+          "minimum": 0
+        },
+        "sample_peak_dbfs": {
+          "type": "number"
+        },
+        "true_peak_dbtp": {
+          "type": "number"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "codec": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "decoder_error": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "audioLevelPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_lufs",
+        "maximum_true_peak_dbtp",
+        "output_channel_layout",
+        "loudness_tolerance_lu",
+        "dynamics"
+      ],
+      "properties": {
+        "target_lufs": {
+          "type": "number",
+          "minimum": -70,
+          "maximum": -5
+        },
+        "maximum_true_peak_dbtp": {
+          "type": "number",
+          "minimum": -99,
+          "maximum": 0
+        },
+        "output_channel_layout": {
+          "enum": ["preserve", "mono", "stereo"]
+        },
+        "loudness_tolerance_lu": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10
+        },
+        "dynamics": {
+          "const": "none"
+        }
+      }
+    },
+    "staticGainDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested_gain_db",
+        "maximum_safe_gain_db",
+        "applied_gain_db",
+        "expected_true_peak_dbtp",
+        "conflict_db",
+        "limiter_free_lufs"
+      ],
+      "properties": {
+        "requested_gain_db": {
+          "type": "number"
+        },
+        "maximum_safe_gain_db": {
+          "type": "number"
+        },
+        "applied_gain_db": {
+          "type": ["number", "null"]
+        },
+        "expected_true_peak_dbtp": {
+          "type": ["number", "null"]
+        },
+        "conflict_db": {
+          "type": "number",
+          "minimum": 0
+        },
+        "limiter_free_lufs": {
+          "type": "number"
+        }
+      }
+    },
+    "audioLevelValidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "failures"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "passed": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "failures": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "passed": {
+                "const": false
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "failures": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
+      }
+    },
+    "audioLevels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "input", "decision", "output", "validation"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "validation": {
+                "properties": {
+                  "passed": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "input": {
+                "$ref": "#/$defs/audioMetrics"
+              },
+              "decision": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/staticGainDecision"
+                  },
+                  {
+                    "properties": {
+                      "applied_gain_db": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                ]
+              },
+              "output": {
+                "$ref": "#/$defs/audioMetrics"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "policy": {
+          "$ref": "#/$defs/audioLevelPolicy"
+        },
+        "input": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/audioMetrics"
+            }
+          ]
+        },
+        "decision": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/staticGainDecision"
+            }
+          ]
+        },
+        "output": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/audioMetrics"
+            }
+          ]
+        },
+        "validation": {
+          "$ref": "#/$defs/audioLevelValidation"
         }
       }
     },

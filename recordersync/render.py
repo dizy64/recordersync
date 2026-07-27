@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 from collections.abc import Mapping, Sequence
@@ -10,12 +11,29 @@ from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
 
+from recordersync.audio_levels import (
+    AudioLevelMetrics,
+    AudioLevelPolicy,
+    AudioLevelReport,
+    OutputChannelLayout,
+    decide_static_gain,
+    parse_ebur128_summary,
+    validate_output_metrics,
+)
 from recordersync.media import VideoInfo
 from recordersync.models import AudioMatch, MatchStatus, RecordingSession
 
 
 class RenderError(RuntimeError):
     """하드웨어와 소프트웨어 렌더가 모두 실패한 경우."""
+
+
+class AudioLevelRenderError(RenderError):
+    """음량 정책 충돌 또는 최종 AAC 검증 실패."""
+
+    def __init__(self, message: str, report: AudioLevelReport) -> None:
+        super().__init__(message)
+        self.report = report
 
 
 class RenderMode(StrEnum):
@@ -67,6 +85,8 @@ class RenderPlan:
     overwrite: bool = False
     segments: tuple[RenderSegment, ...] = ()
     crossfade_seconds: float = 0.05
+    audio_level_policy: AudioLevelPolicy | None = None
+    external_audio_gain_db: float | None = None
 
     def __post_init__(self) -> None:
         if self.external_start_seconds < 0:
@@ -83,6 +103,12 @@ class RenderPlan:
             raise ValueError(f"{self.mode.value} mode requires camera audio")
         if self.segments and self.mode is not RenderMode.FALLBACK:
             raise ValueError("explicit render segments require fallback mode")
+        if self.audio_level_policy is not None and self.mode is not RenderMode.REPLACE:
+            raise ValueError("loudness safety requires replace mode")
+        if self.audio_level_policy is not None and self.external_audio_volume != 1.0:
+            raise ValueError("loudness safety cannot be combined with external_audio_volume")
+        if self.external_audio_gain_db is not None and self.audio_level_policy is None:
+            raise ValueError("external_audio_gain_db requires audio_level_policy")
 
         previous_end = 0.0
         for index, segment in enumerate(self.segments):
@@ -178,6 +204,7 @@ def build_render_plan(
     overwrite: bool = False,
     output_prefix: str = "",
     output_suffix: str = "",
+    audio_level_policy: AudioLevelPolicy | None = None,
 ) -> RenderPlan:
     """승인된 매칭과 미디어 메타데이터를 검증하고 렌더 계획으로 변환한다."""
 
@@ -227,6 +254,7 @@ def build_render_plan(
         external_audio_volume=external_audio_volume,
         overwrite=overwrite,
         segments=render_segments if mode is RenderMode.FALLBACK else (),
+        audio_level_policy=audio_level_policy,
     )
 
 
@@ -248,6 +276,59 @@ class FFmpegCommandBuilder:
     def __init__(self, ffmpeg_path: str = "ffmpeg") -> None:
         self.ffmpeg_path = ffmpeg_path
 
+    @staticmethod
+    def expected_output_channels(plan: RenderPlan) -> int:
+        policy = plan.audio_level_policy
+        source_channels = plan.session.chunks[0].channels
+        if policy is None or policy.output_channel_layout is OutputChannelLayout.PRESERVE:
+            return source_channels
+        if policy.output_channel_layout is OutputChannelLayout.MONO:
+            return 1
+        return 2
+
+    @staticmethod
+    def _approved_channel_filter(plan: RenderPlan) -> str | None:
+        policy = plan.audio_level_policy
+        if policy is None:
+            return None
+        source_channels = plan.session.chunks[0].channels
+        if source_channels not in {1, 2}:
+            raise ValueError("loudness safety supports mono or stereo recorder audio")
+        layout = policy.output_channel_layout
+        if layout is OutputChannelLayout.PRESERVE:
+            return "aformat=channel_layouts=mono" if source_channels == 1 else "aformat=channel_layouts=stereo"
+        if layout is OutputChannelLayout.MONO:
+            return "aformat=channel_layouts=mono" if source_channels == 1 else "pan=mono|c0=0.5*c0+0.5*c1"
+        return "pan=stereo|c0=c0|c1=c0" if source_channels == 1 else "aformat=channel_layouts=stereo"
+
+    @classmethod
+    def _replace_audio_chain(
+        cls,
+        plan: RenderPlan,
+        *,
+        include_gain: bool,
+    ) -> str:
+        filters: list[str] = []
+        if include_gain:
+            if plan.audio_level_policy is None:
+                filters.append(f"volume={_number(plan.external_audio_volume)}")
+            else:
+                if plan.external_audio_gain_db is None:
+                    raise ValueError("loudness-safe render requires measured static gain")
+                filters.append(f"volume={_number(plan.external_audio_gain_db)}dB")
+        filters.extend(
+            [
+                f"atempo={_number(plan.tempo_ratio)}",
+                "apad",
+                f"atrim=duration={_number(plan.video.duration_seconds)}",
+                "asetpts=PTS-STARTPTS",
+            ]
+        )
+        channel_filter = cls._approved_channel_filter(plan)
+        if channel_filter is not None:
+            filters.extend((channel_filter, "aformat=sample_fmts=fltp"))
+        return ",".join(filters)
+
     def build(
         self,
         plan: RenderPlan,
@@ -262,11 +343,7 @@ class FFmpegCommandBuilder:
             fallback_filters, audio_label = self._fallback_audio_filters(plan, segments)
             filters.extend(fallback_filters)
         else:
-            tempo = _number(plan.tempo_ratio)
-            filters.append(
-                f"[1:a:0]volume={_number(plan.external_audio_volume)},atempo={tempo},"
-                f"apad,atrim=duration={duration},asetpts=PTS-STARTPTS[external]"
-            )
+            filters.append(f"[1:a:0]{self._replace_audio_chain(plan, include_gain=True)}[external]")
             audio_label = "[external]"
             if plan.mode is RenderMode.MIX:
                 filters.extend(
@@ -348,6 +425,66 @@ class FFmpegCommandBuilder:
         command.extend(["-movflags", "+faststart", str(plan.output_path)])
         return command
 
+    def build_audio_analysis(
+        self,
+        plan: RenderPlan,
+        manifest_paths: Path | Mapping[str, Path],
+    ) -> list[str]:
+        """실제 replace 구간을 gain 적용 전 float 상태로 EBU R128 측정한다."""
+
+        if plan.audio_level_policy is None:
+            raise ValueError("audio analysis requires audio_level_policy")
+        if plan.mode is not RenderMode.REPLACE:
+            raise ValueError("audio analysis requires replace mode")
+        segment = plan.resolved_segments[0]
+        return [
+            self.ffmpeg_path,
+            "-hide_banner",
+            "-nostats",
+            "-xerror",
+            "-err_detect",
+            "explode",
+            "-ss",
+            _number(segment.external_start_seconds),
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(self._manifest_path(manifest_paths, segment.session.id)),
+            "-filter_complex",
+            (
+                f"[0:a:0]{self._replace_audio_chain(plan, include_gain=False)},"
+                "ebur128=peak=sample+true:framelog=quiet[measured]"
+            ),
+            "-map",
+            "[measured]",
+            "-f",
+            "null",
+            "-",
+        ]
+
+    def build_output_audio_analysis(self, output_path: Path) -> list[str]:
+        """최종 AAC를 오류 즉시 중단 모드로 재디코딩해 EBU R128 측정한다."""
+
+        return [
+            self.ffmpeg_path,
+            "-hide_banner",
+            "-nostats",
+            "-xerror",
+            "-err_detect",
+            "explode",
+            "-i",
+            str(output_path),
+            "-map",
+            "0:a:0",
+            "-af",
+            "aformat=sample_fmts=fltp,ebur128=peak=sample+true:framelog=quiet",
+            "-f",
+            "null",
+            "-",
+        ]
+
     @staticmethod
     def _manifest_path(manifest_paths: Path | Mapping[str, Path], session_id: str) -> Path:
         if isinstance(manifest_paths, Path):
@@ -424,20 +561,144 @@ class FFmpegCommandBuilder:
         return filters, "[aout]"
 
 
+@dataclass(frozen=True, slots=True)
+class RenderedOutput:
+    """최종 파일과 선택적으로 수행된 음량 검증 결과."""
+
+    output_path: Path
+    audio_levels: AudioLevelReport | None = None
+
+
+class FFmpegAudioAnalyzer:
+    """FFmpeg EBU R128과 ffprobe를 이용한 렌더 전후 오디오 측정기."""
+
+    def __init__(
+        self,
+        command_builder: FFmpegCommandBuilder | None = None,
+        *,
+        ffprobe_path: str = "ffprobe",
+    ) -> None:
+        self.command_builder = command_builder or FFmpegCommandBuilder()
+        self.ffprobe_path = ffprobe_path
+
+    @staticmethod
+    def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(command, capture_output=True, text=True, check=False)
+
+    @staticmethod
+    def _decoder_error(result: subprocess.CompletedProcess[str]) -> str | None:
+        if result.returncode == 0:
+            return None
+        lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+        for line in reversed(lines):
+            lowered = line.casefold()
+            if "error" in lowered or "invalid" in lowered:
+                return line
+        return " | ".join(lines[-3:]) if lines else f"FFmpeg exited with code {result.returncode}"
+
+    @classmethod
+    def _metrics(
+        cls,
+        result: subprocess.CompletedProcess[str],
+        *,
+        channels: int,
+        sample_rate: int,
+        duration_seconds: float,
+        codec: str,
+    ) -> AudioLevelMetrics:
+        try:
+            measured = parse_ebur128_summary(result.stderr)
+        except ValueError as exc:
+            diagnostic = cls._decoder_error(result) or str(exc)
+            raise RenderError(f"Failed to measure audio levels: {diagnostic}") from exc
+        return AudioLevelMetrics(
+            channels=channels,
+            sample_rate=sample_rate,
+            integrated_loudness_lufs=measured.integrated_loudness_lufs,
+            loudness_range_lu=measured.loudness_range_lu,
+            sample_peak_dbfs=measured.sample_peak_dbfs,
+            true_peak_dbtp=measured.true_peak_dbtp,
+            duration_seconds=duration_seconds,
+            codec=codec,
+            decoder_error=cls._decoder_error(result),
+        )
+
+    def measure_render_input(
+        self,
+        plan: RenderPlan,
+        manifest_paths: Path | Mapping[str, Path],
+    ) -> AudioLevelMetrics:
+        chunk = plan.session.chunks[0]
+        result = self._run(self.command_builder.build_audio_analysis(plan, manifest_paths))
+        return self._metrics(
+            result,
+            channels=self.command_builder.expected_output_channels(plan),
+            sample_rate=chunk.sample_rate,
+            duration_seconds=plan.video.duration_seconds,
+            codec=chunk.codec,
+        )
+
+    def measure_output(self, output_path: Path) -> AudioLevelMetrics:
+        probe = self._run(
+            [
+                self.ffprobe_path,
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "stream=channels,sample_rate,duration,codec_name:format=duration",
+                "-of",
+                "json",
+                str(output_path),
+            ]
+        )
+        if probe.returncode != 0:
+            diagnostic = self._decoder_error(probe) or "ffprobe failed"
+            raise RenderError(f"Failed to probe rendered audio: {diagnostic}")
+        try:
+            payload = json.loads(probe.stdout)
+            streams = payload["streams"]
+            stream = streams[0]
+            raw_format = payload["format"]
+            channels = int(stream["channels"])
+            sample_rate = int(stream["sample_rate"])
+            raw_duration = stream.get("duration") or raw_format.get("duration")
+            if raw_duration is None:
+                raise KeyError("duration")
+            duration_seconds = float(raw_duration)
+            codec = str(stream["codec_name"])
+        except (IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise RenderError("Invalid ffprobe payload for rendered audio") from exc
+        result = self._run(self.command_builder.build_output_audio_analysis(output_path))
+        return self._metrics(
+            result,
+            channels=channels,
+            sample_rate=sample_rate,
+            duration_seconds=duration_seconds,
+            codec=codec,
+        )
+
+
 class FFmpegRenderer:
     """임시 출력 후 원자적 교체와 libx265 폴백을 수행한다."""
 
     def __init__(
         self,
         command_builder: FFmpegCommandBuilder | None = None,
+        audio_analyzer: FFmpegAudioAnalyzer | None = None,
     ) -> None:
         self.command_builder = command_builder or FFmpegCommandBuilder()
+        self.audio_analyzer = audio_analyzer or FFmpegAudioAnalyzer(self.command_builder)
 
     @staticmethod
     def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
         return subprocess.run(command, capture_output=True, text=True, check=False)
 
     def render(self, plan: RenderPlan) -> Path:
+        return self.render_with_report(plan).output_path
+
+    def render_with_report(self, plan: RenderPlan) -> RenderedOutput:
         if plan.output_path.resolve() == plan.video.path.resolve():
             raise ValueError("Output path must not overwrite the source video")
         if plan.output_path.exists() and not plan.overwrite:
@@ -445,6 +706,7 @@ class FFmpegRenderer:
         plan.output_path.parent.mkdir(parents=True, exist_ok=True)
         temp_output = plan.output_path.with_name(f".{plan.output_path.stem}.{uuid4().hex}.tmp{plan.output_path.suffix}")
         temp_plan = replace(plan, output_path=temp_output, overwrite=True)
+        audio_levels: AudioLevelReport | None = None
 
         try:
             with tempfile.TemporaryDirectory(prefix="recordersync-") as temp_dir:
@@ -454,23 +716,98 @@ class FFmpegRenderer:
                     manifest_path = Path(temp_dir) / f"audio-concat-{index}.txt"
                     manifest_path.write_text(build_concat_manifest(session), encoding="utf-8")
                     manifest_paths[session_id] = manifest_path
-                hardware = self._run(self.command_builder.build(temp_plan, manifest_paths))
-                if hardware.returncode != 0:
-                    temp_output.unlink(missing_ok=True)
-                    software = self._run(
-                        self.command_builder.build(
-                            temp_plan,
-                            manifest_paths,
-                            software_fallback=True,
+
+                effective_plan = temp_plan
+                if plan.audio_level_policy is not None:
+                    try:
+                        input_metrics = self.audio_analyzer.measure_render_input(plan, manifest_paths)
+                    except (RenderError, ValueError) as exc:
+                        audio_levels = AudioLevelReport(
+                            plan.audio_level_policy,
+                            validation_failures=(f"input analysis error: {exc}",),
                         )
+                        raise AudioLevelRenderError(
+                            "Input audio analysis failed",
+                            audio_levels,
+                        ) from exc
+                    decision = decide_static_gain(input_metrics, plan.audio_level_policy)
+                    audio_levels = AudioLevelReport(plan.audio_level_policy, input_metrics, decision)
+                    if input_metrics.decoder_error is not None:
+                        audio_levels = replace(
+                            audio_levels,
+                            validation_failures=(f"decoder error: {input_metrics.decoder_error}",),
+                        )
+                        raise AudioLevelRenderError(
+                            "Input audio analysis failed",
+                            audio_levels,
+                        )
+                    if decision.applied_gain_db is None:
+                        audio_levels = replace(
+                            audio_levels,
+                            validation_failures=("loudness target conflicts with true-peak ceiling",),
+                        )
+                        raise AudioLevelRenderError(
+                            "Loudness target conflicts with true-peak ceiling",
+                            audio_levels,
+                        )
+                    effective_plan = replace(temp_plan, external_audio_gain_db=decision.applied_gain_db)
+
+                try:
+                    hardware = self._run(self.command_builder.build(effective_plan, manifest_paths))
+                    if hardware.returncode != 0:
+                        temp_output.unlink(missing_ok=True)
+                        software = self._run(
+                            self.command_builder.build(
+                                effective_plan,
+                                manifest_paths,
+                                software_fallback=True,
+                            )
+                        )
+                        if software.returncode != 0:
+                            raise RenderError(
+                                f"FFmpeg render failed with VideoToolbox and libx265: {software.stderr.strip()}"
+                            )
+                    if not temp_output.is_file():
+                        raise RenderError("FFmpeg reported success but produced no output file")
+                except RenderError as exc:
+                    if audio_levels is None:
+                        raise
+                    audio_levels = replace(
+                        audio_levels,
+                        validation_failures=(f"render error: {exc}",),
                     )
-                    if software.returncode != 0:
-                        raise RenderError(
-                            f"FFmpeg render failed with VideoToolbox and libx265: {software.stderr.strip()}"
+                    raise AudioLevelRenderError(str(exc), audio_levels) from exc
+
+                if audio_levels is not None:
+                    try:
+                        output_metrics = self.audio_analyzer.measure_output(temp_output)
+                    except RenderError as exc:
+                        failed_report = replace(
+                            audio_levels,
+                            validation_failures=(f"decoder error: {exc}",),
                         )
-            if not temp_output.is_file():
-                raise RenderError("FFmpeg reported success but produced no output file")
+                        raise AudioLevelRenderError(
+                            "Final AAC validation failed",
+                            failed_report,
+                        ) from exc
+                    policy = audio_levels.policy
+                    failures = validate_output_metrics(
+                        output_metrics,
+                        policy,
+                        expected_channels=self.command_builder.expected_output_channels(plan),
+                        expected_duration_seconds=plan.video.duration_seconds,
+                    )
+                    audio_levels = replace(
+                        audio_levels,
+                        output_metrics=output_metrics,
+                        validation_failures=failures,
+                    )
+                    if failures:
+                        raise AudioLevelRenderError(
+                            "Final AAC validation failed",
+                            audio_levels,
+                        )
             temp_output.replace(plan.output_path)
-            return plan.output_path
+            return RenderedOutput(plan.output_path, audio_levels)
         finally:
             temp_output.unlink(missing_ok=True)

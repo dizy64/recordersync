@@ -108,12 +108,34 @@ path·size·mtime 지문을 확인한다.
 | `recommended_mode` | string/null | 권장 렌더 모드: `replace`, `fallback`, 또는 처리 보류 null |
 | `recommendation_reason` | string | 선택한 언어의 추천 또는 처리 보류 사유 |
 | `recommended_options` | object | 보수적인 권장 실행에 필요한 추가 CLI 옵션. 현재 `min_partial_seconds` 가능 |
+| `audio_levels` | object/생략 | 음량 안전 모드의 정책, 입력 측정, static gain 판정, 최종 AAC 검증 |
 
 `matched`와 `partial` 분석 결과는 `output`이 null일 수 있다. 부분 일치의 실제 위치와
 구간별 drift는 최상위 호환 필드가 아니라 항상 `segments`를 사용한다.
 `process --mode fallback --dry-run`은 렌더하지 않아도 부분
 일치에 예상 output을 넣는다. `error`의 duration은 probe 단계 실패 시 0일 수 있다.
 v1 소비자는 새 상태를 알 수 없으므로 v2를 명시적으로 지원해야 한다.
+
+### audio_levels
+
+`process`에서 네 가지 음량 안전 옵션을 모두 지정한 영상에만 포함하는 additive v2
+필드다. 일반 분석·처리 리포트에는 생략된다.
+
+| 하위 필드 | 의미 |
+|---|---|
+| `policy` | `target_lufs`, `maximum_true_peak_dbtp`, `output_channel_layout`, `loudness_tolerance_lu`, 고정 `dynamics: "none"` |
+| `input` | gain 전 float 렌더 구간의 channel/rate/LUFS/LRA/sample peak/true peak/duration/codec/decoder error |
+| `decision` | 요청 gain, true peak가 허용하는 최대 gain, 적용 gain 또는 null, 예상 peak, 충돌량, limiter 없이 가능한 LUFS |
+| `output` | 최종 AAC 재디코딩 측정값. 렌더 전 중단이면 null |
+| `validation` | 전체 통과 여부와 실패 문자열 배열 |
+
+`decision.applied_gain_db`가 null이면 목표 LUFS와 true-peak ceiling이 충돌했거나 gain을
+적용하지 못한 상태다. `validation.passed`가 false인 결과를 성공 파일로 취급하지 않는다.
+자동화는 표시 문자열이 아니라 이 수치와 boolean을 사용한다.
+입력이 EBU R128 요약을 만들기 전에 디코드 실패하면 측정값을 꾸며내지 않고 `input`과
+`decision`을 null로 두며, `validation.failures`에 원문 진단을 남긴다. `passed: true`는
+non-null `input`·`decision`·`output`과 빈 `failures`를, `passed: false`는 하나 이상의
+실패 사유를 요구한다.
 
 ## segments
 

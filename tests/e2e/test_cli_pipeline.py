@@ -199,6 +199,82 @@ def test_처리_CLI는_분할_오디오를_매칭하고_원본_프로필로_렌�
     assert final_source_stat.st_mtime_ns == source_stat.st_mtime_ns
 
 
+def test_처리_CLI는_static_gain을_적용하고_최종_AAC_음량을_재검증한다(
+    synthetic_project: SyntheticProject,
+) -> None:
+    analysis_report = synthetic_project.video_dir.parent / "analysis-loudness.json"
+    analysis = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "recordersync",
+            "analyze",
+            str(synthetic_project.video_dir),
+            "--audio-dir",
+            str(synthetic_project.audio_dir),
+            "--report",
+            str(analysis_report),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=180,
+    )
+    assert analysis.returncode == 0, analysis.stderr or analysis.stdout
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "recordersync",
+            "process",
+            str(synthetic_project.video_dir),
+            "--analysis-report",
+            str(analysis_report),
+            "--output-dir",
+            str(synthetic_project.output_dir),
+            "--output-suffix",
+            "_safe",
+            "--target-lufs",
+            "-24",
+            "--max-true-peak-dbtp",
+            "-1",
+            "--output-channel-layout",
+            "stereo",
+            "--loudness-tolerance-lu",
+            "0.5",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=180,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    report = json.loads(result.stdout)
+    levels = report["matches"][0]["audio_levels"]
+    output = synthetic_project.output_dir / "clip_safe.mp4"
+
+    assert output.is_file()
+    assert levels["policy"] == {
+        "target_lufs": -24.0,
+        "maximum_true_peak_dbtp": -1.0,
+        "output_channel_layout": "stereo",
+        "loudness_tolerance_lu": 0.5,
+        "dynamics": "none",
+    }
+    assert levels["input"]["decoder_error"] is None
+    assert levels["decision"]["applied_gain_db"] == pytest.approx(-24.0 - levels["input"]["integrated_loudness_lufs"])
+    assert levels["output"]["integrated_loudness_lufs"] == pytest.approx(-24.0, abs=0.5)
+    assert levels["output"]["true_peak_dbtp"] <= -1.0
+    assert levels["output"]["channels"] == 2
+    assert levels["output"]["sample_rate"] == 48_000
+    assert levels["output"]["codec"] == "aac"
+    assert levels["output"]["decoder_error"] is None
+    assert levels["validation"] == {"passed": True, "failures": []}
+    assert "[음량 검증] clip.mov | 음량 검증: 통과" in result.stderr
+
+
 def test_폴백_처리는_다중_부분_구간만_레코더_오디오로_교체한다(
     partial_synthetic_project: PartialSyntheticProject,
 ) -> None:

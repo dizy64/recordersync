@@ -3,6 +3,22 @@
 RecorderSync의 사용자 동작과 공개 연동 계약 변경을 버전별로 기록한다. GitHub Release의
 자동 생성 노트는 커밋·PR 탐색용이며, 이 문서를 제품 변경의 요약 정본으로 사용한다.
 
+## Unreleased
+
+### 추가
+
+- `replace`에서 목표 LUFS, 최대 dBTP, 출력 채널 정책, LU 허용 오차를 모두 명시하는
+  opt-in 음량 안전 처리 추가
+- gain 전 float EBU R128 분석, static gain/true-peak 충돌 차단, 최종 AAC 재디코딩 검증
+- JSON v2 영상별 optional `audio_levels`와 stderr `[음량 검증]` 요약
+
+### 호환성
+
+- 기존 명령은 바뀌지 않으며 음량 안전 옵션에는 기본값이나 자동 추론이 없다.
+- limiter/compressor를 자동 적용하지 않고, gain 충돌 또는 최종 검증 실패 파일은
+  최종 경로에 게시하지 않는다.
+- JSON 계약은 additive optional 필드이므로 v2를 유지한다.
+
 ## 0.4.2 - 2026-07-26
 
 ### 수정
