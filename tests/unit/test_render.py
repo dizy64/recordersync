@@ -501,6 +501,44 @@ def test_렌더러는_최종_AAC가_peak_검증에_실패하면_임시_출력을
     assert list(output.parent.iterdir()) == []
 
 
+def test_렌더러는_음량_측정_후_인코더가_실패해도_부분_보고서를_남긴다(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "replace" / "clip.mp4"
+    plan = RenderPlan(
+        video=_video(),
+        session=_session(),
+        output_path=output,
+        external_start_seconds=1,
+        tempo_ratio=1,
+        audio_level_policy=_audio_level_policy(),
+    )
+    analyzer = MagicMock(spec=FFmpegAudioAnalyzer)
+    analyzer.measure_render_input.return_value = _audio_metrics(
+        integrated_loudness_lufs=-20.0,
+        true_peak_dbtp=-8.0,
+    )
+    renderer = FFmpegRenderer(audio_analyzer=analyzer)
+    failed = CompletedProcess(["ffmpeg"], 1, "", "encoder failed")
+
+    with (
+        patch.object(renderer, "_run", return_value=failed) as run,
+        pytest.raises(AudioLevelRenderError, match="VideoToolbox and libx265") as error,
+    ):
+        renderer.render_with_report(plan)
+
+    assert run.call_count == 2
+    assert error.value.report.input_metrics is not None
+    assert error.value.report.decision is not None
+    assert error.value.report.decision.applied_gain_db == pytest.approx(4.0)
+    assert error.value.report.output_metrics is None
+    assert error.value.report.validation_failures == (
+        "render error: FFmpeg render failed with VideoToolbox and libx265: encoder failed",
+    )
+    assert not output.exists()
+    analyzer.measure_output.assert_not_called()
+
+
 def test_세로_영상_명령_생성은_원본_해상도를_보존한다() -> None:
     plan = RenderPlan(
         video=_video(portrait=True),

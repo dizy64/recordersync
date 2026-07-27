@@ -752,22 +752,31 @@ class FFmpegRenderer:
                         )
                     effective_plan = replace(temp_plan, external_audio_gain_db=decision.applied_gain_db)
 
-                hardware = self._run(self.command_builder.build(effective_plan, manifest_paths))
-                if hardware.returncode != 0:
-                    temp_output.unlink(missing_ok=True)
-                    software = self._run(
-                        self.command_builder.build(
-                            effective_plan,
-                            manifest_paths,
-                            software_fallback=True,
+                try:
+                    hardware = self._run(self.command_builder.build(effective_plan, manifest_paths))
+                    if hardware.returncode != 0:
+                        temp_output.unlink(missing_ok=True)
+                        software = self._run(
+                            self.command_builder.build(
+                                effective_plan,
+                                manifest_paths,
+                                software_fallback=True,
+                            )
                         )
+                        if software.returncode != 0:
+                            raise RenderError(
+                                f"FFmpeg render failed with VideoToolbox and libx265: {software.stderr.strip()}"
+                            )
+                    if not temp_output.is_file():
+                        raise RenderError("FFmpeg reported success but produced no output file")
+                except RenderError as exc:
+                    if audio_levels is None:
+                        raise
+                    audio_levels = replace(
+                        audio_levels,
+                        validation_failures=(f"render error: {exc}",),
                     )
-                    if software.returncode != 0:
-                        raise RenderError(
-                            f"FFmpeg render failed with VideoToolbox and libx265: {software.stderr.strip()}"
-                        )
-                if not temp_output.is_file():
-                    raise RenderError("FFmpeg reported success but produced no output file")
+                    raise AudioLevelRenderError(str(exc), audio_levels) from exc
 
                 if audio_levels is not None:
                     try:
