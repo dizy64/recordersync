@@ -394,6 +394,40 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["passed", "failures"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "passed": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "failures": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "passed": {
+                "const": false
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "failures": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
       "properties": {
         "passed": {
           "type": "boolean"
@@ -410,15 +444,68 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["policy", "input", "decision", "output", "validation"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "validation": {
+                "properties": {
+                  "passed": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "input": {
+                "$ref": "#/$defs/audioMetrics"
+              },
+              "decision": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/staticGainDecision"
+                  },
+                  {
+                    "properties": {
+                      "applied_gain_db": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                ]
+              },
+              "output": {
+                "$ref": "#/$defs/audioMetrics"
+              }
+            }
+          }
+        }
+      ],
       "properties": {
         "policy": {
           "$ref": "#/$defs/audioLevelPolicy"
         },
         "input": {
-          "$ref": "#/$defs/audioMetrics"
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/audioMetrics"
+            }
+          ]
         },
         "decision": {
-          "$ref": "#/$defs/staticGainDecision"
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/staticGainDecision"
+            }
+          ]
         },
         "output": {
           "oneOf": [

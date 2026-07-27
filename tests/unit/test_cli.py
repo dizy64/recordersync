@@ -70,9 +70,12 @@ def test_처리_도움말은_주요_처리_옵션을_안내한다(
     assert "--recommended-only" in stdout
     assert "--analysis-report" in stdout
     assert "--target-lufs" in stdout
+    assert "[-70, -5]" in stdout
     assert "--max-true-peak-dbtp" in stdout
+    assert "[-99, 0] dBTP" in stdout
     assert "--output-channel-layout" in stdout
     assert "--loudness-tolerance-lu" in stdout
+    assert "(0, 10] LU" in stdout
     assert "--overwrite" in stdout
     assert "기존 출력 파일 덮어쓰기" in stdout
 

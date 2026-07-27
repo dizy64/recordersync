@@ -6,6 +6,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from recordersync.audio_levels import (
     AudioLevelMetrics,
     AudioLevelPolicy,
@@ -158,6 +160,7 @@ def test_사람용_음량_요약은_peak_충돌의_필수_판정값을_표시한
         policy=policy,
         input_metrics=input_metrics,
         decision=decide_static_gain(input_metrics, policy),
+        validation_failures=("loudness target conflicts with true-peak ceiling",),
     )
 
     assert format_audio_level_summary(match, audio_levels) == (
@@ -165,6 +168,42 @@ def test_사람용_음량_요약은_peak_충돌의_필수_판정값을_표시한
         "목표 gain: +3.8 dB | 안전 gain: -8.7 dB | 초과: 12.5 dB | "
         "limiter 없이 가능한 음량: -19.8 LUFS | 출력: 없음"
     )
+
+
+def test_사람용_음량_요약은_입력_분석_실패를_표시한다() -> None:
+    match = AudioMatch(Path("clip.mov"), 30, MatchStatus.ERROR)
+    policy = AudioLevelPolicy(-16.0, -1.0, OutputChannelLayout.MONO, 0.5)
+    audio_levels = AudioLevelReport(
+        policy=policy,
+        validation_failures=("input analysis error: invalid frame",),
+    )
+
+    assert format_audio_level_summary(match, audio_levels) == (
+        "clip.mov | 음량 검증: 실패 | 입력: 측정 실패 | 출력: 없음 | 실패: input analysis error: invalid frame"
+    )
+
+
+@pytest.mark.parametrize(
+    ("reason", "translated"),
+    [
+        (
+            "Loudness target conflicts with true-peak ceiling",
+            "목표 음량과 true peak 제한이 충돌합니다.",
+        ),
+        ("Input audio analysis failed", "입력 오디오 음량 분석에 실패했습니다."),
+        ("Final AAC validation failed", "최종 AAC 음량 검증에 실패했습니다."),
+    ],
+)
+def test_음량_안전_오류_사유는_한국어로_직렬화한다(
+    reason: str,
+    translated: str,
+) -> None:
+    report = MatchReport(
+        sessions=(),
+        matches=(AudioMatch(Path("clip.mov"), 30, MatchStatus.ERROR, reason=reason),),
+    )
+
+    assert report.to_dict()["matches"][0]["reason"] == translated
 
 
 def test_매칭_리포트는_부분_구간과_레코더_사용률을_표시한다() -> None:

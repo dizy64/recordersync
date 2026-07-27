@@ -132,6 +132,10 @@ v1 소비자는 새 상태를 알 수 없으므로 v2를 명시적으로 지원�
 `decision.applied_gain_db`가 null이면 목표 LUFS와 true-peak ceiling이 충돌했거나 gain을
 적용하지 못한 상태다. `validation.passed`가 false인 결과를 성공 파일로 취급하지 않는다.
 자동화는 표시 문자열이 아니라 이 수치와 boolean을 사용한다.
+입력이 EBU R128 요약을 만들기 전에 디코드 실패하면 측정값을 꾸며내지 않고 `input`과
+`decision`을 null로 두며, `validation.failures`에 원문 진단을 남긴다. `passed: true`는
+non-null `input`·`decision`·`output`과 빈 `failures`를, `passed: false`는 하나 이상의
+실패 사유를 요구한다.
 
 ## segments
 

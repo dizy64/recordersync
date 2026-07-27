@@ -150,6 +150,27 @@ def test_EBUR128_요약은_LUFS_LRA_sample_peak_true_peak를_구분해_읽는다
     assert measured.true_peak_dbtp == pytest.approx(0.7)
 
 
+def test_EBUR128_요약의_무음_inf는_누락이_아닌_비유한_측정값으로_거부한다() -> None:
+    stderr = """
+[Parsed_ebur128_1 @ 0x1] Summary:
+
+  Integrated loudness:
+    I:          -inf LUFS
+
+  Loudness range:
+    LRA:         0.0 LU
+
+  Sample peak:
+    Peak:       -inf dBFS
+
+  True peak:
+    Peak:       -inf dBFS
+"""
+
+    with pytest.raises(ValueError, match="measurements must be finite"):
+        parse_ebur128_summary(stderr)
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [

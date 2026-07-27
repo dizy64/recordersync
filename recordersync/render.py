@@ -312,6 +312,7 @@ class FFmpegCommandBuilder:
         if include_gain:
             if plan.audio_level_policy is None:
                 filters.append(f"volume={_number(plan.external_audio_volume)}")
+                filters.extend(("aresample=48000", "aformat=channel_layouts=stereo"))
             else:
                 if plan.external_audio_gain_db is None:
                     raise ValueError("loudness-safe render requires measured static gain")
@@ -590,7 +591,11 @@ class FFmpegAudioAnalyzer:
         if result.returncode == 0:
             return None
         lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
-        return lines[-1] if lines else f"FFmpeg exited with code {result.returncode}"
+        for line in lines:
+            lowered = line.casefold()
+            if "error" in lowered or "invalid" in lowered:
+                return line
+        return " | ".join(lines[-3:]) if lines else f"FFmpeg exited with code {result.returncode}"
 
     @classmethod
     def _metrics(
@@ -640,8 +645,10 @@ class FFmpegAudioAnalyzer:
                 self.ffprobe_path,
                 "-v",
                 "error",
-                "-show_format",
-                "-show_streams",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "stream=channels,sample_rate,duration,codec_name:format=duration",
                 "-of",
                 "json",
                 str(output_path),
@@ -653,7 +660,7 @@ class FFmpegAudioAnalyzer:
         try:
             payload = json.loads(probe.stdout)
             streams = payload["streams"]
-            stream = next(item for item in streams if item.get("codec_type") == "audio")
+            stream = streams[0]
             raw_format = payload["format"]
             channels = int(stream["channels"])
             sample_rate = int(stream["sample_rate"])
@@ -662,7 +669,7 @@ class FFmpegAudioAnalyzer:
                 raise KeyError("duration")
             duration_seconds = float(raw_duration)
             codec = str(stream["codec_name"])
-        except (KeyError, TypeError, ValueError, StopIteration, json.JSONDecodeError) as exc:
+        except (IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise RenderError("Invalid ffprobe payload for rendered audio") from exc
         result = self._run(self.command_builder.build_output_audio_analysis(output_path))
         return self._metrics(
@@ -713,7 +720,17 @@ class FFmpegRenderer:
 
                 effective_plan = temp_plan
                 if plan.audio_level_policy is not None:
-                    input_metrics = self.audio_analyzer.measure_render_input(plan, manifest_paths)
+                    try:
+                        input_metrics = self.audio_analyzer.measure_render_input(plan, manifest_paths)
+                    except RenderError as exc:
+                        audio_levels = AudioLevelReport(
+                            plan.audio_level_policy,
+                            validation_failures=(f"input analysis error: {exc}",),
+                        )
+                        raise AudioLevelRenderError(
+                            "Input audio analysis failed",
+                            audio_levels,
+                        ) from exc
                     decision = decide_static_gain(input_metrics, plan.audio_level_policy)
                     audio_levels = AudioLevelReport(plan.audio_level_policy, input_metrics, decision)
                     if input_metrics.decoder_error is not None:
@@ -726,6 +743,10 @@ class FFmpegRenderer:
                             audio_levels,
                         )
                     if decision.applied_gain_db is None:
+                        audio_levels = replace(
+                            audio_levels,
+                            validation_failures=("loudness target conflicts with true-peak ceiling",),
+                        )
                         raise AudioLevelRenderError(
                             "Loudness target conflicts with true-peak ceiling",
                             audio_levels,

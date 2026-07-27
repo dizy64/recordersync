@@ -25,7 +25,7 @@ from recordersync.models import (
     RecordingSession,
 )
 from recordersync.pipeline import AnalysisBundle, RecorderSyncPipeline, is_renderable_match
-from recordersync.render import FFmpegRenderer, RenderedOutput, RenderMode
+from recordersync.render import AudioLevelRenderError, FFmpegRenderer, RenderedOutput, RenderMode
 
 
 def _features() -> tuple[np.ndarray, np.ndarray]:
@@ -229,6 +229,46 @@ def test_파이프라인은_음량_안전_결과를_영상별_리포트에_연�
     assert report.matches[0].output_path == output
     assert report.audio_levels == (audio_levels,)
     assert report.to_dict()["matches"][0]["audio_levels"]["validation"]["passed"]
+
+
+def test_파이프라인은_음량_검증_실패를_오류로_기록하고_보고서를_남긴다(
+    tmp_path: Path,
+) -> None:
+    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True)
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 30, 48_000, 1, "pcm_f32le", None),),
+    )
+    match = AudioMatch(
+        video.path,
+        5,
+        MatchStatus.MATCHED,
+        session_id=session.id,
+        external_start_seconds=3,
+    )
+    policy = AudioLevelPolicy(-16, -1, OutputChannelLayout.MONO, 0.5)
+    input_metrics = AudioLevelMetrics(1, 48_000, -20, 7, -0.1, 0, 5, "pcm_f32le")
+    audio_levels = AudioLevelReport(
+        policy,
+        input_metrics,
+        decide_static_gain(input_metrics, policy),
+        validation_failures=("loudness target conflicts with true-peak ceiling",),
+    )
+    renderer = MagicMock(spec=FFmpegRenderer)
+    renderer.render_with_report.side_effect = AudioLevelRenderError(
+        "Loudness target conflicts with true-peak ceiling",
+        audio_levels,
+    )
+
+    report = RecorderSyncPipeline(renderer=renderer).process(
+        AnalysisBundle((session,), (video,), (match,)),
+        tmp_path,
+        audio_level_policy=policy,
+    )
+
+    assert report.matches[0].status is MatchStatus.ERROR
+    assert report.matches[0].output_path is None
+    assert report.audio_levels == (audio_levels,)
 
 
 def test_파이프라인_폴백은_부분_매칭의_다중_구간을_렌더링한다(tmp_path: Path) -> None:

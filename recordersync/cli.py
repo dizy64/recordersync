@@ -149,13 +149,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--target-lufs",
         type=float,
         default=None,
-        help="static gain 음량 안전 모드의 목표 integrated loudness",
+        help="static gain 음량 안전 모드의 목표 integrated loudness([-70, -5] LUFS)",
     )
     process.add_argument(
         "--max-true-peak-dbtp",
         type=float,
         default=None,
-        help="static gain 음량 안전 모드의 최종 최대 true peak",
+        help="static gain 음량 안전 모드의 최종 최대 true peak([-99, 0] dBTP)",
     )
     process.add_argument(
         "--output-channel-layout",
@@ -167,7 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--loudness-tolerance-lu",
         type=float,
         default=None,
-        help="최종 AAC integrated loudness의 허용 오차",
+        help="최종 AAC integrated loudness의 허용 오차((0, 10] LU)",
     )
     process.add_argument(
         "--output-prefix",

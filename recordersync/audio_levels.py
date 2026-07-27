@@ -102,15 +102,23 @@ class AudioLevelReport:
     """렌더 전 측정, gain 결정, 최종 AAC 검증을 묶은 영상별 결과."""
 
     policy: AudioLevelPolicy
-    input_metrics: AudioLevelMetrics
-    decision: StaticGainDecision
+    input_metrics: AudioLevelMetrics | None = None
+    decision: StaticGainDecision | None = None
     output_metrics: AudioLevelMetrics | None = None
     validation_failures: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.decision is not None and self.input_metrics is None:
+            raise ValueError("decision requires input_metrics")
+        if self.output_metrics is not None and self.decision is None:
+            raise ValueError("output_metrics requires decision")
 
     @property
     def passed(self) -> bool:
         return (
-            self.decision.applied_gain_db is not None
+            self.input_metrics is not None
+            and self.decision is not None
+            and self.decision.applied_gain_db is not None
             and self.output_metrics is not None
             and not self.validation_failures
         )
@@ -166,7 +174,7 @@ def validate_output_metrics(
     return tuple(failures)
 
 
-_NUMBER = r"[+-]?(?:\d+(?:\.\d+)?|\.\d+)"
+_NUMBER = r"[+-]?(?:\d+(?:\.\d+)?|\.\d+|inf)"
 
 
 def _summary_value(summary: str, section: str, label: str, unit: str) -> float:

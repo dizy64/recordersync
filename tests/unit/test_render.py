@@ -21,6 +21,7 @@ from recordersync.render import (
     FFmpegAudioAnalyzer,
     FFmpegCommandBuilder,
     FFmpegRenderer,
+    RenderError,
     RenderMode,
     RenderPlan,
     RenderSegment,
@@ -150,6 +151,7 @@ def test_교체_명령_생성은_tubearchive_프로필을_사용한다() -> None
     assert "-fps_mode:v passthrough" in joined
     assert "-c:a aac -b:a 256k -ar 48000" in joined
     assert "[external]" in joined
+    assert "aresample=48000,aformat=channel_layouts=stereo" in joined
     assert "amix" not in joined
     assert "scale=" not in joined
     assert "pad=" not in joined
@@ -227,9 +229,7 @@ def test_최종_오디오_분석기는_container가_아닌_오디오_stream_길�
     output = tmp_path / "clip.mp4"
     probe_payload = {
         "streams": [
-            {"codec_type": "video", "duration": "30.0"},
             {
-                "codec_type": "audio",
                 "channels": 2,
                 "sample_rate": "48000",
                 "duration": "29.8",
@@ -242,13 +242,29 @@ def test_최종_오디오_분석기는_container가_아닌_오디오_stream_길�
     probe = CompletedProcess(["ffprobe"], 0, json.dumps(probe_payload), "")
     measure = CompletedProcess(["ffmpeg"], 0, "", _ebur128_summary())
 
-    with patch.object(analyzer, "_run", side_effect=(probe, measure)):
+    with patch.object(analyzer, "_run", side_effect=(probe, measure)) as run:
         metrics = analyzer.measure_output(output)
 
+    probe_command = run.call_args_list[0].args[0]
+    assert "-select_streams" in probe_command
+    assert "a:0" in probe_command
+    assert "-show_entries" in probe_command
+    assert "-show_streams" not in probe_command
     assert metrics.duration_seconds == pytest.approx(29.8)
     assert metrics.integrated_loudness_lufs == pytest.approx(-16.1)
     assert metrics.true_peak_dbtp == pytest.approx(-1.1)
     assert metrics.decoder_error is None
+
+
+def test_오디오_분석기는_실패_stderr의_오류_줄을_요약보다_우선한다() -> None:
+    result = CompletedProcess(
+        ["ffmpeg"],
+        1,
+        "",
+        "Invalid data found when processing input\nSummary:\nPeak: -1.0 dBFS\n",
+    )
+
+    assert FFmpegAudioAnalyzer._decoder_error(result) == "Invalid data found when processing input"
 
 
 @pytest.mark.parametrize("mode", [RenderMode.MIX, RenderMode.FALLBACK])
@@ -376,6 +392,39 @@ def test_렌더러는_입력_디코더_오류가_있으면_렌더하지_않는�
     analyzer.measure_output.assert_not_called()
 
 
+def test_렌더러는_입력_EBUR_요약_전_디코드_실패도_음량_보고서로_남긴다(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "replace" / "clip.mp4"
+    plan = RenderPlan(
+        video=_video(),
+        session=_session(),
+        output_path=output,
+        external_start_seconds=1,
+        tempo_ratio=1,
+        audio_level_policy=_audio_level_policy(),
+    )
+    analyzer = MagicMock(spec=FFmpegAudioAnalyzer)
+    analyzer.measure_render_input.side_effect = RenderError(
+        "Failed to measure audio levels: Invalid data found when processing input"
+    )
+    renderer = FFmpegRenderer(audio_analyzer=analyzer)
+
+    with (
+        patch.object(renderer, "_run") as run,
+        pytest.raises(AudioLevelRenderError, match="Input audio analysis failed") as error,
+    ):
+        renderer.render_with_report(plan)
+
+    assert error.value.report.input_metrics is None
+    assert error.value.report.decision is None
+    assert error.value.report.validation_failures == (
+        "input analysis error: Failed to measure audio levels: Invalid data found when processing input",
+    )
+    assert not output.exists()
+    run.assert_not_called()
+
+
 def test_렌더러는_최종_AAC가_peak_검증에_실패하면_임시_출력을_게시하지_않는다(
     tmp_path: Path,
 ) -> None:
@@ -411,6 +460,7 @@ def test_렌더러는_최종_AAC가_peak_검증에_실패하면_임시_출력을
 
     assert error.value.report.validation_failures == ("true peak -0.4 dBTP exceeds -1.0 dBTP",)
     assert not output.exists()
+    assert list(output.parent.iterdir()) == []
 
 
 def test_세로_영상_명령_생성은_원본_해상도를_보존한다() -> None:
@@ -451,7 +501,7 @@ def test_믹스_명령_생성은_카메라_오디오를_요청한_볼륨으로_�
 
     assert "-y" in command[:8]
     assert "volume=0.08" in joined
-    assert "volume=0.65,atempo=1" in joined
+    assert "volume=0.65,aresample=48000,aformat=channel_layouts=stereo,atempo=1" in joined
     assert "amix=inputs=2" in joined
     assert "scale=" not in joined
     assert "pad=" not in joined

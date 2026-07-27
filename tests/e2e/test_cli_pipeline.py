@@ -264,7 +264,7 @@ def test_처리_CLI는_static_gain을_적용하고_최종_AAC_음량을_재검�
         "dynamics": "none",
     }
     assert levels["input"]["decoder_error"] is None
-    assert levels["decision"]["applied_gain_db"] < 0
+    assert levels["decision"]["applied_gain_db"] == pytest.approx(-24.0 - levels["input"]["integrated_loudness_lufs"])
     assert levels["output"]["integrated_loudness_lufs"] == pytest.approx(-24.0, abs=0.5)
     assert levels["output"]["true_peak_dbtp"] <= -1.0
     assert levels["output"]["channels"] == 2

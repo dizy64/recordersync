@@ -46,6 +46,9 @@ _KOREAN_REASONS = {
     "mix mode requires camera audio": "mix 모드에는 카메라 오디오가 필요합니다.",
     "fallback mode requires camera audio": "fallback 모드에는 카메라 오디오가 필요합니다.",
     "Only part of the camera audio matched the external recording": "카메라 오디오의 일부만 외부 녹음과 일치합니다.",
+    "Loudness target conflicts with true-peak ceiling": "목표 음량과 true peak 제한이 충돌합니다.",
+    "Input audio analysis failed": "입력 오디오 음량 분석에 실패했습니다.",
+    "Final AAC validation failed": "최종 AAC 음량 검증에 실패했습니다.",
 }
 
 _KOREAN_REASON_PREFIXES = {
@@ -144,15 +147,19 @@ def _audio_level_payload(report: AudioLevelReport) -> dict[str, object]:
             "loudness_tolerance_lu": report.policy.loudness_tolerance_lu,
             "dynamics": "none",
         },
-        "input": _audio_metrics_payload(report.input_metrics),
-        "decision": {
-            "requested_gain_db": decision.requested_gain_db,
-            "maximum_safe_gain_db": decision.maximum_safe_gain_db,
-            "applied_gain_db": decision.applied_gain_db,
-            "expected_true_peak_dbtp": decision.expected_true_peak_dbtp,
-            "conflict_db": decision.conflict_db,
-            "limiter_free_lufs": decision.limiter_free_lufs,
-        },
+        "input": _audio_metrics_payload(report.input_metrics) if report.input_metrics is not None else None,
+        "decision": (
+            {
+                "requested_gain_db": decision.requested_gain_db,
+                "maximum_safe_gain_db": decision.maximum_safe_gain_db,
+                "applied_gain_db": decision.applied_gain_db,
+                "expected_true_peak_dbtp": decision.expected_true_peak_dbtp,
+                "conflict_db": decision.conflict_db,
+                "limiter_free_lufs": decision.limiter_free_lufs,
+            }
+            if decision is not None
+            else None
+        ),
         "output": _audio_metrics_payload(report.output_metrics) if report.output_metrics is not None else None,
         "validation": {
             "passed": report.passed,
@@ -209,7 +216,7 @@ def format_audio_level_summary(
     """CLI stderr에 표시할 영상별 음량 검증 한 줄 요약."""
 
     input_metrics = report.input_metrics
-    applied_gain = report.decision.applied_gain_db
+    decision = report.decision
     output_metrics = report.output_metrics
     status = "통과" if report.passed else "실패"
     output = (
@@ -217,13 +224,18 @@ def format_audio_level_summary(
         if output_metrics is not None
         else "없음"
     )
+    if input_metrics is None or decision is None:
+        summary = f"{match.video_path.name} | 음량 검증: {status} | 입력: 측정 실패 | 출력: {output}"
+        if report.validation_failures:
+            summary += f" | 실패: {'; '.join(report.validation_failures)}"
+        return summary
     prefix = (
         f"{match.video_path.name} | 음량 검증: {status} | "
         f"입력: {input_metrics.integrated_loudness_lufs:.1f} LUFS / "
         f"{input_metrics.true_peak_dbtp:.1f} dBTP"
     )
+    applied_gain = decision.applied_gain_db
     if applied_gain is None:
-        decision = report.decision
         return (
             f"{prefix} | 목표 gain: {decision.requested_gain_db:+.1f} dB | "
             f"안전 gain: {decision.maximum_safe_gain_db:+.1f} dB | "
