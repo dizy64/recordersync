@@ -18,12 +18,13 @@ RecorderSync의 비즈니스 정책은 단위 테스트로 검증한다. FFmpeg�
 | `test_sessions.py` | 자연 정렬, 연속 조각, gap, 스트림 불일치, 복사 시각 |
 | `test_matching.py` | 전체 조기 반환, 부분/다중 구간, 전역 재탐색 상한, 입력 검증, drift, 다중 카메라 |
 | `test_media.py` | 탐색, ffprobe 파싱, PCM, 실패, 조각 frame padding |
-| `test_render.py` | 출력명·경로 안전, 다중 구간 폴백, crossfade, 프로파일, 원자 출력 |
-| `test_pipeline.py` | 배치 분석, 공통 렌더 정책, 추천 전용 필터, 잘못된 렌더 메타데이터의 영상별 오류·지역화 |
-| `test_cli.py` | 도움말, 기본 부분 분석, 분석 재사용, 배치 명령 추천, fallback, 리포트, 종료 코드 |
+| `test_audio_levels.py` | EBU R128 파싱, static gain/true-peak 충돌 판정, 최종 AAC 계약 검증 |
+| `test_render.py` | 출력명·경로 안전, 다중 구간 폴백, 음량 분석/채널 정책, 최종 AAC 검증, 원자 출력 |
+| `test_pipeline.py` | 배치 분석, 공통 렌더 정책, 음량 결과 연결, 추천 전용 필터, 영상별 오류·지역화 |
+| `test_cli.py` | 도움말, 기본 부분 분석, 분석 재사용, 음량 필수 입력, 배치 명령 추천, 리포트, 종료 코드 |
 | `test_analysis_plan.py` | 분석 입력 round-trip, 지문·디렉터리·버전 검증, 언어 독립성 |
 | `test_api.py` | 외부 소비자용 세션·매칭·영상별 오류 격리·영상/세션 인덱스 식별 검증·다중 세션 렌더 계획 API |
-| `test_report.py` | JSON v2, 부분 구간/사용률, 추천 명령, 한국어·영어 목록, 실패 사유 |
+| `test_report.py` | JSON v2, 음량 정책/측정/검증, 부분 구간/사용률, 추천 명령, 한국어·영어 목록 |
 | `test_recommendation.py` | 영상별/배치 replace·fallback 추천과 보수적인 보류 경계 |
 | `test_check_markdown_links.py` | 로컬 링크, 외부 URL, 코드 블록, 저장소 이탈, CLI 오류 목록 |
 | `test_check_release_version.py` | 프로젝트·패키지·릴리스 태그 버전 일치와 오류 진단 |
@@ -86,6 +87,11 @@ RecorderSync의 비즈니스 정책은 단위 테스트로 검증한다. FFmpeg�
 - 가로·세로 입력 모두 고정 scale/pad/crop/overlay 없이 원본 표시 해상도를 유지하는가
 - 고정 `-r` 없이 `-fps_mode:v passthrough`로 원본 프레임 타임스탬프를 유지하는가
 - HLG/PQ 입력이 설치된 FFmpeg에 없는 `zscale`을 요구하지 않는가
+- 음량 안전 분석이 실제 렌더 구간과 승인된 채널 정책을 float 상태에서 측정하는가
+- 목표 LUFS gain이 true-peak 한계를 넘으면 렌더 전에 중단하는가
+- 입력 decoder error와 최종 AAC의 LUFS/true peak/channel/rate/duration/codec 오류가
+  최종 파일 게시를 막는가
+- mono→stereo 복사에 추가 gain이 없고 stereo→mono는 명시한 경우에만 수행되는가
 
 ### CLI와 리포트
 
@@ -196,6 +202,7 @@ PR에 동일 하드웨어 전후 수치를 기록한다.
 - 반복되는 끝 구간을 과도한 clock drift로 오인해 외부 음원 속도를 바꾸지 않는가
 - 저장한 분석 리포트를 process에서 재사용할 때 오디오 분석·영상 매칭 없이 렌더하는가
 - 선택 파일과 세 단계 진행률, 한국어 JSON 리포트가 분리 출력되는가
+- static gain만 적용한 최종 AAC가 목표 LUFS, 최대 dBTP, stereo, 48kHz 검증을 통과하는가
 - 임시 디렉터리 삭제 후 저장소에 미디어가 남지 않는가
 
 수동으로 매체를 살펴볼 때만 [운영 가이드](../operations/guide.md)의 smoke 절을 사용한다.

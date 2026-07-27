@@ -12,9 +12,17 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
 from recordersync.analysis_plan import write_analysis_report
+from recordersync.audio_levels import (
+    AudioLevelMetrics,
+    AudioLevelPolicy,
+    AudioLevelReport,
+    OutputChannelLayout,
+    decide_static_gain,
+)
 from recordersync.media import VideoInfo
 from recordersync.models import AudioChunk, AudioMatch, MatchStatus, RecordingSession
 from recordersync.pipeline import AnalysisBundle
+from recordersync.report import MatchReport
 
 SCHEMA_PATH = Path(__file__).parents[2] / "schemas" / "recordersync-report-v2.schema.json"
 REPORT_DOCUMENT_PATH = Path(__file__).parents[2] / "docs" / "reference" / "report-schema.md"
@@ -77,6 +85,29 @@ def test_리포트_스키마는_일반과_재사용_분석_리포트를_검증�
     write_analysis_report(bundle.report(), bundle, report_path)
 
     validator.validate(json.loads(report_path.read_text(encoding="utf-8")))
+
+
+def test_리포트_스키마는_음량_안전_처리_결과를_검증한다(
+    schema: dict[str, object],
+    bundle: AnalysisBundle,
+) -> None:
+    policy = AudioLevelPolicy(-16.0, -1.0, OutputChannelLayout.STEREO, 0.5)
+    input_metrics = AudioLevelMetrics(2, 48_000, -20.0, 7.0, -8.1, -8.0, 10.0, "pcm_f32le")
+    output_metrics = AudioLevelMetrics(2, 48_000, -16.1, 7.0, -1.2, -1.1, 10.0, "aac")
+    report = MatchReport(
+        sessions=bundle.sessions,
+        matches=bundle.matches,
+        audio_levels=(
+            AudioLevelReport(
+                policy=policy,
+                input_metrics=input_metrics,
+                decision=decide_static_gain(input_metrics, policy),
+                output_metrics=output_metrics,
+            ),
+        ),
+    )
+
+    Draft202012Validator(schema).validate(report.to_dict())
 
 
 def test_리포트_스키마는_정의되지_않은_매칭_상태를_거부한다(

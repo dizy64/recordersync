@@ -85,6 +85,33 @@ uv run recordersync process ~/Videos/day1 \
 두 볼륨은 각각 0.0~1.0 범위입니다. `replace`에서도 외부 음량을 줄일 수 있고,
 원본 영상 음량은 `mix`와 `fallback`에서 사용됩니다.
 
+피크와 평균 음량을 함께 검증하면서 교체하려면 네 가지 음량 안전 옵션을 모두
+명시합니다. 이 모드는 자동 판단을 피하기 위해 기본값이 없으며 현재 `replace`에서만
+지원합니다.
+
+```bash
+uv run recordersync process ~/Videos/day1 \
+  --audio-dir ~/Recordings/day1 \
+  --target-lufs -16 \
+  --max-true-peak-dbtp -1 \
+  --output-channel-layout stereo \
+  --loudness-tolerance-lu 0.5
+```
+
+RecorderSync는 실제로 사용할 외부 오디오 구간을 32-bit float 처리 경로에서 EBU R128로
+측정하고, 목표 LUFS에 필요한 static gain과 true-peak 한계가 허용하는 gain을 비교합니다.
+두 값이 충돌하면 limiter나 compressor를 자동 적용하지 않고 해당 영상의 렌더를
+중단합니다. 충돌하지 않으면 static gain만 적용한 뒤 최종 AAC를 다시 디코딩해 LUFS,
+true peak, 채널 수, 48kHz, 길이, codec, decoder error를 검증하고 모두 통과한 파일만
+최종 경로에 게시합니다.
+
+`preserve`는 레코더 채널을 유지합니다. mono 입력을 `stereo`로 출력할 때는 추가 gain 없이
+동일 신호를 좌우에 복사하며, stereo 입력을 `mono`로 합치는 작업은 사용자가
+`--output-channel-layout mono`를 명시한 경우에만 수행합니다. 음량 안전 모드는
+`--external-audio-volume`의 비기본값 및 `--dry-run`과 함께 사용할 수 없습니다. 측정값,
+gain 결정, 최종 검증은 JSON의 영상별 `audio_levels`와 stderr의 `[음량 검증]` 요약에
+남습니다.
+
 레코더가 중간에 멈췄거나 영상과 녹음 길이가 다르면 `fallback`을 명시합니다. 일치하는
 구간은 레코더음으로 교체하고, 영상 앞뒤와 중간의 불일치 구간은 카메라음을 유지합니다.
 
@@ -174,6 +201,10 @@ analyze의 부분 진단은 종료 코드 2입니다. `process`는 기본적으�
 --analysis-report PATH        저장한 분석 결과를 검증해 재분석 없이 처리
 --camera-audio-volume NUMBER  카메라 음량(기본: mix 0.1, fallback 1.0)
 --external-audio-volume 1.0   외부 레코더 음량(0.0~1.0)
+--target-lufs NUMBER          음량 안전 모드의 목표 integrated loudness
+--max-true-peak-dbtp NUMBER   음량 안전 모드의 최대 true peak
+--output-channel-layout MODE  preserve, mono, stereo 중 명시
+--loudness-tolerance-lu NUM   최종 AAC integrated loudness 허용 오차
 --dry-run                     process 계획만 출력
 --overwrite                   기존 결과 덮어쓰기 허용
 ```
@@ -194,6 +225,8 @@ JSON 리포트 v2는 상태별 `partial` 개수와 영상별 `coverage_ratio`, �
 제공합니다. 각 영상에는 `recommended_mode`, `recommendation_reason`,
 `recommended_options`도 포함됩니다. 각 구간에는 세션 ID, 영상/외부 시작점, 길이,
 `tempo_ratio`와 신뢰도 수치가 있습니다.
+음량 안전 모드를 사용한 영상에는 선택적으로 `audio_levels`가 추가되어 정책, float 입력
+측정값, static gain 판정, 최종 AAC 측정값과 검증 실패 목록을 제공합니다.
 `analyze --json`과 분석 `--report`에는 배치 전체에 대한 `recommended_command`도
 포함되며, 안전한 부분 일치가 하나라도 있으면 `fallback`, 전체 일치만 있으면 기본
 `replace` 명령을 제안합니다. fallback 추천에는 `--recommended-only`가 포함되어 기준

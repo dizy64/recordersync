@@ -38,6 +38,7 @@ CLI와 다른 애플리케이션은 `pipeline.py` 또는 `api.py`를 호출한�
 | `matching.py` | 특징 생성, FFT NCC, confidence, drift | `match_video_features()` |
 | `recommendation.py` | 매칭 결과의 보수적인 처리 모드 추천 | `recommend_mode()` |
 | `media.py` | 파일 탐색, ffprobe, PCM/특징 추출 | `FFmpegTools`, `VideoInfo` |
+| `audio_levels.py` | 음량 측정값, static gain 판정, 최종 출력 검증 정책 | `AudioLevelPolicy`, `decide_static_gain()`, `validate_output_metrics()` |
 | `render.py` | 매칭의 렌더 계획 변환, concat 매니페스트, FFmpeg 명령, 원자적 출력 | `build_render_plan()`, `RenderPlan`, `FFmpegRenderer` |
 | `report.py` | 버전 있는 JSON 계약 | `MatchReport` |
 | `analysis_plan.py` | 분석 입력 지문 저장·검증과 번들 복원 | `write_analysis_report()`, `load_analysis_report()` |
@@ -200,6 +201,22 @@ VFR의 프레임 타임스탬프를 임의 CFR로 변환하지 않는다. 오디
 외부 오디오는 `--external-audio-volume`을 `volume` 필터에 먼저 적용한다. `mix`에서는
 원본에도 `--camera-audio-volume`을 적용한 뒤 두 스트림을 `amix`한다. 두 값은 독립적인
 0.0~1.0 배수이고 자동 정규화하지 않으므로 사용자가 의도한 비율을 그대로 보존한다.
+
+`replace`의 opt-in 음량 안전 경로는 목표 LUFS, 최대 dBTP, 출력 채널 정책, LU 허용 오차를
+모두 받은 경우에만 활성화한다. 실제 렌더 구간에 drift, padding/trimming, 승인된 채널
+정책을 적용하고 `fltp` 상태에서 `ebur128=peak=sample+true`로 측정한다.
+
+```text
+requested_gain_db = target_lufs - measured_lufs
+maximum_safe_gain_db = maximum_true_peak_dbtp - measured_true_peak_dbtp
+```
+
+요청 gain이 안전 gain보다 크면 동적 처리 없이 달성할 수 없는 계약이므로 렌더하지 않는다.
+그 외에는 dB static gain만 적용한다. limiter, compressor, noise suppression, AGC, EQ는
+자동 적용하지 않는다. mono→stereo는 동일 신호 복사이고 stereo→mono는 사용자가 `mono`를
+명시한 경우에만 `0.5L + 0.5R`로 처리한다. 렌더된 임시 AAC를 오류 즉시 중단 모드로 다시
+디코딩해 목표 LUFS 허용 오차, true peak ceiling, 채널 수, 48kHz, AAC codec, 영상 길이,
+decoder error를 검사하며 하나라도 실패하면 최종 경로로 이동하지 않는다.
 
 `fallback`에서는 승인 구간별 녹음 세션 concat 입력을 만들고 영상 시간축 순서로 오디오
 조각을 구성한다. 승인 구간은 외부 레코더음, 영상 앞뒤와 구간 사이는 카메라음이다.

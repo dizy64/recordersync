@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from subprocess import CompletedProcess
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from recordersync.audio_levels import (
+    AudioLevelMetrics,
+    AudioLevelPolicy,
+    OutputChannelLayout,
+)
 from recordersync.media import VideoInfo
 from recordersync.models import AudioChunk, RecordingSession
 from recordersync.render import (
+    AudioLevelRenderError,
+    FFmpegAudioAnalyzer,
     FFmpegCommandBuilder,
     FFmpegRenderer,
     RenderMode,
@@ -40,6 +48,54 @@ def _video(*, portrait: bool = False, hdr: bool = False) -> VideoInfo:
         has_audio=True,
         color_transfer="arib-std-b67" if hdr else "bt709",
     )
+
+
+def _audio_level_policy(
+    *,
+    target_lufs: float = -16.0,
+    maximum_true_peak_dbtp: float = -1.0,
+) -> AudioLevelPolicy:
+    return AudioLevelPolicy(
+        target_lufs=target_lufs,
+        maximum_true_peak_dbtp=maximum_true_peak_dbtp,
+        output_channel_layout=OutputChannelLayout.STEREO,
+        loudness_tolerance_lu=0.5,
+    )
+
+
+def _audio_metrics(
+    *,
+    integrated_loudness_lufs: float,
+    true_peak_dbtp: float,
+) -> AudioLevelMetrics:
+    return AudioLevelMetrics(
+        channels=2,
+        sample_rate=48_000,
+        integrated_loudness_lufs=integrated_loudness_lufs,
+        loudness_range_lu=7.0,
+        sample_peak_dbfs=true_peak_dbtp - 0.1,
+        true_peak_dbtp=true_peak_dbtp,
+        duration_seconds=30.0,
+        codec="aac",
+    )
+
+
+def _ebur128_summary() -> str:
+    return """
+[Parsed_ebur128_0] Summary:
+
+  Integrated loudness:
+    I:         -16.1 LUFS
+
+  Loudness range:
+    LRA:         7.0 LU
+
+  Sample peak:
+    Peak:       -1.2 dBFS
+
+  True peak:
+    Peak:       -1.1 dBFS
+"""
 
 
 def test_이어붙이기_목록_생성은_경로를_이스케이프한다() -> None:
@@ -97,6 +153,264 @@ def test_교체_명령_생성은_tubearchive_프로필을_사용한다() -> None
     assert "amix" not in joined
     assert "scale=" not in joined
     assert "pad=" not in joined
+
+
+def test_음량_안전_분석_명령은_실제_교체_구간과_float_채널_정책을_측정한다() -> None:
+    plan = RenderPlan(
+        video=_video(),
+        session=_session(),
+        output_path=Path("replace/clip.mp4"),
+        external_start_seconds=65.25,
+        tempo_ratio=1.0002,
+        audio_level_policy=_audio_level_policy(),
+    )
+
+    command = FFmpegCommandBuilder().build_audio_analysis(plan, Path("concat.txt"))
+    joined = " ".join(command)
+
+    assert "-xerror -err_detect explode" in joined
+    assert "-ss 65.25 -f concat -safe 0 -i concat.txt" in joined
+    assert "atempo=1.0002" in joined
+    assert "apad,atrim=duration=30" in joined
+    assert "aformat=channel_layouts=stereo" in joined
+    assert "aformat=sample_fmts=fltp" in joined
+    assert "ebur128=peak=sample+true:framelog=quiet" in joined
+    assert "volume=" not in joined
+
+
+def test_음량_안전_채널_정책은_mono를_gain_없이_dual_mono로_측정한다() -> None:
+    mono_session = RecordingSession(
+        id="session-mono",
+        chunks=(AudioChunk(Path("mono.wav"), 60, 48_000, 1, "pcm_f32le", None),),
+    )
+    plan = RenderPlan(
+        video=_video(),
+        session=mono_session,
+        output_path=Path("replace/clip.mp4"),
+        external_start_seconds=0,
+        tempo_ratio=1,
+        audio_level_policy=_audio_level_policy(),
+    )
+
+    command = FFmpegCommandBuilder().build_audio_analysis(plan, Path("concat.txt"))
+    joined = " ".join(command)
+
+    assert "pan=stereo|c0=c0|c1=c0" in joined
+    assert "volume=" not in joined
+
+
+def test_음량_안전_채널_정책은_stereo_downmix를_명시적인_반반_합으로_수행한다() -> None:
+    policy = AudioLevelPolicy(
+        target_lufs=-16.0,
+        maximum_true_peak_dbtp=-1.0,
+        output_channel_layout=OutputChannelLayout.MONO,
+        loudness_tolerance_lu=0.5,
+    )
+    plan = RenderPlan(
+        video=_video(),
+        session=_session(),
+        output_path=Path("replace/clip.mp4"),
+        external_start_seconds=0,
+        tempo_ratio=1,
+        audio_level_policy=policy,
+    )
+
+    command = FFmpegCommandBuilder().build_audio_analysis(plan, Path("concat.txt"))
+
+    assert "pan=mono|c0=0.5*c0+0.5*c1" in " ".join(command)
+    assert FFmpegCommandBuilder.expected_output_channels(plan) == 1
+
+
+def test_최종_오디오_분석기는_container가_아닌_오디오_stream_길이를_측정한다(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "clip.mp4"
+    probe_payload = {
+        "streams": [
+            {"codec_type": "video", "duration": "30.0"},
+            {
+                "codec_type": "audio",
+                "channels": 2,
+                "sample_rate": "48000",
+                "duration": "29.8",
+                "codec_name": "aac",
+            },
+        ],
+        "format": {"duration": "30.0"},
+    }
+    analyzer = FFmpegAudioAnalyzer()
+    probe = CompletedProcess(["ffprobe"], 0, json.dumps(probe_payload), "")
+    measure = CompletedProcess(["ffmpeg"], 0, "", _ebur128_summary())
+
+    with patch.object(analyzer, "_run", side_effect=(probe, measure)):
+        metrics = analyzer.measure_output(output)
+
+    assert metrics.duration_seconds == pytest.approx(29.8)
+    assert metrics.integrated_loudness_lufs == pytest.approx(-16.1)
+    assert metrics.true_peak_dbtp == pytest.approx(-1.1)
+    assert metrics.decoder_error is None
+
+
+@pytest.mark.parametrize("mode", [RenderMode.MIX, RenderMode.FALLBACK])
+def test_음량_안전_정책은_교체_모드에서만_허용한다(mode: RenderMode) -> None:
+    with pytest.raises(ValueError, match="replace mode"):
+        RenderPlan(
+            video=_video(),
+            session=_session(),
+            output_path=Path("out.mp4"),
+            external_start_seconds=0,
+            tempo_ratio=1,
+            mode=mode,
+            audio_level_policy=_audio_level_policy(),
+        )
+
+
+def test_렌더러는_안전한_static_gain을_적용하고_최종_AAC를_검증한_뒤_공개한다(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "replace" / "clip.mp4"
+    plan = RenderPlan(
+        video=_video(),
+        session=_session(),
+        output_path=output,
+        external_start_seconds=1,
+        tempo_ratio=1,
+        audio_level_policy=_audio_level_policy(),
+    )
+    analyzer = MagicMock(spec=FFmpegAudioAnalyzer)
+    analyzer.measure_render_input.return_value = _audio_metrics(
+        integrated_loudness_lufs=-20.0,
+        true_peak_dbtp=-8.0,
+    )
+    analyzer.measure_output.return_value = _audio_metrics(
+        integrated_loudness_lufs=-16.2,
+        true_peak_dbtp=-1.1,
+    )
+    renderer = FFmpegRenderer(audio_analyzer=analyzer)
+
+    def run(command: list[str]) -> CompletedProcess[str]:
+        Path(command[-1]).write_bytes(b"rendered")
+        return CompletedProcess(command, 0, "", "")
+
+    with patch.object(renderer, "_run", side_effect=run) as mocked_run:
+        rendered = renderer.render_with_report(plan)
+
+    assert rendered.output_path == output
+    assert rendered.audio_levels is not None
+    assert rendered.audio_levels.passed
+    assert rendered.audio_levels.decision.applied_gain_db == pytest.approx(4.0)
+    assert "volume=4dB" in " ".join(mocked_run.call_args.args[0])
+    assert output.read_bytes() == b"rendered"
+    analyzer.measure_output.assert_called_once()
+
+
+def test_렌더러는_static_gain과_peak_제한이_충돌하면_렌더하지_않는다(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "replace" / "clip.mp4"
+    plan = RenderPlan(
+        video=_video(),
+        session=_session(),
+        output_path=output,
+        external_start_seconds=1,
+        tempo_ratio=1,
+        audio_level_policy=_audio_level_policy(
+            target_lufs=-7.3,
+            maximum_true_peak_dbtp=-1.0,
+        ),
+    )
+    analyzer = MagicMock(spec=FFmpegAudioAnalyzer)
+    analyzer.measure_render_input.return_value = _audio_metrics(
+        integrated_loudness_lufs=-11.1,
+        true_peak_dbtp=7.7,
+    )
+    renderer = FFmpegRenderer(audio_analyzer=analyzer)
+
+    with (
+        patch.object(renderer, "_run") as run,
+        pytest.raises(AudioLevelRenderError, match="conflicts") as error,
+    ):
+        renderer.render_with_report(plan)
+
+    assert error.value.report.decision.conflict_db == pytest.approx(12.5)
+    assert not output.exists()
+    run.assert_not_called()
+    analyzer.measure_output.assert_not_called()
+
+
+def test_렌더러는_입력_디코더_오류가_있으면_렌더하지_않는다(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "replace" / "clip.mp4"
+    plan = RenderPlan(
+        video=_video(),
+        session=_session(),
+        output_path=output,
+        external_start_seconds=1,
+        tempo_ratio=1,
+        audio_level_policy=_audio_level_policy(),
+    )
+    analyzer = MagicMock(spec=FFmpegAudioAnalyzer)
+    analyzer.measure_render_input.return_value = AudioLevelMetrics(
+        channels=2,
+        sample_rate=48_000,
+        integrated_loudness_lufs=-20.0,
+        loudness_range_lu=7.0,
+        sample_peak_dbfs=-8.1,
+        true_peak_dbtp=-8.0,
+        duration_seconds=30.0,
+        codec="pcm_f32le",
+        decoder_error="Invalid data found when processing input",
+    )
+    renderer = FFmpegRenderer(audio_analyzer=analyzer)
+
+    with (
+        patch.object(renderer, "_run") as run,
+        pytest.raises(AudioLevelRenderError, match="Input audio analysis failed") as error,
+    ):
+        renderer.render_with_report(plan)
+
+    assert error.value.report.validation_failures == ("decoder error: Invalid data found when processing input",)
+    assert not output.exists()
+    run.assert_not_called()
+    analyzer.measure_output.assert_not_called()
+
+
+def test_렌더러는_최종_AAC가_peak_검증에_실패하면_임시_출력을_게시하지_않는다(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "replace" / "clip.mp4"
+    plan = RenderPlan(
+        video=_video(),
+        session=_session(),
+        output_path=output,
+        external_start_seconds=1,
+        tempo_ratio=1,
+        audio_level_policy=_audio_level_policy(),
+    )
+    analyzer = MagicMock(spec=FFmpegAudioAnalyzer)
+    analyzer.measure_render_input.return_value = _audio_metrics(
+        integrated_loudness_lufs=-20.0,
+        true_peak_dbtp=-8.0,
+    )
+    analyzer.measure_output.return_value = _audio_metrics(
+        integrated_loudness_lufs=-16.1,
+        true_peak_dbtp=-0.4,
+    )
+    renderer = FFmpegRenderer(audio_analyzer=analyzer)
+
+    def run(command: list[str]) -> CompletedProcess[str]:
+        Path(command[-1]).write_bytes(b"unsafe")
+        return CompletedProcess(command, 0, "", "")
+
+    with (
+        patch.object(renderer, "_run", side_effect=run),
+        pytest.raises(AudioLevelRenderError, match="validation failed") as error,
+    ):
+        renderer.render_with_report(plan)
+
+    assert error.value.report.validation_failures == ("true peak -0.4 dBTP exceeds -1.0 dBTP",)
+    assert not output.exists()
 
 
 def test_세로_영상_명령_생성은_원본_해상도를_보존한다() -> None:

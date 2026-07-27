@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from recordersync.audio_levels import OutputChannelLayout
 from recordersync.cli import build_parser, main
 from recordersync.models import AudioMatch, AudioMatchSegment, MatchStatus
 from recordersync.pipeline import AnalysisBundle
@@ -68,6 +69,10 @@ def test_처리_도움말은_주요_처리_옵션을_안내한다(
     assert "--min-partial-seconds" in stdout
     assert "--recommended-only" in stdout
     assert "--analysis-report" in stdout
+    assert "--target-lufs" in stdout
+    assert "--max-true-peak-dbtp" in stdout
+    assert "--output-channel-layout" in stdout
+    assert "--loudness-tolerance-lu" in stdout
     assert "--overwrite" in stdout
     assert "기존 출력 파일 덮어쓰기" in stdout
 
@@ -101,6 +106,10 @@ def test_처리_CLI는_안전한_교체_정책을_기본값으로_사용한다()
     assert args.output_prefix == ""
     assert args.output_suffix == ""
     assert args.analysis_report is None
+    assert args.target_lufs is None
+    assert args.max_true_peak_dbtp is None
+    assert args.output_channel_layout is None
+    assert args.loudness_tolerance_lu is None
     assert not args.recommended_only
     assert not args.json
     assert not args.overwrite
@@ -192,6 +201,128 @@ def test_처리_CLI는_외부_오디오_볼륨을_허용한다() -> None:
     args = build_parser().parse_args(["process", "/video", "--mode", "mix", "--external-audio-volume", "0.8"])
 
     assert args.external_audio_volume == pytest.approx(0.8)
+
+
+def test_처리_CLI는_음량_안전_옵션을_모두_명시해야_한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(["process", "/video", "--target-lufs", "-16"])
+
+    assert exit_info.value.code == 2
+    assert "loudness safety options must be provided together" in capsys.readouterr().err
+
+
+def test_처리_CLI는_음량_안전_모드와_수동_외부_볼륨을_함께_허용하지_않는다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(
+            [
+                "process",
+                "/video",
+                "--target-lufs",
+                "-16",
+                "--max-true-peak-dbtp",
+                "-1",
+                "--output-channel-layout",
+                "stereo",
+                "--loudness-tolerance-lu",
+                "0.5",
+                "--external-audio-volume",
+                "0.8",
+            ]
+        )
+
+    assert exit_info.value.code == 2
+    assert "--external-audio-volume cannot be combined" in capsys.readouterr().err
+
+
+def test_처리_CLI는_음량_안전_모드를_replace에서만_허용한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(
+            [
+                "process",
+                "/video",
+                "--mode",
+                "mix",
+                "--target-lufs",
+                "-16",
+                "--max-true-peak-dbtp",
+                "-1",
+                "--output-channel-layout",
+                "stereo",
+                "--loudness-tolerance-lu",
+                "0.5",
+            ]
+        )
+
+    assert exit_info.value.code == 2
+    assert "loudness safety requires --mode replace" in capsys.readouterr().err
+
+
+def test_처리_CLI는_음량_안전_모드와_dry_run을_함께_허용하지_않는다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(
+            [
+                "process",
+                "/video",
+                "--dry-run",
+                "--target-lufs",
+                "-16",
+                "--max-true-peak-dbtp",
+                "-1",
+                "--output-channel-layout",
+                "stereo",
+                "--loudness-tolerance-lu",
+                "0.5",
+            ]
+        )
+
+    assert exit_info.value.code == 2
+    assert "loudness safety cannot be combined with --dry-run" in capsys.readouterr().err
+
+
+def test_메인_처리는_명시한_음량_안전_정책을_파이프라인에_전달한다(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    bundle = AnalysisBundle(
+        sessions=(),
+        videos=(),
+        matches=(AudioMatch(Path("clip.mov"), 5, MatchStatus.MATCHED),),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = bundle
+    pipeline.process.return_value = MatchReport(sessions=(), matches=bundle.matches)
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(
+            [
+                "process",
+                str(tmp_path),
+                "--target-lufs",
+                "-16",
+                "--max-true-peak-dbtp",
+                "-1",
+                "--output-channel-layout",
+                "stereo",
+                "--loudness-tolerance-lu",
+                "0.5",
+            ]
+        )
+
+    assert exit_code == 0
+    policy = pipeline.process.call_args.kwargs["audio_level_policy"]
+    assert policy.target_lufs == pytest.approx(-16)
+    assert policy.maximum_true_peak_dbtp == pytest.approx(-1)
+    assert policy.output_channel_layout is OutputChannelLayout.STEREO
+    assert policy.loudness_tolerance_lu == pytest.approx(0.5)
+    assert json.loads(capsys.readouterr().out)["summary"]["matched"] == 1
 
 
 def test_메인_분석은_기본적으로_사람용_요약을_출력한다(

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from recordersync.audio_levels import AudioLevelPolicy, AudioLevelReport
 from recordersync.matching import MatchOptions, match_video_features
 from recordersync.media import (
     FFmpegTools,
@@ -17,7 +18,9 @@ from recordersync.media import (
 from recordersync.models import AudioMatch, MatchStatus, RecordingSession
 from recordersync.recommendation import RecommendationMode, recommend_mode
 from recordersync.render import (
+    AudioLevelRenderError,
     FFmpegRenderer,
+    RenderedOutput,
     RenderMode,
     build_render_plan,
 )
@@ -150,11 +153,13 @@ class RecorderSyncPipeline:
         overwrite: bool = False,
         output_prefix: str = "",
         output_suffix: str = "",
+        audio_level_policy: AudioLevelPolicy | None = None,
         progress_callback: ProgressCallback | None = None,
     ) -> MatchReport:
         sessions = {session.id: session for session in bundle.sessions}
         videos = {video.path: video for video in bundle.videos}
         processed: list[AudioMatch] = []
+        audio_levels: list[AudioLevelReport | None] = []
 
         render_total = sum(
             is_renderable_match(match, mode, recommended_only=recommended_only) for match in bundle.matches
@@ -169,6 +174,7 @@ class RecorderSyncPipeline:
         for match in bundle.matches:
             if not is_renderable_match(match, mode, recommended_only=recommended_only):
                 processed.append(match)
+                audio_levels.append(None)
                 continue
             video = videos.get(match.video_path)
             if video is None:
@@ -181,6 +187,7 @@ class RecorderSyncPipeline:
                         segments=(),
                     )
                 )
+                audio_levels.append(None)
                 render_completed += 1
                 if progress_callback is not None:
                     progress_callback(
@@ -203,8 +210,24 @@ class RecorderSyncPipeline:
                     overwrite=overwrite,
                     output_prefix=output_prefix,
                     output_suffix=output_suffix,
+                    audio_level_policy=audio_level_policy,
                 )
-                rendered = self.renderer.render(plan)
+                rendered_output = (
+                    self.renderer.render_with_report(plan)
+                    if audio_level_policy is not None
+                    else RenderedOutput(self.renderer.render(plan))
+                )
+            except AudioLevelRenderError as exc:
+                processed.append(
+                    replace(
+                        match,
+                        status=MatchStatus.ERROR,
+                        reason=str(exc),
+                        output_path=None,
+                        segments=(),
+                    )
+                )
+                audio_levels.append(exc.report)
             except (FileExistsError, ValueError, RuntimeError) as exc:
                 processed.append(
                     replace(
@@ -215,8 +238,10 @@ class RecorderSyncPipeline:
                         segments=(),
                     )
                 )
+                audio_levels.append(None)
             else:
-                processed.append(replace(match, output_path=rendered))
+                processed.append(replace(match, output_path=rendered_output.output_path))
+                audio_levels.append(rendered_output.audio_levels)
             render_completed += 1
             if progress_callback is not None:
                 progress_callback(
@@ -226,4 +251,8 @@ class RecorderSyncPipeline:
                     match.video_path.name,
                 )
 
-        return MatchReport(sessions=bundle.sessions, matches=tuple(processed))
+        return MatchReport(
+            sessions=bundle.sessions,
+            matches=tuple(processed),
+            audio_levels=tuple(audio_levels),
+        )

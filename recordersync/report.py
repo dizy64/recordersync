@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 
+from recordersync.audio_levels import AudioLevelMetrics, AudioLevelReport
 from recordersync.models import AudioMatch, MatchStatus, RecordingSession
 from recordersync.recommendation import (
     ModeRecommendation,
@@ -119,9 +120,54 @@ def _recommendation_options(recommendation: ModeRecommendation) -> dict[str, flo
     return {"min_partial_seconds": recommendation.minimum_contiguous_seconds}
 
 
-def _match_payload(match: AudioMatch, language: ReportLanguage) -> dict[str, object]:
-    recommendation = recommend_mode(match)
+def _audio_metrics_payload(metrics: AudioLevelMetrics) -> dict[str, object]:
     return {
+        "channels": metrics.channels,
+        "sample_rate": metrics.sample_rate,
+        "integrated_loudness_lufs": metrics.integrated_loudness_lufs,
+        "loudness_range_lu": metrics.loudness_range_lu,
+        "sample_peak_dbfs": metrics.sample_peak_dbfs,
+        "true_peak_dbtp": metrics.true_peak_dbtp,
+        "duration_seconds": metrics.duration_seconds,
+        "codec": metrics.codec,
+        "decoder_error": metrics.decoder_error,
+    }
+
+
+def _audio_level_payload(report: AudioLevelReport) -> dict[str, object]:
+    decision = report.decision
+    return {
+        "policy": {
+            "target_lufs": report.policy.target_lufs,
+            "maximum_true_peak_dbtp": report.policy.maximum_true_peak_dbtp,
+            "output_channel_layout": report.policy.output_channel_layout.value,
+            "loudness_tolerance_lu": report.policy.loudness_tolerance_lu,
+            "dynamics": "none",
+        },
+        "input": _audio_metrics_payload(report.input_metrics),
+        "decision": {
+            "requested_gain_db": decision.requested_gain_db,
+            "maximum_safe_gain_db": decision.maximum_safe_gain_db,
+            "applied_gain_db": decision.applied_gain_db,
+            "expected_true_peak_dbtp": decision.expected_true_peak_dbtp,
+            "conflict_db": decision.conflict_db,
+            "limiter_free_lufs": decision.limiter_free_lufs,
+        },
+        "output": _audio_metrics_payload(report.output_metrics) if report.output_metrics is not None else None,
+        "validation": {
+            "passed": report.passed,
+            "failures": list(report.validation_failures),
+        },
+    }
+
+
+def _match_payload(
+    match: AudioMatch,
+    language: ReportLanguage,
+    audio_levels: AudioLevelReport | None = None,
+) -> dict[str, object]:
+    recommendation = recommend_mode(match)
+    payload: dict[str, object] = {
         "video": str(match.video_path),
         "status": match.status.value,
         "session_id": match.session_id,
@@ -151,6 +197,44 @@ def _match_payload(match: AudioMatch, language: ReportLanguage) -> dict[str, obj
         "recommendation_reason": _recommendation_reason(recommendation, language),
         "recommended_options": _recommendation_options(recommendation),
     }
+    if audio_levels is not None:
+        payload["audio_levels"] = _audio_level_payload(audio_levels)
+    return payload
+
+
+def format_audio_level_summary(
+    match: AudioMatch,
+    report: AudioLevelReport,
+) -> str:
+    """CLI stderr에 표시할 영상별 음량 검증 한 줄 요약."""
+
+    input_metrics = report.input_metrics
+    applied_gain = report.decision.applied_gain_db
+    output_metrics = report.output_metrics
+    status = "통과" if report.passed else "실패"
+    output = (
+        f"{output_metrics.integrated_loudness_lufs:.1f} LUFS / {output_metrics.true_peak_dbtp:.1f} dBTP"
+        if output_metrics is not None
+        else "없음"
+    )
+    prefix = (
+        f"{match.video_path.name} | 음량 검증: {status} | "
+        f"입력: {input_metrics.integrated_loudness_lufs:.1f} LUFS / "
+        f"{input_metrics.true_peak_dbtp:.1f} dBTP"
+    )
+    if applied_gain is None:
+        decision = report.decision
+        return (
+            f"{prefix} | 목표 gain: {decision.requested_gain_db:+.1f} dB | "
+            f"안전 gain: {decision.maximum_safe_gain_db:+.1f} dB | "
+            f"초과: {decision.conflict_db:.1f} dB | "
+            f"limiter 없이 가능한 음량: {decision.limiter_free_lufs:.1f} LUFS | "
+            f"출력: {output}"
+        )
+    summary = f"{prefix} | gain: {applied_gain:+.1f} dB | 출력: {output}"
+    if report.validation_failures:
+        summary += f" | 실패: {'; '.join(report.validation_failures)}"
+    return summary
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +244,11 @@ class MatchReport:
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     recommended_command: tuple[str, ...] | None = None
     include_recommended_command: bool = False
+    audio_levels: tuple[AudioLevelReport | None, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.audio_levels and len(self.audio_levels) != len(self.matches):
+            raise ValueError("audio_levels must be empty or align with matches")
 
     def _summary(self) -> dict[str, int]:
         return {
@@ -172,6 +261,7 @@ class MatchReport:
         }
 
     def to_dict(self, *, language: ReportLanguage = ReportLanguage.KO) -> dict[str, object]:
+        audio_levels = self.audio_levels or (None,) * len(self.matches)
         payload: dict[str, object] = {
             "version": REPORT_VERSION,
             "language": language.value,
@@ -185,7 +275,10 @@ class MatchReport:
                 }
                 for session in self.sessions
             ],
-            "matches": [_match_payload(match, language) for match in self.matches],
+            "matches": [
+                _match_payload(match, language, match_audio_levels)
+                for match, match_audio_levels in zip(self.matches, audio_levels, strict=True)
+            ],
         }
         if self.include_recommended_command:
             payload["recommended_command"] = (

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from recordersync import __version__
 from recordersync.analysis_plan import load_analysis_report, write_analysis_report
+from recordersync.audio_levels import AudioLevelPolicy, OutputChannelLayout
 from recordersync.matching import MatchOptions
 from recordersync.models import AudioMatch, MatchStatus
 from recordersync.pipeline import AnalysisBundle, RecorderSyncPipeline, is_renderable_match
@@ -18,7 +19,7 @@ from recordersync.recommendation import (
     recommend_batch_mode,
 )
 from recordersync.render import RenderMode, resolve_output_path, validate_output_affix
-from recordersync.report import MatchReport, ReportLanguage
+from recordersync.report import MatchReport, ReportLanguage, format_audio_level_summary
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -143,6 +144,30 @@ def build_parser() -> argparse.ArgumentParser:
         type=_unit_interval,
         default=1.0,
         help="외부 보이스레코더 오디오 볼륨(0.0~1.0, 기본: 1.0)",
+    )
+    process.add_argument(
+        "--target-lufs",
+        type=float,
+        default=None,
+        help="static gain 음량 안전 모드의 목표 integrated loudness",
+    )
+    process.add_argument(
+        "--max-true-peak-dbtp",
+        type=float,
+        default=None,
+        help="static gain 음량 안전 모드의 최종 최대 true peak",
+    )
+    process.add_argument(
+        "--output-channel-layout",
+        choices=[layout.value for layout in OutputChannelLayout],
+        default=None,
+        help="음량 안전 모드의 출력 채널 정책: preserve, mono, stereo",
+    )
+    process.add_argument(
+        "--loudness-tolerance-lu",
+        type=float,
+        default=None,
+        help="최종 AAC integrated loudness의 허용 오차",
     )
     process.add_argument(
         "--output-prefix",
@@ -301,6 +326,21 @@ def _validate_process_options(
         return
     if args.recommended_only and render_mode is not RenderMode.FALLBACK:
         parser.error("--recommended-only requires --mode fallback")
+    loudness_values = (
+        args.target_lufs,
+        args.max_true_peak_dbtp,
+        args.output_channel_layout,
+        args.loudness_tolerance_lu,
+    )
+    if any(value is not None for value in loudness_values):
+        if not all(value is not None for value in loudness_values):
+            parser.error("loudness safety options must be provided together")
+        if render_mode is not RenderMode.REPLACE:
+            parser.error("loudness safety requires --mode replace")
+        if args.external_audio_volume != 1.0:
+            parser.error("--external-audio-volume cannot be combined with loudness safety")
+        if args.dry_run:
+            parser.error("loudness safety cannot be combined with --dry-run")
     if args.analysis_report is None:
         return
     if (
@@ -313,6 +353,23 @@ def _validate_process_options(
         parser.error("--analysis-report cannot be combined with analysis options")
     if args.report is not None and args.analysis_report.resolve() == args.report.resolve():
         parser.error("--analysis-report and --report must use different paths")
+
+
+def _audio_level_policy(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+) -> AudioLevelPolicy | None:
+    if args.command != "process" or args.target_lufs is None:
+        return None
+    try:
+        return AudioLevelPolicy(
+            target_lufs=args.target_lufs,
+            maximum_true_peak_dbtp=args.max_true_peak_dbtp,
+            output_channel_layout=OutputChannelLayout(args.output_channel_layout),
+            loudness_tolerance_lu=args.loudness_tolerance_lu,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
 
 
 def _analysis_bundle(
@@ -354,6 +411,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     report_language = ReportLanguage(args.report_language)
     render_mode = RenderMode(args.mode) if args.command == "process" else RenderMode.REPLACE
     _validate_process_options(parser, args, render_mode)
+    audio_level_policy = _audio_level_policy(parser, args)
 
     try:
         bundle = _analysis_bundle(
@@ -389,8 +447,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 overwrite=args.overwrite,
                 output_prefix=args.output_prefix,
                 output_suffix=args.output_suffix,
+                audio_level_policy=audio_level_policy,
                 progress_callback=_print_progress,
             )
+
+        if args.command == "process" and report.audio_levels:
+            for match, audio_levels in zip(report.matches, report.audio_levels, strict=True):
+                if audio_levels is not None:
+                    print(
+                        f"[음량 검증] {format_audio_level_summary(match, audio_levels)}",
+                        file=sys.stderr,
+                    )
 
         report_path = args.report
         if report_path is None and args.command == "process" and not args.dry_run:

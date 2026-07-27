@@ -267,6 +267,37 @@ fallback은 영상 앞뒤와 승인 구간 사이에 카메라음을 쓰고, 승
 합이 1일 필요는 없으며 큰 합은 clipping을
 유발할 수 있으므로 결과를 청취한다.
 
+### LUFS와 true peak를 검증하는 교체
+
+외부 레코더음을 임의 배수가 아니라 목표 음량과 peak ceiling으로 처리하려면 다음 네
+옵션을 빠짐없이 지정한다.
+
+```bash
+recordersync process /path/to/media \
+  --audio-dir /path/to/recorder-files \
+  --target-lufs -16 \
+  --max-true-peak-dbtp -1 \
+  --output-channel-layout preserve \
+  --loudness-tolerance-lu 0.5
+```
+
+현재 이 계약은 `--mode replace`에서만 지원하며 `--external-audio-volume`의 비기본값,
+`--dry-run`과 조합할 수 없다. 네 옵션 중 하나라도 없으면 실행하지 않는다.
+
+- `preserve`: 레코더 mono/stereo 유지
+- `stereo`: mono는 gain 없이 dual-mono로 복사, stereo는 유지
+- `mono`: mono는 유지, stereo는 명시적 downmix
+
+입력 분석 후 목표 LUFS gain이 true peak ceiling을 넘으면 해당 영상은 `error`가 되고
+출력되지 않는다. JSON의 `audio_levels.decision`에서 `requested_gain_db`,
+`maximum_safe_gain_db`, `conflict_db`, `limiter_free_lufs`를 확인한다. limiter와 compressor는
+자동 적용하지 않는다.
+
+성공한 결과도 최종 AAC 재디코딩 측정값이 계약을 만족한 경우에만 게시된다. stderr의
+`[음량 검증]`은 빠른 확인용이고 자동화는 JSON의 `audio_levels.validation.passed`와
+`failures`를 사용한다. 기존에 encode 전에 clipping된 파일을 감쇠해도 이미 손실된 파형은
+복원되지 않으므로 가능한 한 clipping 이전 32-bit float 원본에서 다시 처리한다.
+
 실행 중 선택된 파일 목록과 `[오디오 분석]`, `[영상 매칭]`, `[영상 렌더]` 진행률은
 stderr로 출력된다. stdout JSON만 저장하려면 다음처럼 분리한다.
 
@@ -324,6 +355,7 @@ esac
 | libx265도 실패 | JSON error와 FFmpeg stderr, 지원 filter/codec 확인 |
 | 뒤쪽 싱크가 밀림 | `tempo_ratio`, 입력 클립 길이, 조각 경계 frame padding 회귀 확인 |
 | 외부 음악이 눈에 띄게 빠르거나 느림 | 리포트의 `tempo_ratio` 확인. 0.99~1.01 밖인 이전 출력은 사용하지 말고 최신 버전으로 다시 분석·렌더 |
+| 음량 안전 처리가 error | `audio_levels`에서 decoder error, gain 충돌량, 최종 AAC 검증 실패를 확인 |
 | 전역 명령이 없음 | `uv tool dir --bin`, `uv tool update-shell`, `type -a` 확인 |
 
 ## 공개 합성 smoke
