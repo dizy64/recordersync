@@ -426,6 +426,39 @@ def test_렌더러는_입력_EBUR_요약_전_디코드_실패도_음량_보고�
     run.assert_not_called()
 
 
+def test_렌더러는_지원하지_않는_입력_채널도_음량_보고서로_남긴다(
+    tmp_path: Path,
+) -> None:
+    multichannel_session = RecordingSession(
+        id="session-multichannel",
+        chunks=(AudioChunk(Path("surround.wav"), 60, 48_000, 3, "pcm_f32le", None),),
+    )
+    output = tmp_path / "replace" / "clip.mp4"
+    plan = RenderPlan(
+        video=_video(),
+        session=multichannel_session,
+        output_path=output,
+        external_start_seconds=1,
+        tempo_ratio=1,
+        audio_level_policy=_audio_level_policy(),
+    )
+    renderer = FFmpegRenderer()
+
+    with (
+        patch.object(renderer, "_run") as run,
+        pytest.raises(AudioLevelRenderError, match="Input audio analysis failed") as error,
+    ):
+        renderer.render_with_report(plan)
+
+    assert error.value.report.input_metrics is None
+    assert error.value.report.decision is None
+    assert error.value.report.validation_failures == (
+        "input analysis error: loudness safety supports mono or stereo recorder audio",
+    )
+    assert not output.exists()
+    run.assert_not_called()
+
+
 def test_렌더러는_최종_AAC가_peak_검증에_실패하면_임시_출력을_게시하지_않는다(
     tmp_path: Path,
 ) -> None:

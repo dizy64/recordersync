@@ -721,7 +721,7 @@ class FFmpegRenderer:
                 if plan.audio_level_policy is not None:
                     try:
                         input_metrics = self.audio_analyzer.measure_render_input(plan, manifest_paths)
-                    except RenderError as exc:
+                    except (RenderError, ValueError) as exc:
                         audio_levels = AudioLevelReport(
                             plan.audio_level_policy,
                             validation_failures=(f"input analysis error: {exc}",),
