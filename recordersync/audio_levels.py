@@ -110,8 +110,8 @@ class AudioLevelReport:
     def __post_init__(self) -> None:
         if self.decision is not None and self.input_metrics is None:
             raise ValueError("decision requires input_metrics")
-        if self.output_metrics is not None and self.decision is None:
-            raise ValueError("output_metrics requires decision")
+        if self.output_metrics is not None and (self.decision is None or self.decision.applied_gain_db is None):
+            raise ValueError("output_metrics requires an applied gain decision")
 
     @property
     def passed(self) -> bool:

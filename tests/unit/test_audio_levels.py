@@ -7,6 +7,7 @@ import pytest
 from recordersync.audio_levels import (
     AudioLevelMetrics,
     AudioLevelPolicy,
+    AudioLevelReport,
     OutputChannelLayout,
     decide_static_gain,
     parse_ebur128_summary,
@@ -77,6 +78,29 @@ def test_static_gain은_목표_음량과_peak_제한이_충돌하면_적용하�
     assert decision.applied_gain_db is None
     assert decision.conflict_db == pytest.approx(12.5)
     assert decision.limiter_free_lufs == pytest.approx(-19.8)
+
+
+def test_음량_보고서는_gain_충돌_결정에_출력_측정값을_허용하지_않는다() -> None:
+    policy = AudioLevelPolicy(
+        target_lufs=-7.3,
+        maximum_true_peak_dbtp=-1.0,
+        output_channel_layout=OutputChannelLayout.MONO,
+        loudness_tolerance_lu=0.5,
+    )
+    input_metrics = _metrics(
+        integrated_loudness_lufs=-11.1,
+        true_peak_dbtp=7.7,
+        channels=1,
+    )
+    decision = decide_static_gain(input_metrics, policy)
+
+    with pytest.raises(ValueError, match="output_metrics requires an applied gain decision"):
+        AudioLevelReport(
+            policy=policy,
+            input_metrics=input_metrics,
+            decision=decision,
+            output_metrics=_metrics(channels=1, codec="aac"),
+        )
 
 
 def test_출력_검증은_AAC_재디코딩_결과의_음량_peak_채널_rate_duration을_모두_확인한다() -> None:

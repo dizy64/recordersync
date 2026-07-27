@@ -257,15 +257,19 @@ def test_최종_오디오_분석기는_container가_아닌_오디오_stream_길�
     assert metrics.decoder_error is None
 
 
-def test_오디오_분석기는_실패_stderr의_오류_줄을_요약보다_우선한다() -> None:
+def test_오디오_분석기는_실패_stderr의_마지막_오류_줄을_진단으로_선택한다() -> None:
     result = CompletedProcess(
         ["ffmpeg"],
         1,
         "",
-        "Invalid data found when processing input\nSummary:\nPeak: -1.0 dBFS\n",
+        (
+            "Invalid stream specifier while probing input\n"
+            "Error while decoding stream #0:0: corrupt input packet\n"
+            "Summary:\nPeak: -1.0 dBFS\n"
+        ),
     )
 
-    assert FFmpegAudioAnalyzer._decoder_error(result) == "Invalid data found when processing input"
+    assert FFmpegAudioAnalyzer._decoder_error(result) == "Error while decoding stream #0:0: corrupt input packet"
 
 
 @pytest.mark.parametrize("mode", [RenderMode.MIX, RenderMode.FALLBACK])

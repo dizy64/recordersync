@@ -590,7 +590,7 @@ class FFmpegAudioAnalyzer:
         if result.returncode == 0:
             return None
         lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
-        for line in lines:
+        for line in reversed(lines):
             lowered = line.casefold()
             if "error" in lowered or "invalid" in lowered:
                 return line
