@@ -23,6 +23,14 @@ class SyntheticProject:
 
 
 @dataclass(frozen=True, slots=True)
+class VfrSyntheticProject:
+    video_dir: Path
+    audio_dir: Path
+    output_dir: Path
+    video_path: Path
+
+
+@dataclass(frozen=True, slots=True)
 class PartialSyntheticProject:
     video_dir: Path
     audio_dir: Path
@@ -66,6 +74,37 @@ def probe_media(path: Path) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise TypeError("ffprobe payload must be an object")
     return parsed
+
+
+def probe_video_timestamps(path: Path) -> tuple[float, ...]:
+    payload = run_command(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_frames",
+            "-show_entries",
+            "frame=best_effort_timestamp_time",
+            "-of",
+            "json",
+            str(path),
+        ]
+    )
+    parsed = json.loads(payload)
+    frames = parsed.get("frames")
+    if not isinstance(frames, list):
+        raise TypeError("ffprobe frames must be a list")
+    timestamps: list[float] = []
+    for index, frame in enumerate(frames):
+        if not isinstance(frame, dict):
+            raise TypeError(f"ffprobe frame {index} must be an object")
+        timestamp = frame.get("best_effort_timestamp_time")
+        if not isinstance(timestamp, str):
+            raise TypeError(f"ffprobe frame {index} timestamp must be a string")
+        timestamps.append(float(timestamp))
+    return tuple(timestamps)
 
 
 @pytest.fixture(scope="module")
@@ -153,6 +192,77 @@ def synthetic_project(tmp_path_factory: pytest.TempPathFactory) -> SyntheticProj
         ]
     )
     return SyntheticProject(video_dir, audio_dir, output_dir, video_path)
+
+
+@pytest.fixture(scope="module")
+def vfr_synthetic_project(tmp_path_factory: pytest.TempPathFactory) -> VfrSyntheticProject:
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        pytest.skip("ffmpeg and ffprobe are required")
+
+    root = tmp_path_factory.mktemp("recordersync-vfr-e2e")
+    video_dir = root / "video"
+    audio_dir = root / "audio"
+    output_dir = root / "output"
+    video_dir.mkdir()
+    audio_dir.mkdir()
+    recorder = audio_dir / "REC.wav"
+
+    run_command(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "anoisesrc=color=pink:seed=20260728:duration=12:sample_rate=48000",
+            "-c:a",
+            "pcm_s16le",
+            str(recorder),
+        ]
+    )
+
+    video_path = video_dir / "vfr.mov"
+    run_command(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-ss",
+            "3",
+            "-t",
+            "6",
+            "-i",
+            str(recorder),
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=160x90:rate=30:duration=4",
+            "-filter_complex",
+            r"[1:v]setpts=if(lt(N\,60)\,N/(30*TB)\,2/TB+(N-60)/(15*TB))[v]",
+            "-map",
+            "[v]",
+            "-map",
+            "0:a:0",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            "-fps_mode:v",
+            "vfr",
+            "-c:a",
+            "aac",
+            "-shortest",
+            str(video_path),
+        ]
+    )
+    return VfrSyntheticProject(video_dir, audio_dir, output_dir, video_path)
 
 
 @pytest.fixture(scope="module")

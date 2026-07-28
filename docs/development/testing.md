@@ -25,7 +25,7 @@ RecorderSync의 비즈니스 정책은 단위 테스트로 검증한다. FFmpeg�
 | `test_check_markdown_links.py` | 로컬 링크, 외부 URL, 코드 블록, 저장소 이탈, CLI 오류 목록 |
 | `test_check_release_version.py` | 프로젝트·패키지·릴리스 태그 버전 일치와 오류 진단 |
 | `test_report_json_schema.py` | Draft 2020-12 적합성, 실제 payload, 문서 예시, 잘못된 상태·미지 필드 거부 |
-| `e2e/test_cli_pipeline.py` | 분할 WAV, 세로 해상도/FPS, 안전 mix·다중 구간 fallback 렌더, 반복 끝 구간 drift 차단 |
+| `e2e/test_cli_pipeline.py` | 분할 WAV, 세로 해상도/FPS, VFR 프레임 타임스탬프, 안전 mix·다중 구간 fallback 렌더, 반복 끝 구간 drift 차단 |
 
 새 테스트 파일을 추가하거나 책임이 바뀌면 이 지도만 갱신한다.
 
