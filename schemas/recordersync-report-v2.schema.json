@@ -609,7 +609,8 @@
             "width",
             "height",
             "has_audio",
-            "color_transfer"
+            "color_transfer",
+            "audio_channels"
           ],
           "properties": {
             "duration_seconds": {
@@ -629,6 +630,10 @@
             },
             "color_transfer": {
               "$ref": "#/$defs/nullableString"
+            },
+            "audio_channels": {
+              "type": ["integer", "null"],
+              "minimum": 1
             }
           }
         }
@@ -696,7 +701,7 @@
       "required": ["version", "audio_sessions", "videos", "matches"],
       "properties": {
         "version": {
-          "const": 1
+          "const": 2
         },
         "audio_sessions": {
           "type": "array",

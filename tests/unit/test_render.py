@@ -42,7 +42,7 @@ def _session() -> RecordingSession:
     )
 
 
-def _video(*, portrait: bool = False, hdr: bool = False) -> VideoInfo:
+def _video(*, portrait: bool = False, hdr: bool = False, audio_channels: int = 2) -> VideoInfo:
     return VideoInfo(
         path=Path("clip.mov"),
         duration_seconds=30.0,
@@ -50,6 +50,7 @@ def _video(*, portrait: bool = False, hdr: bool = False) -> VideoInfo:
         height=1920 if portrait else 2160,
         has_audio=True,
         color_transfer="arib-std-b67" if hdr else "bt709",
+        audio_channels=audio_channels,
     )
 
 
@@ -657,6 +658,69 @@ def test_믹스_렌더는_측정한_static_gain을_합산_뒤에_적용한다(tm
     assert rendered.audio_levels.passed
     assert rendered.audio_levels.decision.applied_gain_db == pytest.approx(-1.1)
     assert joined.index("amix=inputs=2") < joined.index("volume=-1.1dB")
+
+
+def test_믹스_렌더는_static_gain과_peak_제한이_충돌하면_렌더하지_않는다(tmp_path: Path) -> None:
+    output = tmp_path / "mix" / "clip.mp4"
+    plan = RenderPlan(
+        video=_video(),
+        session=_session(),
+        output_path=output,
+        external_start_seconds=1,
+        tempo_ratio=1,
+        mode=RenderMode.MIX,
+        camera_audio_volume=1.0,
+        external_audio_volume=10 ** (-12 / 20),
+        external_highpass_hz=80,
+        audio_level_policy=_audio_level_policy(target_lufs=-7.3, maximum_true_peak_dbtp=-1.0),
+    )
+    analyzer = MagicMock(spec=FFmpegAudioAnalyzer)
+    analyzer.measure_render_input.return_value = _audio_metrics(
+        integrated_loudness_lufs=-11.1,
+        true_peak_dbtp=7.7,
+    )
+    renderer = FFmpegRenderer(audio_analyzer=analyzer)
+
+    with (
+        patch.object(renderer, "_run") as run,
+        pytest.raises(AudioLevelRenderError, match="conflicts") as error,
+    ):
+        renderer.render_with_report(plan)
+
+    assert error.value.report.decision.conflict_db == pytest.approx(12.5)
+    assert not output.exists()
+    run.assert_not_called()
+    analyzer.measure_output.assert_not_called()
+
+
+def test_믹스_명령은_mono_카메라를_추가_gain_없이_dual_mono로_만든다() -> None:
+    plan = RenderPlan(
+        video=_video(audio_channels=1),
+        session=_session(),
+        output_path=Path("out.mp4"),
+        external_start_seconds=1,
+        tempo_ratio=1,
+        mode=RenderMode.MIX,
+        audio_level_policy=_audio_level_policy(),
+        output_audio_gain_db=-3,
+    )
+
+    joined = " ".join(FFmpegCommandBuilder().build(plan, Path("concat.txt")))
+
+    assert "[0:a:0]volume=1,aresample=48000" in joined
+    assert "pan=stereo|c0=c0|c1=c0" in joined
+
+
+def test_믹스_렌더_계획은_다채널_카메라의_암묵적_downmix를_거부한다() -> None:
+    with pytest.raises(ValueError, match="mix mode supports mono or stereo camera audio"):
+        RenderPlan(
+            video=_video(audio_channels=6),
+            session=_session(),
+            output_path=Path("out.mp4"),
+            external_start_seconds=1,
+            tempo_ratio=1,
+            mode=RenderMode.MIX,
+        )
 
 
 def test_렌더_계획은_잘못된_카메라_볼륨을_거부한다() -> None:

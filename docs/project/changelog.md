@@ -13,6 +13,7 @@ RecorderSync의 사용자 동작과 공개 연동 계약 변경을 버전별로 
 - JSON v2 영상별 optional `audio_levels`와 stderr `[음량 검증]` 요약
 - `mix`의 카메라 1.0, 외부 `-12dB` 상당, 외부 HP80 보수 기본값과 HPF override
 - component 처리 후 합산 float 신호의 음량 측정, 합산 뒤 static gain, 최종 AAC 검증
+- 카메라 오디오 채널 수를 보존하는 `analysis_inputs` v2와 mono dual-mono 처리, 다채널 자동 downmix 거부
 
 ### 호환성
 

@@ -71,7 +71,7 @@ def test_영상_분석은_해상도와_오디오와_색상_정보를_읽는다(t
                 "height": 1920,
                 "color_transfer": "arib-std-b67",
             },
-            {"codec_type": "audio"},
+            {"codec_type": "audio", "channels": 1},
         ],
     }
     completed = CompletedProcess(["ffprobe"], 0, stdout=json.dumps(payload), stderr="")
@@ -81,7 +81,27 @@ def test_영상_분석은_해상도와_오디오와_색상_정보를_읽는다(t
 
     assert info.is_portrait
     assert info.has_audio
+    assert info.audio_channels == 1
     assert info.color_transfer == "arib-std-b67"
+
+
+def test_영상_분석은_오디오_채널_수가_없으면_거부한다(tmp_path: Path) -> None:
+    video = tmp_path / "clip.mov"
+    video.touch()
+    payload = {
+        "format": {"duration": "10"},
+        "streams": [
+            {"codec_type": "video", "width": 1920, "height": 1080},
+            {"codec_type": "audio"},
+        ],
+    }
+    completed = CompletedProcess(["ffprobe"], 0, stdout=json.dumps(payload), stderr="")
+
+    with (
+        patch("recordersync.media.subprocess.run", return_value=completed),
+        pytest.raises(MediaError, match="Invalid audio channels"),
+    ):
+        FFmpegTools().probe_video(video)
 
 
 def test_특징_추출은_부동소수점_PCM을_디코딩한다() -> None:

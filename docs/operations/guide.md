@@ -239,7 +239,7 @@ recordersync process /path/to/media \
 접두사·접미사에는 경로 구분자를 사용할 수 없다. `--output-dir`를 원본 디렉터리로
 지정해 계산된 출력 경로가 원본 MP4와 같아지는 경우에는 `--overwrite`도 허용되지 않는다.
 
-카메라 stereo를 주 음원으로 유지하면서 외부 녹음을 보강하려면 명시적으로 mix를 사용한다. 기본값은 카메라 1.0, 외부 `-12dB` 상당, 외부 HP80이다. 합산 결과를 `-16 LUFS`, 최대 `-1 dBTP`, stereo, `0.5 LU` 허용 오차로 검증한다.
+카메라 stereo를 주 음원으로 유지하면서 외부 녹음을 보강하려면 명시적으로 mix를 사용한다. 기본값은 카메라 1.0, 외부 `-12dB` 상당, 외부 HP80이다. 합산 결과를 `-16 LUFS`, 최대 `-1 dBTP`, stereo, `0.5 LU` 허용 오차로 검증한다. 카메라와 외부 입력이 mono이면 추가 gain 없이 dual-mono로 복사하고 stereo이면 그대로 유지한다. 3채널 이상 입력은 자동 downmix하지 않고 오류로 보고한다.
 
 ```bash
 recordersync process /path/to/media \

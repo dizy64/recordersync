@@ -413,6 +413,56 @@ def test_메인_처리는_명시한_음량_안전_정책을_파이프라인에_�
     assert json.loads(capsys.readouterr().out)["summary"]["matched"] == 1
 
 
+def test_메인_믹스는_수동_볼륨과_음량_안전_정책을_함께_전달한다(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    bundle = AnalysisBundle(
+        sessions=(),
+        videos=(),
+        matches=(AudioMatch(Path("clip.mov"), 5, MatchStatus.MATCHED),),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = bundle
+    pipeline.process.return_value = MatchReport(sessions=(), matches=bundle.matches)
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(
+            [
+                "process",
+                str(tmp_path),
+                "--mode",
+                "mix",
+                "--camera-audio-volume",
+                "0.25",
+                "--external-audio-volume",
+                "0.8",
+                "--external-highpass-hz",
+                "100",
+                "--target-lufs",
+                "-18",
+                "--max-true-peak-dbtp",
+                "-2",
+                "--output-channel-layout",
+                "stereo",
+                "--loudness-tolerance-lu",
+                "0.7",
+            ]
+        )
+
+    assert exit_code == 0
+    kwargs = pipeline.process.call_args.kwargs
+    assert kwargs["camera_audio_volume"] == pytest.approx(0.25)
+    assert kwargs["external_audio_volume"] == pytest.approx(0.8)
+    assert kwargs["external_highpass_hz"] == pytest.approx(100)
+    policy = kwargs["audio_level_policy"]
+    assert policy.target_lufs == pytest.approx(-18)
+    assert policy.maximum_true_peak_dbtp == pytest.approx(-2)
+    assert policy.output_channel_layout is OutputChannelLayout.STEREO
+    assert policy.loudness_tolerance_lu == pytest.approx(0.7)
+    assert json.loads(capsys.readouterr().out)["summary"]["matched"] == 1
+
+
 def test_메인_분석은_기본적으로_사람용_요약을_출력한다(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

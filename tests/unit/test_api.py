@@ -54,7 +54,7 @@ def test_영상_매칭은_렌더링하지_않고_결과를_반환한다() -> Non
         "session-001",
         (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),
     )
-    video = VideoInfo(Path("clip.mov"), 4, 3840, 2160, True)
+    video = VideoInfo(Path("clip.mov"), 4, 3840, 2160, True, audio_channels=2)
     tools = MagicMock(spec=FFmpegTools)
     tools.build_session_timeline.return_value = FeatureTimeline(session.id, session_features, 0.05)
     tools.probe_video.return_value = video
@@ -144,7 +144,7 @@ def test_렌더_계획_생성은_승인된_매칭을_연결한다() -> None:
         "session-001",
         (AudioChunk(Path("REC.wav"), 20, 48_000, 2, "pcm_f32le", None),),
     )
-    video = VideoInfo(Path("clip.mov"), 4, 3840, 2160, True)
+    video = VideoInfo(Path("clip.mov"), 4, 3840, 2160, True, audio_channels=2)
     match = AudioMatch(
         video.path,
         4,

@@ -37,7 +37,7 @@ def _bundle(tmp_path: Path) -> AnalysisBundle:
             ),
         ),
     )
-    video = VideoInfo(video_path, 10, 1080, 1920, True, "bt709")
+    video = VideoInfo(video_path, 10, 1080, 1920, True, "bt709", audio_channels=2)
     match = AudioMatch(
         video_path,
         10,
@@ -57,8 +57,9 @@ def test_분석_리포트는_입력_메타데이터를_검증해_번들을_복�
     restored = load_analysis_report(report_path, expected_video_dir=tmp_path / "video")
 
     payload = json.loads(report_path.read_text(encoding="utf-8"))
-    assert payload["analysis_inputs"]["version"] == 1
+    assert payload["analysis_inputs"]["version"] == 2
     assert payload["analysis_inputs"]["videos"][0]["width"] == 1080
+    assert payload["analysis_inputs"]["videos"][0]["audio_channels"] == 2
     assert restored.sessions == bundle.sessions
     assert restored.videos == bundle.videos
     assert restored.matches == bundle.matches

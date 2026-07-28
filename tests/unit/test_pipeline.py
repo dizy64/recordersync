@@ -148,7 +148,7 @@ def test_파이프라인은_카메라_오디오가_없는_영상을_오류로_�
 
 
 def test_파이프라인_처리는_매칭된_영상만_렌더링한다(tmp_path: Path) -> None:
-    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True)
+    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True, audio_channels=2)
     session = RecordingSession(
         "session-001",
         (AudioChunk(Path("REC.wav"), 30, 48_000, 2, "pcm_s24le", None),),
@@ -203,7 +203,7 @@ def test_파이프라인_처리는_매칭된_영상만_렌더링한다(tmp_path:
 def test_파이프라인_믹스는_카메라를_주음원으로_두는_보수적인_기본값을_사용한다(
     tmp_path: Path,
 ) -> None:
-    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True)
+    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True, audio_channels=2)
     session = RecordingSession(
         "session-001",
         (AudioChunk(Path("REC.wav"), 30, 48_000, 1, "pcm_f32le", None),),
@@ -234,7 +234,7 @@ def test_파이프라인_믹스는_카메라를_주음원으로_두는_보수적
 def test_파이프라인_믹스는_분석기가_제안한_정책을_같은_렌더_경로에_전달한다(
     tmp_path: Path,
 ) -> None:
-    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True)
+    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True, audio_channels=2)
     session = RecordingSession(
         "session-001",
         (AudioChunk(Path("REC.wav"), 30, 48_000, 1, "pcm_f32le", None),),
