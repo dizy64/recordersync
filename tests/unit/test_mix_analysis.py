@@ -220,6 +220,26 @@ def test_자동_mix_분석은_timeout을_영상별_실패로_격리한다() -> N
     assert recommendation.failures == ("camera analysis error: camera analysis timed out",)
 
 
+def test_자동_mix_분석은_EBU_R128_요약_누락을_실패로_보고한다() -> None:
+    missing_summary = CompletedProcess(["ffmpeg"], 0, _successful_analysis().stdout, b"no summary")
+
+    with patch("recordersync.mix_analysis.subprocess.run", return_value=missing_summary):
+        recommendation = FFmpegMixAnalyzer().recommend(_render_plan())
+
+    assert recommendation.failures == ("camera analysis error: Missing EBU R128 summary",)
+
+
+def test_자동_mix_분석은_손상된_float_PCM을_실패로_보고한다() -> None:
+    malformed_pcm = CompletedProcess(["ffmpeg"], 0, b"\x00", _ebur128_summary())
+
+    with patch("recordersync.mix_analysis.subprocess.run", return_value=malformed_pcm):
+        recommendation = FFmpegMixAnalyzer().recommend(_render_plan())
+
+    assert recommendation.failures
+    assert recommendation.failures[0].startswith("camera analysis error:")
+    assert "buffer size must be a multiple of element size" in recommendation.failures[0]
+
+
 def test_자동_mix_추천은_gain과_linear_volume의_불일치를_거부한다() -> None:
     source = _source_metrics(
         integrated_loudness_lufs=-12,

@@ -272,6 +272,13 @@ def test_자동_mix_요약은_추천과_적용_실패를_구분한다() -> None:
         )
         == "clip.mov | 상태: 적용 실패 | final AAC validation failed"
     )
+    assert (
+        format_mix_recommendation_summary(
+            match,
+            MixRecommendation.failed("camera analysis error: invalid frame"),
+        )
+        == "clip.mov | 상태: 실패 | camera analysis error: invalid frame"
+    )
 
 
 def test_사람용_음량_요약은_peak_충돌의_필수_판정값을_표시한다() -> None:
