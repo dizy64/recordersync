@@ -9,10 +9,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from recordersync.mix_analysis import MixProfile
 
 from recordersync.audio_levels import OutputChannelLayout
 from recordersync.cli import build_parser, main
+from recordersync.mix_analysis import MixProfile
 from recordersync.models import AudioMatch, AudioMatchSegment, MatchStatus
 from recordersync.pipeline import AnalysisBundle
 from recordersync.report import MatchReport

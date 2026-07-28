@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from recordersync.mix_analysis import MixRecommendation, MixSourceMetrics
 
 from recordersync.audio_levels import (
     AudioLevelMetrics,
@@ -16,6 +15,7 @@ from recordersync.audio_levels import (
     OutputChannelLayout,
     decide_static_gain,
 )
+from recordersync.mix_analysis import MixRecommendation, MixSourceMetrics
 from recordersync.models import (
     AudioChunk,
     AudioMatch,
