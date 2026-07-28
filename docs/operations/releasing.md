@@ -1,12 +1,10 @@
 # 릴리스 절차
 
-RecorderSync는 기능 PR을 버전별 release 브랜치에 모은 뒤 main PR로 병합하고, main의 병합
-커밋에 태그를 붙여 GitHub Release를 생성한다. PyPI 배포는 현재 범위에 포함하지 않는다.
+RecorderSync는 기능 PR을 버전별 release 브랜치에 모은 뒤 main PR로 병합하고, main의 병합 커밋에 태그를 붙여 GitHub Release를 생성한다. PyPI 배포는 현재 범위에 포함하지 않는다.
 
 ## 1. release 브랜치 준비
 
-기능과 수정은 각각 독립 PR로 `release/<version>`에 병합한다. 릴리스 메타데이터 PR에서
-다음을 함께 갱신한다.
+기능과 수정은 각각 독립 PR로 `release/<version>`에 병합한다. 릴리스 메타데이터 PR에서 다음을 함께 갱신한다.
 
 - `pyproject.toml`의 `project.version`
 - `recordersync/__init__.py`의 `__version__`
@@ -25,9 +23,7 @@ bash scripts/test-e2e.sh
 
 ## 2. main 병합
 
-`release/<version>`에서 `main`으로 PR을 만들고 Unit Tests, Synthetic FFmpeg E2E,
-Lint/Types/Security/Complexity/Build 체크와 미해결 리뷰를 모두 확인한다. main에 직접
-commit하거나 release 브랜치를 강제로 push하지 않는다.
+`release/<version>`에서 `main`으로 PR을 만들고 Unit Tests, Synthetic FFmpeg E2E, Lint/Types/Security/Complexity/Build 체크와 미해결 리뷰를 모두 확인한다. main에 직접 commit하거나 release 브랜치를 강제로 push하지 않는다.
 
 ## 3. 태그와 GitHub Release
 
@@ -41,10 +37,7 @@ git tag -a "v${release_version}" "${release_commit}" -m "RecorderSync ${release_
 git push origin "v${release_version}"
 ```
 
-`.github/workflows/release.yml`은 태그 커밋이 기본 브랜치 이력에 포함되는지, 태그와 두
-패키지 버전이 정확히 일치하는지 검증한다. 전체 품질 검사 후 `dist/*.whl`과
-`dist/*.tar.gz`를 GitHub Release에 첨부한다. 태그가 잘못됐거나 검사가 실패하면
-릴리스를 생성하지 않는다.
+`.github/workflows/release.yml`은 태그 커밋이 기본 브랜치 이력에 포함되는지, 태그와 두 패키지 버전이 정확히 일치하는지 검증한다. 전체 품질 검사 후 `dist/*.whl`과 `dist/*.tar.gz`를 GitHub Release에 첨부한다. 태그가 잘못됐거나 검사가 실패하면 릴리스를 생성하지 않는다.
 
 ## 4. 완료 확인
 
@@ -53,5 +46,4 @@ gh run list --workflow Release --limit 5
 gh release view "v${release_version}"
 ```
 
-Release 페이지의 태그·제목·산출물 두 개와 설치 후 버전을 확인한다. 이미 공개한 태그를
-다른 커밋으로 옮기지 않는다. 릴리스 이후 수정은 새 patch 버전으로 진행한다.
+Release 페이지의 태그·제목·산출물 두 개와 설치 후 버전을 확인한다. 이미 공개한 태그를 다른 커밋으로 옮기지 않는다. 릴리스 이후 수정은 새 patch 버전으로 진행한다.

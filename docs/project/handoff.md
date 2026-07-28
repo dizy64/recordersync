@@ -9,12 +9,9 @@
 - Python: 3.14+
 - 플랫폼: macOS
 - 자동 검증: `bash scripts/check.sh`, `bash scripts/test-e2e.sh` (합성 FFmpeg E2E), GitHub Actions
-- 성능 기준: 12시간·영상 200개, 일반 31.683초/실제 부분 160.178초, p95
-  0.159초/0.806초, p99 0.162초/0.809초, peak RSS 287.5MB/288.5MB
-  (2026-07-17 Apple Silicon)
+- 성능 기준: 12시간·영상 200개, 일반 31.683초/실제 부분 160.178초, p95 0.159초/0.806초, p99 0.162초/0.809초, peak RSS 287.5MB/288.5MB (2026-07-17 Apple Silicon)
 
-현재 구현은 분할 녹음 세션 구성, 영상별 FFT NCC 전체/부분/다중 구간 매칭, 반복 후보 거부, 구간별 clock drift, replace/mix/fallback과 두 오디오 볼륨, 보수적인 기본 mix HP80·합산 음량 검증, opt-in replace static gain 음량/true-peak 안전 검증, VideoToolbox/libx265 렌더, 선택 파일/진행률, 기본 부분 분석, 사람용 분석 목록과 보수적인 처리 모드·배치 명령 추천, dry-run/process 공통 렌더 정책, 입력 지문을 검증하는 분석 리포트 재사용, Draft 2020-12 스키마가 있는 opt-in JSON v2 리포트, 영상별 오류를 격리하는 공개 Python API, 태그 기반 GitHub Release 자동화를 포함한다.
-TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
+현재 구현은 분할 녹음 세션 구성, 영상별 FFT NCC 전체/부분/다중 구간 매칭, 반복 후보 거부, 구간별 clock drift, replace/mix/fallback과 두 오디오 볼륨, 보수적인 기본 mix HP80·합산 음량 검증, opt-in replace static gain 음량/true-peak 안전 검증, VideoToolbox/libx265 렌더, 선택 파일/진행률, 기본 부분 분석, 사람용 분석 목록과 보수적인 처리 모드·배치 명령 추천, dry-run/process 공통 렌더 정책, 입력 지문을 검증하는 분석 리포트 재사용, Draft 2020-12 스키마가 있는 opt-in JSON v2 리포트, 영상별 오류를 격리하는 공개 Python API, 태그 기반 GitHub Release 자동화를 포함한다. TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 
 `MixPolicy`는 현재의 검증된 기본 mix와 향후 측정 기반 자동 추천이 같은 렌더 경로를 사용하기 위한 경계다. 음질 자동 평가는 아직 구현하지 않았으며, 장비명 분기나 주관적 점수를 추가하기 전에 stereo 폭, 저역 비중, 위상 상쇄, loudness/peak 기준을 더 많은 실파일로 calibration해야 한다.
 
@@ -33,8 +30,7 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 ## 변경하면 안 되는 핵심 불변식
 
 - 원본 영상과 오디오를 수정·이동·삭제하지 않는다.
-- `ambiguous`, `unmatched`, `error`에는 결과 영상을 만들지 않는다. `partial`은 명시적
-  fallback에서만 렌더한다.
+- `ambiguous`, `unmatched`, `error`에는 결과 영상을 만들지 않는다. `partial`은 명시적 fallback에서만 렌더한다.
 - 사용자가 요청하지 않은 mix, fallback, overwrite를 자동 선택하지 않는다.
 - 기본 출력명은 `<원본 stem>.mp4`이고, 명시된 prefix/suffix만 적용한다.
 - 출력 경로와 원본 경로가 같으면 overwrite가 있어도 거부한다.
@@ -45,15 +41,13 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 - 렌더는 임시 파일 성공 후 최종 경로로 원자 이동한다.
 - subprocess는 인자 배열과 `shell=False`를 사용한다.
 - 자동 테스트에 실제 사용자 미디어나 네트워크를 넣지 않는다.
-- 선택 파일/진행률은 stderr로 분리한다. `analyze`는 기본 사람용 목록이며 `--json`에서만
-  상세 JSON을 stdout에 출력한다. `process` stdout과 `--report` 파일은 JSON을 유지한다.
+- 선택 파일/진행률은 stderr로 분리한다. `analyze`는 기본 사람용 목록이며 `--json`에서만 상세 JSON을 stdout에 출력한다. `process` stdout과 `--report` 파일은 JSON을 유지한다.
 - 분석 추천은 안내만 제공하며 process 모드, 종료 코드, 렌더 여부를 자동으로 바꾸지 않는다.
 - fallback 추천 명령은 `--recommended-only`로 추천 기준 미달 partial을 렌더하지 않는다.
 - 전체 일치 성공 시 부분 탐색을 건너뛰고, `--full-only`은 모든 부분 탐색을 생략한다.
 - mix는 카메라 1.0, 외부 `-12dB` 상당, 외부 HP80과 합산 뒤 음량 검증을 기본 적용하고, replace는 네 음량 입력을 모두 명시할 때만 활성화한다. 동적 처리를 자동 적용하지 않으며 최종 AAC 재검증 실패 결과를 게시하지 않는다.
 
-이 불변식을 바꾸는 요구는 단순 리팩터가 아니라 제품 정책 변경이다. 별도 합의, RED
-테스트, 문서와 REPORT_VERSION 영향을 먼저 정리한다.
+이 불변식을 바꾸는 요구는 단순 리팩터가 아니라 제품 정책 변경이다. 별도 합의, RED 테스트, 문서와 REPORT_VERSION 영향을 먼저 정리한다.
 
 ## 알려진 한계
 
@@ -61,30 +55,22 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 
 - 디렉터리 바로 아래만 스캔하며 재귀 탐색하지 않는다.
 - CLI에서 `--audio-dir`를 생략하면 `VIDEO_DIR`를 오디오 입력으로도 사용한다.
-- creation_time이 없고 여러 별도 녹음이 동일한 복사 시각과 연속 파일명을 가지면 자동
-  세션 경계를 알 수 없다.
+- creation_time이 없고 여러 별도 녹음이 동일한 복사 시각과 연속 파일명을 가지면 자동 세션 경계를 알 수 없다.
 - 동일 세션 안 codec/sample rate/channel이 바뀌면 별도 세션으로 분리한다.
 - 사용자가 명시적으로 세션 파일 목록이나 순서를 제공하는 manifest 기능은 없다.
 
 ### 매칭
 
-- 기본 임계값은 합성 fixture와 제한된 smoke를 기준으로 하며 다양한 실제 레코더/카메라
-  조합에 대한 대규모 calibration은 아직 없다.
+- 기본 임계값은 합성 fixture와 제한된 smoke를 기준으로 하며 다양한 실제 레코더/카메라 조합에 대한 대규모 calibration은 아직 없다.
 - 매우 반복적인 음악, 장시간 일정한 소리, 거의 무음인 카메라음은 자동 매칭이 어렵다.
-- 분석 `--report`를 사용하지 않은 독립 실행은 특징과 ffprobe 결과를 캐시하지 않아 모든
-  오디오를 다시 디코딩한다.
-- drift는 클립 앞뒤 특징 위치의 선형 비율 하나로 보정하고 중간 기준점으로 일관성을
-  검증하며, 안전 범위 0.99~1.01 밖은 적용하지 않는다. 구간별 비선형 drift는 다루지
-  않는다.
-- 부분 탐색은 기본 5초 창이므로 그보다 짧은 실제 일치 구간과 급격한 구간 내부 drift를
-  놓칠 수 있다. `--min-partial-seconds`를 낮추면 오탐 위험도 함께 커진다.
-- fallback 추천의 75% confidence, 0.05 peak margin, 10% coverage, 상대/절대 연속 길이
-  기준은 제한된 실파일 calibration 결과이므로 레코더·공연 유형이 달라지면 재검증이 필요하다.
+- 분석 `--report`를 사용하지 않은 독립 실행은 특징과 ffprobe 결과를 캐시하지 않아 모든 오디오를 다시 디코딩한다.
+- drift는 클립 앞뒤 특징 위치의 선형 비율 하나로 보정하고 중간 기준점으로 일관성을 검증하며, 안전 범위 0.99~1.01 밖은 적용하지 않는다. 구간별 비선형 drift는 다루지 않는다.
+- 부분 탐색은 기본 5초 창이므로 그보다 짧은 실제 일치 구간과 급격한 구간 내부 drift를 놓칠 수 있다. `--min-partial-seconds`를 낮추면 오탐 위험도 함께 커진다.
+- fallback 추천의 75% confidence, 0.05 peak margin, 10% coverage, 상대/절대 연속 길이 기준은 제한된 실파일 calibration 결과이므로 레코더·공연 유형이 달라지면 재검증이 필요하다.
 
 ### 렌더와 운영
 
-- 출력 해상도·방향·프레임 타임스탬프/VFR은 원본을 유지하지만 BT.709 HEVC
-  10-bit/AAC 프로파일과 영상 bitrate는 고정되어 있다.
+- 출력 해상도·방향·프레임 타임스탬프/VFR은 원본을 유지하지만 BT.709 HEVC 10-bit/AAC 프로파일과 영상 bitrate는 고정되어 있다.
 - 음량 안전 처리는 전체 replace와 전체 mix를 지원한다. fallback 여러 구간의 loudness 계약과 true-peak limiter/compressor는 지원하지 않는다.
 - 진행률은 완료 개수/비율만 제공하며 ETA·취소 후 resume·디스크 사전 용량 검사는 없다.
 - macOS 외 플랫폼은 지원 대상으로 검증하지 않았다.
@@ -97,20 +83,16 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 1. 사용자 로컬에서 레코더 모델별로 짧은 대표 작업을 `analyze`한다.
 2. 정확 매칭, 반복 구간, 무관 구간을 구분해 correlation/margin/confidence 분포를 기록한다.
 3. 원본 파일명·절대 경로·오디오를 저장소에 넣지 않고 익명화한 수치만 남긴다.
-4. false positive가 있으면 임계값을 낮추지 말고 재현 가능한 합성 특징 테스트를 먼저
-   만든다.
+4. false positive가 있으면 임계값을 낮추지 말고 재현 가능한 합성 특징 테스트를 먼저 만든다.
 5. 기본값 변경 시 정확/반복/무관 세 범주와 12시간 벤치를 모두 재실행한다.
 
 성공 기준은 false positive 0을 우선하고, 놓친 파일은 리포트로 복구 가능한 상태다.
 
 ### P1: TubeArchive 연동
 
-권장 첫 단계는 RecorderSync CLI/API가 만든 표준 개별 MP4 목록을 TubeArchive의 기존
-scan/merge/upload 경로에 입력하는 것이다. 이 방식은 양 프로젝트의 렌더 책임을
-중복시키지 않고 이미 표준화된 파일을 concat할 수 있다.
+권장 첫 단계는 RecorderSync CLI/API가 만든 표준 개별 MP4 목록을 TubeArchive의 기존 scan/merge/upload 경로에 입력하는 것이다. 이 방식은 양 프로젝트의 렌더 책임을 중복시키지 않고 이미 표준화된 파일을 concat할 수 있다.
 
-TubeArchive가 `match_videos()` 결과를 직접 받아 기존 Transcoder에서 렌더하도록
-통합한다면 다음을 함께 구현해야 한다.
+TubeArchive가 `match_videos()` 결과를 직접 받아 기존 Transcoder에서 렌더하도록 통합한다면 다음을 함께 구현해야 한다.
 
 - `session_id`에서 `RecordingSession.chunks`로 해석하는 경계
 - 다중 조각 concat 매니페스트를 외부 audio input으로 받는 FFmpeg executor
@@ -150,24 +132,19 @@ uv sync
 uv run pytest tests/unit -q
 ```
 
-그다음 관련 테스트 파일에서 RED를 만들고 구현한다. 완료 시 전체 검사, 벤치 필요 여부,
-비밀정보·미디어 추적 여부, 문서 갱신 여부를 확인한 뒤 작업 브랜치 PR을 만든다. `main`
-직접 commit/push/merge는 금지하며 Unit Tests, Synthetic FFmpeg E2E, Quality 통과 후
-GitHub PR에서 병합한다.
+그다음 관련 테스트 파일에서 RED를 만들고 구현한다. 완료 시 전체 검사, 벤치 필요 여부, 비밀정보·미디어 추적 여부, 문서 갱신 여부를 확인한 뒤 작업 브랜치 PR을 만든다. `main` 직접 commit/push/merge는 금지하며 Unit Tests, Synthetic FFmpeg E2E, Quality 통과 후 GitHub PR에서 병합한다.
 
 ## 배포·전역 설치 인수인계
 
-전역 명령 설치와 강제 갱신은 [운영 가이드](../operations/guide.md)를 따른다. main 변경 후
-버전이 같아 uv가 생략할 수 있으므로 로컬 개발 배포는 다음 명령이 기준이다.
+전역 명령 설치와 강제 갱신은 [운영 가이드](../operations/guide.md)를 따른다. main 변경 후 버전이 같아 uv가 생략할 수 있으므로 로컬 개발 배포는 다음 명령이 기준이다.
 
 ```bash
 uv tool install --python 3.14 --force --reinstall \
-  /Users/zero/Workspaces/dizy64/recordersync
+  /absolute/path/to/recordersync
 recordersync --version
 ```
 
-원격 main에서 설치할 때는 `--refresh`와 Git SSH source를 사용한다. 안정적인 운영
-배포에는 main이 아니라 tag 또는 commit SHA를 고정한다.
+원격 main에서 설치할 때는 `--refresh`와 Git SSH source를 사용한다. 안정적인 운영 배포에는 main이 아니라 tag 또는 commit SHA를 고정한다.
 
 ## 작업 종료 보고 형식
 

@@ -10,8 +10,7 @@ ffmpeg -version
 ffmpeg -hide_banner -encoders | rg 'hevc_videotoolbox|libx265'
 ```
 
-Python 3.14 이상과 `ffmpeg`, `ffprobe`가 PATH에 있어야 한다. VideoToolbox가 없으면
-하드웨어 렌더는 실패하고 libx265 폴백을 시도하지만 처리 시간이 크게 늘어난다.
+Python 3.14 이상과 `ffmpeg`, `ffprobe`가 PATH에 있어야 한다. VideoToolbox가 없으면 하드웨어 렌더는 실패하고 libx265 폴백을 시도하지만 처리 시간이 크게 늘어난다.
 
 ## 저장소 개발 환경
 
@@ -27,8 +26,7 @@ uv run recordersync --version
 
 ## 전역 명령 설치
 
-`uv tool install`은 RecorderSync 전용 격리 환경을 만들고 실행 파일을 uv tool bin
-디렉터리에 둔다. 일반 셸에서 `uv run` 없이 호출하려면 다음을 실행한다.
+`uv tool install`은 RecorderSync 전용 격리 환경을 만들고 실행 파일을 uv tool bin 디렉터리에 둔다. 일반 셸에서 `uv run` 없이 호출하려면 다음을 실행한다.
 
 ```bash
 uv tool install --python 3.14 /absolute/path/to/recordersync
@@ -39,14 +37,7 @@ command -v recordersync
 recordersync --version
 ```
 
-이 저장소의 기본 로컬 경로를 사용하는 예:
-
-```bash
-uv tool install --python 3.14 /Users/zero/Workspaces/dizy64/recordersync
-```
-
-기본 실행 디렉터리는 현재 macOS 환경에서 `~/.local/bin`이다. `command -v` 결과가
-없으면 `uv tool update-shell` 후 새 셸을 열거나 다음을 확인한다.
+기본 실행 디렉터리는 현재 macOS 환경에서 `~/.local/bin`이다. `command -v` 결과가 없으면 `uv tool update-shell` 후 새 셸을 열거나 다음을 확인한다.
 
 ```bash
 uv tool dir --bin
@@ -55,14 +46,13 @@ type -a recordersync
 
 ### 로컬 저장소 변경 후 강제 업데이트
 
-RecorderSync의 버전이 아직 같아도 최신 로컬 소스로 반드시 다시 설치하려면
-`--force --reinstall`을 함께 사용한다.
+RecorderSync의 버전이 아직 같아도 최신 로컬 소스로 반드시 다시 설치하려면 `--force --reinstall`을 함께 사용한다.
 
 ```bash
-cd /Users/zero/Workspaces/dizy64/recordersync
+cd /absolute/path/to/recordersync
 git pull --ff-only origin main
 uv tool install --python 3.14 --force --reinstall \
-  /Users/zero/Workspaces/dizy64/recordersync
+  /absolute/path/to/recordersync
 recordersync --version
 ```
 
@@ -70,7 +60,7 @@ recordersync --version
 
 ```bash
 uv tool install --python 3.14 --force --reinstall --refresh \
-  /Users/zero/Workspaces/dizy64/recordersync
+  /absolute/path/to/recordersync
 ```
 
 ### GitHub에서 직접 설치·강제 업데이트
@@ -108,11 +98,10 @@ uv tool install --force --reinstall \
 
 ```bash
 uv tool install --python 3.14 --force --editable \
-  /Users/zero/Workspaces/dizy64/recordersync
+  /absolute/path/to/recordersync
 ```
 
-의존성이나 entry point가 바뀌면 editable이어도 `--force --reinstall`이 필요하다. 운영
-사용에서는 소스 이동·삭제에 취약한 editable 설치를 피한다.
+의존성이나 entry point가 바뀌면 editable이어도 `--force --reinstall`이 필요하다. 운영 사용에서는 소스 이동·삭제에 취약한 editable 설치를 피한다.
 
 ### 상태 확인과 제거
 
@@ -127,8 +116,7 @@ uv tool uninstall recordersync
 
 ## 안전한 실행 순서
 
-영상과 레코더 파일이 같은 디렉터리에 있으면 `--audio-dir`를 생략한다. 별도
-디렉터리인 경우에만 `--audio-dir /path/to/recorder-files`를 추가한다.
+영상과 레코더 파일이 같은 디렉터리에 있으면 `--audio-dir`를 생략한다. 별도 디렉터리인 경우에만 `--audio-dir /path/to/recorder-files`를 추가한다.
 
 ```bash
 recordersync
@@ -162,11 +150,9 @@ recordersync analyze /path/to/media \
 recordersync analyze /path/to/media --json >analysis.json 2>progress.log
 ```
 
-`--report PATH`는 기본 사람용 화면을 유지하면서 해당 파일에 전체 JSON을 저장한다.
-리포트의 `reason`은 기본 한국어다. 영어가 필요한 연동이나 공유에서는 다음을 추가한다.
+`--report PATH`는 기본 사람용 화면을 유지하면서 해당 파일에 전체 JSON을 저장한다. 리포트의 `reason`은 기본 한국어다. 영어가 필요한 연동이나 공유에서는 다음을 추가한다.
 
-분석 리포트를 저장하면 출력되는 추천 명령은 `--analysis-report`를 포함한다. 파일이
-바뀌지 않았다면 오디오 디코딩과 영상 매칭을 반복하지 않고 렌더 단계부터 실행한다.
+분석 리포트를 저장하면 출력되는 추천 명령은 `--analysis-report`를 포함한다. 파일이 바뀌지 않았다면 오디오 디코딩과 영상 매칭을 반복하지 않고 렌더 단계부터 실행한다.
 
 ```bash
 recordersync analyze /path/to/videos \
@@ -177,9 +163,7 @@ recordersync process /path/to/videos \
   --output-dir /path/to/output
 ```
 
-입력 파일의 size 또는 mtime이 바뀌거나 다른 영상 디렉터리에서 사용하면 실패한다. 이때
-기존 결과를 강제로 사용하지 말고 `analyze --report`를 다시 실행한다. 입력 리포트와 처리
-결과 `--report`에는 서로 다른 경로를 사용한다.
+입력 파일의 size 또는 mtime이 바뀌거나 다른 영상 디렉터리에서 사용하면 실패한다. 이때 기존 결과를 강제로 사용하지 말고 `analyze --report`를 다시 실행한다. 입력 리포트와 처리 결과 `--report`에는 서로 다른 경로를 사용한다.
 
 ```bash
 recordersync analyze /path/to/media --report-language en
@@ -191,8 +175,7 @@ recordersync analyze /path/to/media --report-language en
 recordersync analyze /path/to/videos --audio-dir /path/to/recorder-files
 ```
 
-기본 분석은 전체 일치가 실패한 영상의 앞뒤 길이 차이와 중간 단절까지 진단한다.
-전체 일치만 빠르게 확인하려면 `--full-only`를 사용한다.
+기본 분석은 전체 일치가 실패한 영상의 앞뒤 길이 차이와 중간 단절까지 진단한다. 전체 일치만 빠르게 확인하려면 `--full-only`를 사용한다.
 
 ```bash
 recordersync analyze /path/to/videos \
@@ -200,15 +183,9 @@ recordersync analyze /path/to/videos \
   --min-partial-seconds 5
 ```
 
-사람용 목록에는 `부분`, 레코더 사용률, 승인 구간 수가 표시된다. 자동화는
-`analyze --json`의 v2 `coverage_ratio`, `segments`, `recommended_command`를 사용한다.
-추천된 fallback 명령은 `--recommended-only`를 포함해 추천 기준에 미달한 partial은
-렌더하지 않는다.
+사람용 목록에는 `부분`, 레코더 사용률, 승인 구간 수가 표시된다. 자동화는 `analyze --json`의 v2 `coverage_ratio`, `segments`, `recommended_command`를 사용한다. 추천된 fallback 명령은 `--recommended-only`를 포함해 추천 기준에 미달한 partial은 렌더하지 않는다.
 
-사람용 목록에서 실패 파일과 사유를 먼저 확인한다. 상세 JSON의 `summary`,
-`audio_sessions`, 각 영상의 `confidence`, `peak_margin`, 시작점은 자동화나 심층 진단에만
-사용한다. JSON과 `analysis_inputs`에는 절대 경로와 파일 지문이 들어가므로 저장소나 공개
-이슈에 커밋하지 않는다.
+사람용 목록에서 실패 파일과 사유를 먼저 확인한다. 상세 JSON의 `summary`, `audio_sessions`, 각 영상의 `confidence`, `peak_margin`, 시작점은 자동화나 심층 진단에만 사용한다. JSON과 `analysis_inputs`에는 절대 경로와 파일 지문이 들어가므로 저장소나 공개 이슈에 커밋하지 않는다.
 
 ### 2. dry run
 
@@ -227,8 +204,7 @@ recordersync process /path/to/media \
   --output-dir /path/to/output
 ```
 
-기본 결과는 `/path/to/output/<원본 stem>.mp4`다. 이름을 구분해야 할 때만 접두사나
-접미사를 추가한다.
+기본 결과는 `/path/to/output/<원본 stem>.mp4`다. 이름을 구분해야 할 때만 접두사나 접미사를 추가한다.
 
 ```bash
 recordersync process /path/to/media \
@@ -236,8 +212,7 @@ recordersync process /path/to/media \
   --output-suffix _synced
 ```
 
-접두사·접미사에는 경로 구분자를 사용할 수 없다. `--output-dir`를 원본 디렉터리로
-지정해 계산된 출력 경로가 원본 MP4와 같아지는 경우에는 `--overwrite`도 허용되지 않는다.
+접두사·접미사에는 경로 구분자를 사용할 수 없다. `--output-dir`를 원본 디렉터리로 지정해 계산된 출력 경로가 원본 MP4와 같아지는 경우에는 `--overwrite`도 허용되지 않는다.
 
 카메라 stereo를 주 음원으로 유지하면서 외부 녹음을 보강하려면 명시적으로 mix를 사용한다. 기본값은 카메라 1.0, 외부 `-12dB` 상당, 외부 HP80이다. 합산 결과를 `-16 LUFS`, 최대 `-1 dBTP`, stereo, `0.5 LU` 허용 오차로 검증한다. 카메라와 외부 입력이 mono이면 추가 gain 없이 dual-mono로 복사하고 stereo이면 그대로 유지한다. 3채널 이상 입력은 자동 downmix하지 않고 오류로 보고한다.
 
@@ -271,18 +246,13 @@ recordersync process /path/to/media \
   --min-partial-seconds 5
 ```
 
-fallback은 영상 앞뒤와 승인 구간 사이에 카메라음을 쓰고, 승인된 각 구간에는 해당 녹음
-세션의 레코더음을 쓴다. 경계는 기본 50ms crossfade로 연결한다. 전체 일치 영상도 같은
-명령에서 정상 렌더되며, 부분 일치만 fallback 출력 대상으로 추가된다.
-`analyze`의 보수적인 추천 대상만 자동 처리하려면 `--recommended-only`를 함께 사용한다.
-이때 기준 미달 partial은 출력하지 않으며 배치 종료 코드는 2로 남는다.
+fallback은 영상 앞뒤와 승인 구간 사이에 카메라음을 쓰고, 승인된 각 구간에는 해당 녹음 세션의 레코더음을 쓴다. 경계는 기본 50ms crossfade로 연결한다. 전체 일치 영상도 같은 명령에서 정상 렌더되며, 부분 일치만 fallback 출력 대상으로 추가된다. `analyze`의 보수적인 추천 대상만 자동 처리하려면 `--recommended-only`를 함께 사용한다. 이때 기준 미달 partial은 출력하지 않으며 배치 종료 코드는 2로 남는다.
 
 두 값은 0.0~1.0 범위의 독립적인 FFmpeg 볼륨 배수다. 외부 음량은 모든 모드에 적용되고, 카메라 음량은 mix와 fallback에 적용된다. fallback은 양쪽 1.0이다. mix는 두 component를 `normalize=0`으로 합산한 뒤 float 신호를 측정해 최종 static gain을 적용하므로 비율을 보존한다. 합산 목표와 true-peak ceiling이 충돌하면 출력하지 않는다.
 
 ### LUFS와 true peak를 검증하는 교체
 
-외부 레코더음을 임의 배수가 아니라 목표 음량과 peak ceiling으로 처리하려면 다음 네
-옵션을 빠짐없이 지정한다.
+외부 레코더음을 임의 배수가 아니라 목표 음량과 peak ceiling으로 처리하려면 다음 네 옵션을 빠짐없이 지정한다.
 
 ```bash
 recordersync process /path/to/media \
@@ -299,42 +269,29 @@ replace에서 이 계약은 `--external-audio-volume`의 비기본값, `--dry-ru
 - `stereo`: mono는 gain 없이 dual-mono로 복사, stereo는 유지
 - `mono`: mono는 유지, stereo는 명시적 downmix
 
-입력 분석 후 목표 LUFS gain이 true peak ceiling을 넘으면 해당 영상은 `error`가 되고
-출력되지 않는다. JSON의 `audio_levels.decision`에서 `requested_gain_db`,
-`maximum_safe_gain_db`, `conflict_db`, `limiter_free_lufs`를 확인한다. limiter와 compressor는
-자동 적용하지 않는다.
+입력 분석 후 목표 LUFS gain이 true peak ceiling을 넘으면 해당 영상은 `error`가 되고 출력되지 않는다. JSON의 `audio_levels.decision`에서 `requested_gain_db`, `maximum_safe_gain_db`, `conflict_db`, `limiter_free_lufs`를 확인한다. limiter와 compressor는 자동 적용하지 않는다.
 
-성공한 결과도 최종 AAC 재디코딩 측정값이 계약을 만족한 경우에만 게시된다. stderr의
-`[음량 검증]`은 빠른 확인용이고 자동화는 JSON의 `audio_levels.validation.passed`와
-`failures`를 사용한다. 기존에 encode 전에 clipping된 파일을 감쇠해도 이미 손실된 파형은
-복원되지 않으므로 가능한 한 clipping 이전 32-bit float 원본에서 다시 처리한다.
+성공한 결과도 최종 AAC 재디코딩 측정값이 계약을 만족한 경우에만 게시된다. stderr의 `[음량 검증]`은 빠른 확인용이고 자동화는 JSON의 `audio_levels.validation.passed`와 `failures`를 사용한다. 기존에 encode 전에 clipping된 파일을 감쇠해도 이미 손실된 파형은 복원되지 않으므로 가능한 한 clipping 이전 32-bit float 원본에서 다시 처리한다.
 
-실행 중 선택된 파일 목록과 `[오디오 분석]`, `[영상 매칭]`, `[영상 렌더]` 진행률은
-stderr로 출력된다. stdout JSON만 저장하려면 다음처럼 분리한다.
+실행 중 선택된 파일 목록과 `[오디오 분석]`, `[영상 매칭]`, `[영상 렌더]` 진행률은 stderr로 출력된다. stdout JSON만 저장하려면 다음처럼 분리한다.
 
 ```bash
 recordersync process /path/to/media >result.json 2>progress.log
 ```
 
-`--overwrite`는 기존 결과를 교체해도 되는 경우에만 사용한다. 50Mbps 영상은 이론상
-시간당 약 22.5GB이므로 출력 디스크 여유 공간을 먼저 확인한다.
+`--overwrite`는 기존 결과를 교체해도 되는 경우에만 사용한다. 50Mbps 영상은 이론상 시간당 약 22.5GB이므로 출력 디스크 여유 공간을 먼저 확인한다.
 
 ## 임계값 조정
 
 기본값은 confidence 0.75, peak margin 0.05다.
 
-- 정확한 음원인데 `unmatched`: `--min-confidence`를 조금 낮추기 전에 카메라음 유무,
-  세션 구성, 조각 순서, 반복 패턴을 먼저 확인한다.
-- 동일한 후렴이나 박수가 반복되어 `ambiguous`: 임계값을 낮추지 말고 입력 세션을
-  촬영 단위로 좁히거나 `--session-gap-seconds`를 조정한다.
+- 정확한 음원인데 `unmatched`: `--min-confidence`를 조금 낮추기 전에 카메라음 유무, 세션 구성, 조각 순서, 반복 패턴을 먼저 확인한다.
+- 동일한 후렴이나 박수가 반복되어 `ambiguous`: 임계값을 낮추지 말고 입력 세션을 촬영 단위로 좁히거나 `--session-gap-seconds`를 조정한다.
 - 여러 녹음이 한 세션으로 합쳐짐: gap을 줄인다.
-- 2GB 조각이 여러 세션으로 잘못 분리됨: gap을 늘리고 ffprobe의 creation_time을
-  확인한다.
-- 부분 구간이 너무 짧게 끊김: 실제 녹음 단절 여부를 먼저 확인하고
-  `--min-partial-seconds`를 낮추더라도 짧은 후보의 오탐을 직접 청취한다.
+- 2GB 조각이 여러 세션으로 잘못 분리됨: gap을 늘리고 ffprobe의 creation_time을 확인한다.
+- 부분 구간이 너무 짧게 끊김: 실제 녹음 단절 여부를 먼저 확인하고 `--min-partial-seconds`를 낮추더라도 짧은 후보의 오탐을 직접 청취한다.
 
-임계값 변경은 오탐 위험을 늘릴 수 있다. 일부 샘플이 아니라 초반·중간·후반을 직접
-검증하고 값을 기록한다.
+임계값 변경은 오탐 위험을 늘릴 수 있다. 일부 샘플이 아니라 초반·중간·후반을 직접 검증하고 값을 기록한다.
 
 ## 종료 코드 처리
 
@@ -348,10 +305,7 @@ case "$status" in
 esac
 ```
 
-자동화에서는 종료 코드 2를 성공으로 덮어쓰지 않는다. 일부 파일만 생성된 정상적인
-배치 결과이므로 리포트를 읽어 후속 정책을 결정한다. `process --mode fallback`에서
-성공적으로 렌더된 `partial`은 종료 코드 0 조건에 포함되지만 `analyze`의 부분 진단은
-렌더 성공이 아니므로 partial이 있으면 2를 반환한다.
+자동화에서는 종료 코드 2를 성공으로 덮어쓰지 않는다. 일부 파일만 생성된 정상적인 배치 결과이므로 리포트를 읽어 후속 정책을 결정한다. `process --mode fallback`에서 성공적으로 렌더된 `partial`은 종료 코드 0 조건에 포함되지만 `analyze`의 부분 진단은 렌더 성공이 아니므로 partial이 있으면 2를 반환한다.
 
 ## 자주 발생하는 문제
 
@@ -377,8 +331,7 @@ esac
 bash scripts/test-e2e.sh
 ```
 
-아래 절차는 임시 디렉터리에서만 공개 가능한 pink noise를 만든다. 실제 사용자
-미디어를 복사하거나 커밋하지 않는다.
+아래 절차는 임시 디렉터리에서만 공개 가능한 pink noise를 만든다. 실제 사용자 미디어를 복사하거나 커밋하지 않는다.
 
 ```bash
 smoke_dir=$(mktemp -d /tmp/recordersync-smoke.XXXXXX)
@@ -404,11 +357,8 @@ recordersync process "$smoke_dir/video" --audio-dir "$smoke_dir/audio" \
   --output-dir "$smoke_dir/output"
 
 ffprobe -v error -show_entries \
-  stream=codec_name,width,height,pix_fmt,sample_rate,bit_rate \
+  stream=codec_name,width,height,pix_fmt,r_frame_rate,avg_frame_rate,sample_rate,bit_rate \
   -of json "$smoke_dir/output/clip.mp4"
 ```
 
-기대 시작점은 약 3.00초이며 출력 해상도는 원본과 같은 320×240이다. 스마트폰 회전
-메타데이터가 있는 입력은 autorotate 적용 후의 표시 해상도와 가로·세로 방향이
-유지되는지, 원본 frame rate/VFR이 불필요한 CFR로 바뀌지 않는지도 확인한다. 확인 후
-임시 디렉터리는 삭제해도 된다.
+기대 시작점은 약 3.00초이며 출력 해상도는 원본과 같은 320×240이고 `r_frame_rate`와 `avg_frame_rate`는 입력과 같은 `30000/1001`이다. 이 합성 smoke는 CFR 입력만 검증하므로 VFR 보존 근거로 사용하지 않는다. 스마트폰 회전 메타데이터와 VFR 보존은 각각 해당 특성을 가진 별도 입력으로 표시 방향과 프레임 타임스탬프가 유지되는지 확인한다. 확인 후 임시 디렉터리는 삭제해도 된다.

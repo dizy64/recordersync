@@ -1,11 +1,8 @@
 # recordersync
 
-길게 녹음된 보이스레코더 파일과 카메라 영상의 내장 오디오를 비교해, 영상별로
-일치하는 외부 오디오 구간을 찾고 교체하는 macOS CLI 도구입니다.
+길게 녹음된 보이스레코더 파일과 카메라 영상의 내장 오디오를 비교해, 영상별로 일치하는 외부 오디오 구간을 찾고 교체하는 macOS CLI 도구입니다.
 
-보이스레코더가 2GB 단위로 나눈 파일은 녹음 시각과 자연 파일명 순서로 정렬해
-여러 녹음 세션으로 자동 구성합니다. 조각들을 거대한 중간 파일로 합치지 않고
-논리 타임라인으로 분석하므로 원본을 변경하지 않습니다.
+보이스레코더가 2GB 단위로 나눈 파일은 녹음 시각과 자연 파일명 순서로 정렬해 여러 녹음 세션으로 자동 구성합니다. 조각들을 거대한 중간 파일로 합치지 않고 논리 타임라인으로 분석하므로 원본을 변경하지 않습니다.
 
 ## 요구 사항
 
@@ -21,9 +18,7 @@ uv sync
 
 ## 빠른 시작
 
-영상과 레코더 파일이 같은 디렉터리에 있으면 `--audio-dir`를 생략합니다. 매칭 결과만
-확인하는 `analyze`는 미디어 파일을 만들지 않고 파일별 매칭 여부·매칭률·실패 사유와
-권장 처리 모드를 사람이 읽기 쉬운 목록으로 보여줍니다.
+영상과 레코더 파일이 같은 디렉터리에 있으면 `--audio-dir`를 생략합니다. 매칭 결과만 확인하는 `analyze`는 미디어 파일을 만들지 않고 파일별 매칭 여부·매칭률·실패 사유와 권장 처리 모드를 사람이 읽기 쉬운 목록으로 보여줍니다.
 
 ```bash
 uv run recordersync analyze ~/Capture/day1
@@ -35,22 +30,15 @@ uv run recordersync analyze ~/Capture/day1
 uv run recordersync analyze ~/Capture/day1 --json
 ```
 
-기본 분석은 전체 일치를 먼저 확인하고, 실패한 영상만 부분 구간까지 이어서 분석합니다.
-전체 일치만 빠르게 확인하고 싶을 때는 `--full-only`를 사용합니다.
+기본 분석은 전체 일치를 먼저 확인하고, 실패한 영상만 부분 구간까지 이어서 분석합니다. 전체 일치만 빠르게 확인하고 싶을 때는 `--full-only`를 사용합니다.
 
 ```bash
 uv run recordersync analyze ~/Capture/day1 --full-only
 ```
 
-사람용 결과 마지막에는 분석 입력과 안전 기준을 반영한 `recordersync process` 명령이
-표시됩니다. 처리 가능한 결과가 없으면 추천 명령이 없다고 안내합니다. `--json`에서는
-셸 문자열 대신 안전하게 재사용할 수 있는 `recommended_command` argv 배열을 제공합니다.
-부분 일치가 섞인 추천 명령은 `--recommended-only`를 포함해 추천 기준에 미달한 부분
-매칭을 자동으로 제외합니다.
+사람용 결과 마지막에는 분석 입력과 안전 기준을 반영한 `recordersync process` 명령이 표시됩니다. 처리 가능한 결과가 없으면 추천 명령이 없다고 안내합니다. `--json`에서는 셸 문자열 대신 안전하게 재사용할 수 있는 `recommended_command` argv 배열을 제공합니다. 부분 일치가 섞인 추천 명령은 `--recommended-only`를 포함해 추천 기준에 미달한 부분 매칭을 자동으로 제외합니다.
 
-긴 분석을 처리 단계에서 반복하지 않으려면 분석 리포트를 저장합니다. 저장된 입력의
-경로·크기·수정 시각이 그대로일 때 추천 명령은 `--analysis-report`로 결과를 검증해
-재사용하고 렌더만 수행합니다.
+긴 분석을 처리 단계에서 반복하지 않으려면 분석 리포트를 저장합니다. 저장된 입력의 경로·크기·수정 시각이 그대로일 때 추천 명령은 `--analysis-report`로 결과를 검증해 재사용하고 렌더만 수행합니다.
 
 ```bash
 recordersync analyze ~/Capture/day1 --report ~/Capture/day1-analysis.json
@@ -101,17 +89,11 @@ uv run recordersync process ~/Videos/day1 \
   --loudness-tolerance-lu 0.5
 ```
 
-RecorderSync는 실제로 사용할 외부 오디오 구간을 32-bit float 처리 경로에서 EBU R128로
-측정하고, 목표 LUFS에 필요한 static gain과 true-peak 한계가 허용하는 gain을 비교합니다.
-두 값이 충돌하면 limiter나 compressor를 자동 적용하지 않고 해당 영상의 렌더를
-중단합니다. 충돌하지 않으면 static gain만 적용한 뒤 최종 AAC를 다시 디코딩해 LUFS,
-true peak, 채널 수, 48kHz, 길이, codec, decoder error를 검증하고 모두 통과한 파일만
-최종 경로에 게시합니다.
+RecorderSync는 실제로 사용할 외부 오디오 구간을 32-bit float 처리 경로에서 EBU R128로 측정하고, 목표 LUFS에 필요한 static gain과 true-peak 한계가 허용하는 gain을 비교합니다. 두 값이 충돌하면 limiter나 compressor를 자동 적용하지 않고 해당 영상의 렌더를 중단합니다. 충돌하지 않으면 static gain만 적용한 뒤 최종 AAC를 다시 디코딩해 LUFS, true peak, 채널 수, 48kHz, 길이, codec, decoder error를 검증하고 모두 통과한 파일만 최종 경로에 게시합니다.
 
 `preserve`는 레코더 채널을 유지합니다. mono 입력을 `stereo`로 출력할 때는 추가 gain 없이 동일 신호를 좌우에 복사하며, stereo 입력을 `mono`로 합치는 작업은 사용자가 `--output-channel-layout mono`를 명시한 경우에만 수행합니다. `replace` 음량 안전은 `--external-audio-volume`의 비기본값과 함께 사용할 수 없고, mix 음량 안전은 stereo 출력만 지원합니다. 명시적 음량 안전 옵션은 `--dry-run`과 함께 사용할 수 없습니다. 측정값, gain 결정, 최종 검증은 JSON의 영상별 `audio_levels`와 stderr의 `[음량 검증]` 요약에 남습니다.
 
-레코더가 중간에 멈췄거나 영상과 녹음 길이가 다르면 `fallback`을 명시합니다. 일치하는
-구간은 레코더음으로 교체하고, 영상 앞뒤와 중간의 불일치 구간은 카메라음을 유지합니다.
+레코더가 중간에 멈췄거나 영상과 녹음 길이가 다르면 `fallback`을 명시합니다. 일치하는 구간은 레코더음으로 교체하고, 영상 앞뒤와 중간의 불일치 구간은 카메라음을 유지합니다.
 
 ```bash
 uv run recordersync process ~/Videos/day1 \
@@ -120,9 +102,7 @@ uv run recordersync process ~/Videos/day1 \
   --min-partial-seconds 5
 ```
 
-fallback의 기본 카메라/외부 음량은 각각 1.0이며, 경계를 기본 50ms crossfade로
-연결합니다. `--camera-audio-volume`과 `--external-audio-volume`으로 비율을 바꿀 수
-있습니다. 후보가 애매하거나 최소 길이보다 짧은 구간은 레코더음을 쓰지 않습니다.
+fallback의 기본 카메라/외부 음량은 각각 1.0이며, 경계를 기본 50ms crossfade로 연결합니다. `--camera-audio-volume`과 `--external-audio-volume`으로 비율을 바꿀 수 있습니다. 후보가 애매하거나 최소 길이보다 짧은 구간은 레코더음을 쓰지 않습니다.
 
 출력 위치와 리포트 위치를 지정할 수 있습니다.
 
@@ -135,25 +115,16 @@ uv run recordersync process ~/Videos/day1 \
 
 ## 동작 방식
 
-1. 오디오 파일을 `creation_time` → macOS 생성 시각 → 수정 시각 → 자연 파일명
-   순서로 정렬합니다.
-2. 앞 조각의 예상 종료와 다음 조각 시작 사이에 기본 10초를 넘는 양수 공백이
-   있거나 스트림 규격이 바뀌면 새 녹음 세션으로 분리합니다.
+1. 오디오 파일을 `creation_time` → macOS 생성 시각 → 수정 시각 → 자연 파일명 순서로 정렬합니다.
+2. 앞 조각의 예상 종료와 다음 조각 시작 사이에 기본 10초를 넘는 양수 공백이 있거나 스트림 규격이 바뀌면 새 녹음 세션으로 분리합니다.
 3. FFmpeg로 8kHz mono PCM을 추출하고 6대역 log-energy 특징을 만듭니다.
-4. FFT 기반 normalized cross-correlation으로 후보 구간을 찾고, 시작·끝 특징으로
-   offset과 recorder clock drift를 보정합니다.
+4. FFT 기반 normalized cross-correlation으로 후보 구간을 찾고, 시작·끝 특징으로 offset과 recorder clock drift를 보정합니다.
 5. confidence 0.75 이상이고 차순위 peak와 0.05 이상 차이 나는 결과만 승인합니다.
-6. 전체 매칭이 실패한 영상은 기본적으로 5초 창을 검증하고 연속된 창을 구간으로
-   묶습니다. 중간 단절이나 다른 녹음 세션 재시작은 별도 구간으로 유지합니다.
-7. 전체 일치는 `replace`, 안전 기준을 추가로 통과한 부분 일치는 `fallback`을 추천합니다.
-   추천은 안내일 뿐 처리 모드를 자동으로 선택하거나 영상을 생성하지 않습니다.
-8. 승인된 영상은 원본 표시 해상도, 가로·세로 방향, 프레임 타임스탬프를 유지한 HEVC
-   10-bit/AAC MP4로 출력합니다. 스마트폰 회전 메타데이터와 VFR도 보존합니다.
+6. 전체 매칭이 실패한 영상은 기본적으로 5초 창을 검증하고 연속된 창을 구간으로 묶습니다. 중간 단절이나 다른 녹음 세션 재시작은 별도 구간으로 유지합니다.
+7. 전체 일치는 `replace`, 안전 기준을 추가로 통과한 부분 일치는 `fallback`을 추천합니다. 추천은 안내일 뿐 처리 모드를 자동으로 선택하거나 영상을 생성하지 않습니다.
+8. 승인된 영상은 원본 표시 해상도, 가로·세로 방향, 프레임 타임스탬프를 유지한 HEVC 10-bit/AAC MP4로 출력합니다. 스마트폰 회전 메타데이터와 VFR도 보존합니다.
 
-기본 출력 이름은 `replace/<원본명>.mp4`입니다. 접두사·접미사가 필요할 때만
-`--output-prefix`와 `--output-suffix`를 지정합니다. 기존 출력은 `--overwrite` 없이는
-덮어쓰지 않으며, 출력 경로를 원본 MP4와 같게 지정하면 overwrite 여부와 관계없이
-거부합니다.
+기본 출력 이름은 `replace/<원본명>.mp4`입니다. 접두사·접미사가 필요할 때만 `--output-prefix`와 `--output-suffix`를 지정합니다. 기존 출력은 `--overwrite` 없이는 덮어쓰지 않으며, 출력 경로를 원본 MP4와 같게 지정하면 overwrite 여부와 관계없이 거부합니다.
 
 ### 매칭 상태
 
@@ -165,18 +136,11 @@ uv run recordersync process ~/Videos/day1 \
 | `ambiguous` | 비슷한 후보가 둘 이상 존재 | 처리 보류 | 아니요 |
 | `error` | 오디오 스트림 없음, probe/렌더 실패 등 | 처리 보류 | 아니요 |
 
-부분 일치의 자동 추천은 confidence 0.75, peak margin 0.05, 영상 커버리지 10% 이상이고,
-영상 길이의 25% 또는 30초 중 짧은 값 이상인 연속 일치 구간이 있을 때만
-`fallback`입니다. 짧고 분산된 반복음 오탐은 `partial`이어도 처리 보류로 표시합니다.
+부분 일치의 자동 추천은 confidence 0.75, peak margin 0.05, 영상 커버리지 10% 이상이고, 영상 길이의 25% 또는 30초 중 짧은 값 이상인 연속 일치 구간이 있을 때만 `fallback`입니다. 짧고 분산된 반복음 오탐은 `partial`이어도 처리 보류로 표시합니다.
 
-종료 코드는 전체 성공 `0`, 일부 미매칭·애매함·오류 `2`, 입력이나 세션 분석의
-치명적 실패 `1`입니다. fallback process에서 렌더된 `partial`은 성공에 포함되지만
-analyze의 부분 진단은 종료 코드 2입니다. `process`는 기본적으로 출력 디렉터리에
-`recordersync-report.json`을 저장합니다.
+종료 코드는 전체 성공 `0`, 일부 미매칭·애매함·오류 `2`, 입력이나 세션 분석의 치명적 실패 `1`입니다. fallback process에서 렌더된 `partial`은 성공에 포함되지만 analyze의 부분 진단은 종료 코드 2입니다. `process`는 기본적으로 출력 디렉터리에 `recordersync-report.json`을 저장합니다.
 
-선택된 오디오·영상 파일과 오디오 분석/영상 매칭/렌더 진행률은 표준 오류에 표시합니다.
-`analyze`의 기본 stdout은 사람용 목록이며 `--json`을 지정하면 기존 전체 JSON으로
-바뀝니다. `process` stdout과 `--report` 파일은 계속 JSON을 사용합니다.
+선택된 오디오·영상 파일과 오디오 분석/영상 매칭/렌더 진행률은 표준 오류에 표시합니다. `analyze`의 기본 stdout은 사람용 목록이며 `--json`을 지정하면 기존 전체 JSON으로 바뀝니다. `process` stdout과 `--report` 파일은 계속 JSON을 사용합니다.
 
 ## 주요 옵션
 
@@ -215,24 +179,9 @@ recordersync --help
 recordersync process --help
 ```
 
-JSON 키와 `matched` 같은 상태값은 자동화 호환성을 위해 영어로 고정되며, 사람이 읽는
-`reason`과 `recommendation_reason`은 기본 한국어 또는 `--report-language en`의 영어로
-출력됩니다. 상세 분석 JSON은 `analyze --json`을 사용하며, `process`의 stdout과
-`--report` 파일도 JSON 형식입니다.
+JSON 키와 `matched` 같은 상태값은 자동화 호환성을 위해 영어로 고정되며, 사람이 읽는 `reason`과 `recommendation_reason`은 기본 한국어 또는 `--report-language en`의 영어로 출력됩니다. 상세 분석 JSON은 `analyze --json`을 사용하며, `process`의 stdout과 `--report` 파일도 JSON 형식입니다.
 
-JSON 리포트 v2는 상태별 `partial` 개수와 영상별 `coverage_ratio`, 시간순 `segments`를
-제공합니다. 각 영상에는 `recommended_mode`, `recommendation_reason`,
-`recommended_options`도 포함됩니다. 각 구간에는 세션 ID, 영상/외부 시작점, 길이,
-`tempo_ratio`와 신뢰도 수치가 있습니다.
-음량 안전 모드를 사용한 영상에는 선택적으로 `audio_levels`가 추가되어 정책, float 입력
-측정값, static gain 판정, 최종 AAC 측정값과 검증 실패 목록을 제공합니다.
-`analyze --json`과 분석 `--report`에는 배치 전체에 대한 `recommended_command`도
-포함되며, 안전한 부분 일치가 하나라도 있으면 `fallback`, 전체 일치만 있으면 기본
-`replace` 명령을 제안합니다. fallback 추천에는 `--recommended-only`가 포함되어 기준
-미달 부분 매칭은 출력하지 않습니다.
-분석 `--report` 파일에는 `analysis_inputs`가 추가되어 추천된
-`process --analysis-report`에서 재사용할 수 있습니다. stdout의 `analyze --json`은 실행 계획을
-저장하지 않습니다.
+JSON 리포트 v2는 상태별 `partial` 개수와 영상별 `coverage_ratio`, 시간순 `segments`를 제공합니다. 각 영상에는 `recommended_mode`, `recommendation_reason`, `recommended_options`도 포함됩니다. 각 구간에는 세션 ID, 영상/외부 시작점, 길이, `tempo_ratio`와 신뢰도 수치가 있습니다. 음량 안전 모드를 사용한 영상에는 선택적으로 `audio_levels`가 추가되어 정책, float 입력 측정값, static gain 판정, 최종 AAC 측정값과 검증 실패 목록을 제공합니다. `analyze --json`과 분석 `--report`에는 배치 전체에 대한 `recommended_command`도 포함되며, 안전한 부분 일치가 하나라도 있으면 `fallback`, 전체 일치만 있으면 기본 `replace` 명령을 제안합니다. fallback 추천에는 `--recommended-only`가 포함되어 기준 미달 부분 매칭은 출력하지 않습니다. 분석 `--report` 파일에는 `analysis_inputs`가 추가되어 추천된 `process --analysis-report`에서 재사용할 수 있습니다. stdout의 `analyze --json`은 실행 계획을 저장하지 않습니다.
 
 예를 들어 `clip.mov`를 `final_clip_synced.mp4`로 만들려면 다음처럼 실행합니다.
 
@@ -257,15 +206,9 @@ sessions = discover_sessions(Path("~/Recordings/day1").expanduser())
 matches = match_videos(video_paths, sessions)
 ```
 
-`match_videos()`는 영상 하나의 probe·특징 추출·매칭 실패를 해당 영상의 `error` 결과로
-반환하고 나머지 영상을 계속 분석합니다. 세션 타임라인 생성처럼 배치 전체에 공통된
-선행 단계가 실패하면 예외를 그대로 전달합니다.
+`match_videos()`는 영상 하나의 probe·특징 추출·매칭 실패를 해당 영상의 `error` 결과로 반환하고 나머지 영상을 계속 분석합니다. 세션 타임라인 생성처럼 배치 전체에 공통된 선행 단계가 실패하면 예외를 그대로 전달합니다.
 
-가장 단순한 연동은 RecorderSync가 만든 표준 개별 MP4 목록을 TubeArchive의 기존
-병합·업로드 경로에 전달하는 것입니다. 매칭 결과를 Transcoder가 직접 소비하려면
-전체 매칭의 `session_id`, `external_start_seconds`, `tempo_ratio`뿐 아니라 부분 매칭의
-`segments`와 각 구간의 세션 ID도 처리해야 합니다. 각 세션은 여러 레코더 조각을 concat
-입력으로 다뤄야 하며, 첫 오디오 조각만 전달하면 조각 경계를 넘는 영상이 깨집니다.
+가장 단순한 연동은 RecorderSync가 만든 표준 개별 MP4 목록을 TubeArchive의 기존 병합·업로드 경로에 전달하는 것입니다. 매칭 결과를 Transcoder가 직접 소비하려면 전체 매칭의 `session_id`, `external_start_seconds`, `tempo_ratio`뿐 아니라 부분 매칭의 `segments`와 각 구간의 세션 ID도 처리해야 합니다. 각 세션은 여러 레코더 조각을 concat 입력으로 다뤄야 하며, 첫 오디오 조각만 전달하면 조각 경계를 넘는 영상이 깨집니다.
 
 ## 전역 설치와 업데이트
 
@@ -284,8 +227,7 @@ recordersync --version
 uv tool install --python 3.14 --force --reinstall /absolute/path/to/recordersync
 ```
 
-GitHub main 직접 설치, editable 개발 설치, 제거 방법은
-[설치·실행·운영 가이드](docs/operations/guide.md)에 정리되어 있습니다.
+GitHub main 직접 설치, editable 개발 설치, 제거 방법은 [설치·실행·운영 가이드](docs/operations/guide.md)에 정리되어 있습니다.
 
 ## 개발 및 검증
 
@@ -298,9 +240,7 @@ uv run python scripts/benchmark_matcher.py --partial
 bash scripts/install-hooks.sh
 ```
 
-비즈니스 로직 테스트는 FFmpeg와 파일 I/O를 목/스텁으로 격리한 단위 테스트입니다.
-별도 E2E는 임시 디렉터리에 공개 가능한 합성 미디어만 만들며 실제 CLI와 FFmpeg로
-분할 오디오 매칭, 세로 해상도/FPS, 렌더와 리포트를 검증합니다.
+비즈니스 로직 테스트는 FFmpeg와 파일 I/O를 목/스텁으로 격리한 단위 테스트입니다. 별도 E2E는 임시 디렉터리에 공개 가능한 합성 미디어만 만들며 실제 CLI와 FFmpeg로 분할 오디오 매칭, 세로 해상도/FPS, 렌더와 리포트를 검증합니다.
 
 ## 문서
 
