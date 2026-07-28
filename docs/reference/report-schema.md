@@ -2,30 +2,15 @@
 
 ## 버전 정책
 
-현재 `version`은 `2`다. v2는 `partial` 상태와 다중 `segments`,
-`coverage_ratio`를 추가한다. 필드 추가처럼 기존 소비자가 무시할 수 있는 변경은 같은
-버전에서 가능하지만, 이름·타입·상태 의미·null 가능성 변경은 REPORT_VERSION 증가와
-호환성 테스트가 필요하다.
+현재 `version`은 `2`다. v2는 `partial` 상태와 다중 `segments`, `coverage_ratio`를 추가한다. 필드 추가처럼 기존 소비자가 무시할 수 있는 변경은 같은 버전에서 가능하지만, 이름·타입·상태 의미·null 가능성 변경은 REPORT_VERSION 증가와 호환성 테스트가 필요하다.
 
-기계 판독 가능한 Draft 2020-12 스키마는
-[recordersync-report-v2.schema.json](../../schemas/recordersync-report-v2.schema.json)이다.
-wheel에는 `recordersync/schemas/recordersync-report-v2.schema.json` 경로로도 포함된다.
-스키마는 필수 필드, 타입, enum, null 가능성, 수치 범위와 알 수 없는 필드를 검증한다.
-summary 합계, 구간 정렬·겹침, 세션 참조, 입력 파일 지문 같은 교차 필드·파일 시스템
-불변식은 각각 도메인 모델과 `process --analysis-report` 런타임 검증의 책임이다.
+기계 판독 가능한 Draft 2020-12 스키마는 [recordersync-report-v2.schema.json](../../schemas/recordersync-report-v2.schema.json)이다. wheel에는 `recordersync/schemas/recordersync-report-v2.schema.json` 경로로도 포함된다. 스키마는 필수 필드, 타입, enum, null 가능성, 수치 범위와 알 수 없는 필드를 검증한다. summary 합계, 구간 정렬·겹침, 세션 참조, 입력 파일 지문 같은 교차 필드·파일 시스템 불변식은 각각 도메인 모델과 `process --analysis-report` 런타임 검증의 책임이다.
 
-JSON 키와 `status` 값은 번역하지 않는다. `reason`과 `recommendation_reason`만
-`language`에 따라 한국어 또는 영어로 직렬화한다. CLI 기본값은 `ko`이며
-`--report-language en`으로 바꿀 수 있다. 소비자는 표시 문구로 분기하지 말고 `status`,
-`recommended_mode`, 수치 필드를 사용한다.
+JSON 키와 `status` 값은 번역하지 않는다. `reason`과 `recommendation_reason`만 `language`에 따라 한국어 또는 영어로 직렬화한다. CLI 기본값은 `ko`이며 `--report-language en`으로 바꿀 수 있다. 소비자는 표시 문구로 분기하지 말고 `status`, `recommended_mode`, 수치 필드를 사용한다.
 
-`analyze`의 기본 stdout은 사람용 목록이다. 기존 JSON 계약이 필요한 소비자는
-`analyze --json`을 사용한다. `--report`가 있으면 화면 형식과 무관하게 JSON 파일을 쓰며,
-`process`는 stdout에 JSON을 출력하고 별도 경로가 없으면 output dir의
-`recordersync-report.json`에도 쓴다.
+`analyze`의 기본 stdout은 사람용 목록이다. 기존 JSON 계약이 필요한 소비자는 `analyze --json`을 사용한다. `--report`가 있으면 화면 형식과 무관하게 JSON 파일을 쓰며, `process`는 stdout에 JSON을 출력하고 별도 경로가 없으면 output dir의 `recordersync-report.json`에도 쓴다.
 
-사람용 목록은 안정적인 API 스키마가 아니다. 자동화는 표시 문구를 파싱하지 말고 반드시
-`--json` 또는 `--report` 파일과 아래 버전 계약을 사용한다.
+사람용 목록은 안정적인 API 스키마가 아니다. 자동화는 표시 문구를 파싱하지 말고 반드시 `--json` 또는 `--report` 파일과 아래 버전 계약을 사용한다.
 
 개발 환경에서 리포트를 검증하는 예시는 다음과 같다.
 
@@ -55,24 +40,15 @@ PY
 | `recommended_command` | string[]/null | analyze에서 권장하는 배치 `process` argv. 처리 보류면 null |
 | `analysis_inputs` | object/생략 | analyze `--report` 파일의 검증 가능한 재사용 입력. stdout과 process 리포트에서는 생략 |
 
-`recommended_command`는 `analyze --json`과 analyze의 `--report`에만 포함한다. 안전한
-부분 일치가 하나라도 있으면 `--mode fallback`, `--recommended-only`, 보수적인
-`--min-partial-seconds`를 포함하고, 전체 일치만 있으면 기본 replace 명령을 제공한다.
-`--recommended-only`는 같은 배치의 추천 기준 미달 partial을 렌더 대상에서 제외한다.
-`process` 리포트에는 이미 실행한 명령을 다시 권장하지 않으므로 이 필드를 포함하지 않는다.
+`recommended_command`는 `analyze --json`과 analyze의 `--report`에만 포함한다. 안전한 부분 일치가 하나라도 있으면 `--mode fallback`, `--recommended-only`, 보수적인 `--min-partial-seconds`를 포함하고, 전체 일치만 있으면 기본 replace 명령을 제공한다. `--recommended-only`는 같은 배치의 추천 기준 미달 partial을 렌더 대상에서 제외한다. `process` 리포트에는 이미 실행한 명령을 다시 권장하지 않으므로 이 필드를 포함하지 않는다.
 
 ## analysis_inputs
 
 `analyze --report PATH`로 파일에 저장할 때만 포함한다. `version`은 리포트 버전과 별개인 실행 계획 버전이며 현재 `2`다. 오디오 세션·영상의 절대 경로, size, mtime, probe 메타데이터, 영상 오디오 채널 수와 번역 전 매칭 결과를 포함한다. `process --analysis-report PATH`는 모든 입력 지문과 요청한 `VIDEO_DIR`를 검증한 뒤 재분석 없이 렌더한다.
 
-입력이 없거나 바뀌었거나 계획 버전이 다르면 재사용을 거부한다. 자동 재분석 폴백은
-stale 결과를 사용자가 눈치채지 못하게 만들 수 있으므로 제공하지 않는다. 분석 리포트와
-처리 결과 리포트를 같은 경로로 지정할 수도 없다.
+입력이 없거나 바뀌었거나 계획 버전이 다르면 재사용을 거부한다. 자동 재분석 폴백은 stale 결과를 사용자가 눈치채지 못하게 만들 수 있으므로 제공하지 않는다. 분석 리포트와 처리 결과 리포트를 같은 경로로 지정할 수도 없다.
 
-`process --analysis-report`는 배포 wheel에 포함된 v2 JSON Schema로 전체 문서와
-`analysis_inputs`의 필드 집합·필수값·수치 범위·RFC 3339 `date-time` 형식을 먼저 검증한다.
-unknown 필드나 유한하지 않은 JSON 수치는 거부하며, 스키마 검증 후 실제 파일의
-path·size·mtime 지문을 확인한다.
+`process --analysis-report`는 배포 wheel에 포함된 v2 JSON Schema로 전체 문서와 `analysis_inputs`의 필드 집합·필수값·수치 범위·RFC 3339 `date-time` 형식을 먼저 검증한다. unknown 필드나 유한하지 않은 JSON 수치는 거부하며, 스키마 검증 후 실제 파일의 path·size·mtime 지문을 확인한다.
 
 ## audio_sessions
 
@@ -82,8 +58,7 @@ path·size·mtime 지문을 확인한다.
 | `duration_seconds` | number | 조각 duration 합계 |
 | `chunks` | string[] | 세션에 포함된 오디오 경로 순서 |
 
-세션 ID는 실행 범위 안에서만 사용한다. 파일 추가·정렬 변경 후 영구 식별자로 저장하지
-않는다.
+세션 ID는 실행 범위 안에서만 사용한다. 파일 추가·정렬 변경 후 영구 식별자로 저장하지 않는다.
 
 ## matches
 
@@ -107,11 +82,7 @@ path·size·mtime 지문을 확인한다.
 | `recommended_options` | object | 보수적인 권장 실행에 필요한 추가 CLI 옵션. 현재 `min_partial_seconds` 가능 |
 | `audio_levels` | object/생략 | 음량 안전 모드의 정책, 입력 측정, static gain 판정, 최종 AAC 검증 |
 
-`matched`와 `partial` 분석 결과는 `output`이 null일 수 있다. 부분 일치의 실제 위치와
-구간별 drift는 최상위 호환 필드가 아니라 항상 `segments`를 사용한다.
-`process --mode fallback --dry-run`은 렌더하지 않아도 부분
-일치에 예상 output을 넣는다. `error`의 duration은 probe 단계 실패 시 0일 수 있다.
-v1 소비자는 새 상태를 알 수 없으므로 v2를 명시적으로 지원해야 한다.
+`matched`와 `partial` 분석 결과는 `output`이 null일 수 있다. 부분 일치의 실제 위치와 구간별 drift는 최상위 호환 필드가 아니라 항상 `segments`를 사용한다. `process --mode fallback --dry-run`은 렌더하지 않아도 부분 일치에 예상 output을 넣는다. `error`의 duration은 probe 단계 실패 시 0일 수 있다. v1 소비자는 새 상태를 알 수 없으므로 v2를 명시적으로 지원해야 한다.
 
 ### audio_levels
 
@@ -127,13 +98,7 @@ v1 소비자는 새 상태를 알 수 없으므로 v2를 명시적으로 지원�
 
 mix의 `input.codec` 값 `float_mix`는 실제 codec 이름이 아니라 카메라와 외부 입력의 component 처리 후 합산한 32-bit float 신호를 측정했다는 내부 식별자다.
 
-`decision.applied_gain_db`가 null이면 목표 LUFS와 true-peak ceiling이 충돌했거나 gain을
-적용하지 못한 상태다. `validation.passed`가 false인 결과를 성공 파일로 취급하지 않는다.
-자동화는 표시 문자열이 아니라 이 수치와 boolean을 사용한다.
-입력이 EBU R128 요약을 만들기 전에 디코드 실패하면 측정값을 꾸며내지 않고 `input`과
-`decision`을 null로 두며, `validation.failures`에 원문 진단을 남긴다. `passed: true`는
-non-null `input`·`decision`·`output`과 빈 `failures`를, `passed: false`는 하나 이상의
-실패 사유를 요구한다.
+`decision.applied_gain_db`가 null이면 목표 LUFS와 true-peak ceiling이 충돌했거나 gain을 적용하지 못한 상태다. `validation.passed`가 false인 결과를 성공 파일로 취급하지 않는다. 자동화는 표시 문자열이 아니라 이 수치와 boolean을 사용한다. 입력이 EBU R128 요약을 만들기 전에 디코드 실패하면 측정값을 꾸며내지 않고 `input`과 `decision`을 null로 두며, `validation.failures`에 원문 진단을 남긴다. `passed: true`는 non-null `input`·`decision`·`output`과 빈 `failures`를, `passed: false`는 하나 이상의 실패 사유를 요구한다.
 
 ## segments
 
@@ -148,9 +113,7 @@ non-null `input`·`decision`·`output`과 빈 `failures`를, `passed: false`는 
 | `peak_margin` | number | 해당 구간 최고/차순위 peak 차이 |
 | `confidence` | number | 해당 구간의 0~1 신뢰도 |
 
-구간은 `video_start_seconds` 오름차순이며 겹치지 않는다. 인접 구간 사이와 영상 앞뒤의
-빈 부분은 fallback 렌더에서 카메라음을 사용한다. `matched`는 전체 영상을 덮는 한 구간을
-가질 수 있고, `unmatched`, `ambiguous`, `error`의 `segments`는 빈 배열이다.
+구간은 `video_start_seconds` 오름차순이며 겹치지 않는다. 인접 구간 사이와 영상 앞뒤의 빈 부분은 fallback 렌더에서 카메라음을 사용한다. `matched`는 전체 영상을 덮는 한 구간을 가질 수 있고, `unmatched`, `ambiguous`, `error`의 `segments`는 빈 배열이다.
 
 ## 공개 가능한 합성 예시
 
@@ -250,11 +213,8 @@ non-null `input`·`decision`·`output`과 빈 `failures`를, `passed: false`는 
 }
 ```
 
-정의된 공통 사유와 오류 접두사는 번역한다. 코덱이나 FFmpeg가 반환한 알 수 없는 진단은
-정보 손실을 피하기 위해 원문으로 남을 수 있다.
+정의된 공통 사유와 오류 접두사는 번역한다. 코덱이나 FFmpeg가 반환한 알 수 없는 진단은 정보 손실을 피하기 위해 원문으로 남을 수 있다.
 
 ## 개인정보 주의
 
-실제 리포트의 절대 경로와 파일명은 사용자 이름, 장소, 행사명 등 개인정보를 드러낼
-수 있다. 비밀키가 없더라도 공개 저장소·이슈·로그 수집 시스템에 원본 리포트를 올리지
-않는다. 공유가 필요하면 경로와 파일명을 합성 값으로 치환한다.
+실제 리포트의 절대 경로와 파일명은 사용자 이름, 장소, 행사명 등 개인정보를 드러낼 수 있다. 비밀키가 없더라도 공개 저장소·이슈·로그 수집 시스템에 원본 리포트를 올리지 않는다. 공유가 필요하면 경로와 파일명을 합성 값으로 치환한다.

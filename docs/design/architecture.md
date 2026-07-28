@@ -25,9 +25,7 @@ flowchart LR
     O --> R
 ```
 
-CLI와 다른 애플리케이션은 `pipeline.py` 또는 `api.py`를 호출한다. 순수한 세션·매칭
-정책은 외부 프로세스를 모르며, `media.py`와 `render.py`만 FFmpeg 및 파일 시스템을
-다룬다.
+CLI와 다른 애플리케이션은 `pipeline.py` 또는 `api.py`를 호출한다. 순수한 세션·매칭 정책은 외부 프로세스를 모르며, `media.py`와 `render.py`가 FFmpeg·미디어 파일 경계를 담당하고 `analysis_plan.py`가 분석 리포트 파일 경계를 담당한다.
 
 ## 모듈 책임
 
@@ -46,58 +44,40 @@ CLI와 다른 애플리케이션은 `pipeline.py` 또는 `api.py`를 호출한�
 | `api.py` | TubeArchive 등 외부 소비자를 위한 얇은 API | `discover_sessions()`, `match_videos()`, `build_render_plan()` |
 | `cli.py` | argparse, 출력, 종료 코드 | `main()` |
 
-의존 방향은 CLI/API → pipeline/domain → media/render다. 매칭 도메인이 CLI나
-subprocess를 import하는 역방향 의존성을 만들지 않는다.
+의존 방향은 CLI/API → pipeline/domain → media/render다. 매칭 도메인이 CLI나 subprocess를 import하는 역방향 의존성을 만들지 않는다.
 
-CLI pipeline과 공개 API는 `build_render_plan()`을 공유한다. 이 경계에서 매칭의 영상
-경로와 실제 `VideoInfo.path`가 같은지 확인해 다른 영상에 매칭 결과를 적용하지 않는다.
-pipeline은 배치의 세션 ID 인덱스를 한 번 만들고 영상별 계획 생성에서 재사용한다.
+CLI pipeline과 공개 API는 `build_render_plan()`을 공유한다. 이 경계에서 매칭의 영상 경로와 실제 `VideoInfo.path`가 같은지 확인해 다른 영상에 매칭 결과를 적용하지 않는다. pipeline은 배치의 세션 ID 인덱스를 한 번 만들고 영상별 계획 생성에서 재사용한다.
 
-CLI pipeline과 공개 `match_videos()`는 영상별 probe·특징 추출·매칭의
-`MediaError`/`ValueError`를 해당 영상의 `error` 결과로 격리한다. 반면 세션 타임라인
-생성 실패는 모든 영상에 영향을 주는 배치 선행 조건이므로 호출자에게 예외를 전달한다.
+CLI pipeline과 공개 `match_videos()`는 영상별 probe·특징 추출·매칭의 `MediaError`/`ValueError`를 해당 영상의 `error` 결과로 격리한다. 반면 세션 타임라인 생성 실패는 모든 영상에 영향을 주는 배치 선행 조건이므로 호출자에게 예외를 전달한다.
 
 ## 세션 구성
 
-지원 오디오만 입력 디렉터리 바로 아래에서 찾고 자연 파일명 순서를 적용한다. CLI의
-`--audio-dir`를 생략하면 오디오 입력 디렉터리는 `VIDEO_DIR`와 같다.
-`ffprobe` 메타데이터와 파일 시스템 시각의 우선순위는 다음과 같다.
+지원 오디오만 입력 디렉터리 바로 아래에서 찾고 자연 파일명 순서를 적용한다. CLI의 `--audio-dir`를 생략하면 오디오 입력 디렉터리는 `VIDEO_DIR`와 같다. `ffprobe` 메타데이터와 파일 시스템 시각의 우선순위는 다음과 같다.
 
 1. format 또는 audio stream의 `creation_time`
 2. macOS `st_birthtime`
 3. `st_mtime`
 4. 같은 시각에서는 자연 파일명
 
-인접 조각의 sample rate, channel 수, codec이 다르면 새 세션이다. 앞 조각의 예상
-종료보다 다음 조각이 `--session-gap-seconds` 이상 늦게 시작해도 새 세션이다.
-복사 과정에서 모든 파일 시각이 같아질 수 있으므로 음수 gap은 새 세션으로 보지 않고
-자연 파일명 순서를 신뢰한다.
+인접 조각의 sample rate, channel 수, codec이 다르면 새 세션이다. 앞 조각의 예상 종료보다 다음 조각이 `--session-gap-seconds`를 초과해 늦게 시작하면 새 세션이다. 복사 과정에서 모든 파일 시각이 같아질 수 있으므로 음수 gap은 새 세션으로 보지 않고 자연 파일명 순서를 신뢰한다.
 
-각 조각 특징의 프레임 수는 `duration / 0.05초`에 맞춰 trim 또는 마지막 프레임
-padding을 한다. 이를 생략하면 조각 경계마다 약 50ms가 누적되어 뒤쪽 클립의 offset이
-틀어질 수 있다.
+각 조각 특징의 프레임 수는 `duration / 0.05초`에 맞춰 trim 또는 마지막 프레임 padding을 한다. 이를 생략하면 조각 경계마다 약 50ms가 누적되어 뒤쪽 클립의 offset이 틀어질 수 있다.
 
 ## 오디오 특징
 
-FFmpeg가 첫 오디오 스트림을 8kHz mono `f32le` PCM으로 디코딩한다. 100ms frame,
-50ms hop을 사용해 다음 6개 대역의 log-energy를 계산한다.
+FFmpeg가 첫 오디오 스트림을 8kHz mono `f32le` PCM으로 디코딩한다. 100ms frame, 50ms hop을 사용해 다음 6개 대역의 log-energy를 계산한다.
 
 ```text
 80-200, 200-400, 400-800, 800-1600, 1600-3200, 3200-4000 Hz
 ```
 
-각 대역은 평균 0과 표준편차 1로 정규화한다. 긴 조각에서 거대한 STFT 행렬을 한 번에
-복사하지 않도록 4096 frame 블록으로 FFT를 계산한다.
+각 대역은 평균 0과 표준편차 1로 정규화한다. 긴 조각에서 거대한 STFT 행렬을 한 번에 복사하지 않도록 4096 frame 블록으로 FFT를 계산한다.
 
 ## 매칭과 confidence
 
-각 대역은 SciPy의 FFT correlation을 사용한다. numerator만 비교하지 않고 모든
-슬라이딩 구간의 합과 제곱합으로 local variance를 구해 normalized
-cross-correlation(NCC)을 계산한다. 이는 긴 세션의 전체 음량 분산이 특정 구간 점수를
-왜곡하는 문제를 막는다.
+각 대역은 SciPy의 FFT correlation을 사용한다. numerator만 비교하지 않고 모든 슬라이딩 구간의 합과 제곱합으로 local variance를 구해 normalized cross-correlation(NCC)을 계산한다. 이는 긴 세션의 전체 음량 분산이 특정 구간 점수를 왜곡하는 문제를 막는다.
 
-최고 peak 주변 기본 1초를 제외한 뒤 차순위 peak를 찾는다. 영상 전체 길이를 제외하면
-서로 겹치지만 실제로 다른 반복 음악 구간을 놓칠 수 있으므로 제외 반경을 늘리지 않는다.
+최고 peak 주변 기본 1초를 제외한 뒤 차순위 peak를 찾는다. 영상 전체 길이를 제외하면 서로 겹치지만 실제로 다른 반복 음악 구간을 놓칠 수 있으므로 제외 반경을 늘리지 않는다.
 
 ```text
 correlation_score = clamp((best_correlation + 1) / 2, 0, 1)
@@ -111,17 +91,11 @@ confidence        = 0.7 * correlation_score + 0.3 * margin_score
 - 강한 후보가 있지만 차순위와 구분되지 않으면 `ambiguous`
 - 두 기준을 모두 통과하면 `matched`
 
-상태 판정 순서와 수식은 공개 JSON 소비자에게 영향을 주므로 변경 시 테스트, 문서,
-REPORT_VERSION 호환성을 함께 검토한다.
+상태 판정 순서와 수식은 공개 JSON 소비자에게 영향을 주므로 변경 시 테스트, 문서, REPORT_VERSION 호환성을 함께 검토한다.
 
 ### 부분 및 다중 구간 매칭
 
-`analyze`는 전체 일치가 실패한 영상의 부분 매칭을 기본 수행하며 `--full-only`에서만
-생략한다. `process`는 `--mode fallback`에서만 부분 매칭을 활성화한다. 전체 일치가
-성공하면 부분 창을 추가 탐색하지 않고 즉시 반환한다. 부분 탐색은 영상 특징을 기본 5초
-창으로 나눈다. 전체 매칭 후보나
-직전 승인 창의 기대 위치 주변을 먼저 검증하고, 추적이 끊긴 창만 전체 세션에서 다시
-탐색한다. 전역 재탐색으로 새 세션을 찾으면 다음 창은 그 위치에서 로컬 추적을 재개한다.
+`analyze`는 전체 일치가 실패한 영상의 부분 매칭을 기본 수행하며 `--full-only`에서만 생략한다. `process`는 `--mode fallback`에서만 부분 매칭을 활성화한다. 전체 일치가 성공하면 부분 창을 추가 탐색하지 않고 즉시 반환한다. 부분 탐색은 영상 특징을 기본 5초 창으로 나눈다. 전체 매칭 후보나 직전 승인 창의 기대 위치 주변을 먼저 검증하고, 추적이 끊긴 창만 전체 세션에서 다시 탐색한다. 전역 재탐색으로 새 세션을 찾으면 다음 창은 그 위치에서 로컬 추적을 재개한다.
 
 승인된 창은 다음 조건을 모두 만족할 때만 한 구간으로 합친다.
 
@@ -129,54 +103,29 @@ REPORT_VERSION 호환성을 함께 검토한다.
 - 영상 시간과 외부 시간의 진행 차이가 기본 1초 이내다.
 - 서로 인접하고 영상 시간축에서 겹치지 않는다.
 
-세션이 바뀌거나 카메라 녹화 중 레코더가 중단·재시작되면 별도 구간이 된다. 합친 길이가
-`--min-partial-seconds`보다 짧은 구간은 버린다. 남은 구간이 영상을 전부 덮지 않으면
-`partial`, 아무 구간도 안전하게 승인하지 못하면 기존 `unmatched` 또는 `ambiguous`다.
-각 구간은 시작점과 선형 drift를 다시 정밀화한다.
+세션이 바뀌거나 카메라 녹화 중 레코더가 중단·재시작되면 별도 구간이 된다. 합친 길이가 `--min-partial-seconds`보다 짧은 구간은 버린다. 남은 구간이 영상을 전부 덮지 않으면 `partial`, 아무 구간도 안전하게 승인하지 못하면 기존 `unmatched` 또는 `ambiguous`다. 각 구간은 시작점과 선형 drift를 다시 정밀화한다.
 
 ### 처리 모드 추천
 
-추천 정책은 매칭 알고리즘과 렌더 실행에서 분리된 순수 함수다. `matched`는 `replace`를
-추천한다. `partial`은 confidence 0.75, peak margin 0.05, coverage 0.10을 모두 통과하고,
-영상 길이의 25% 또는 30초 중 더 짧은 값 이상의 단일 연속 구간이 있을 때만
-`fallback`을 추천한다. 이 추가 조건은 반복 음악에서 짧게 흩어진 창을 자동 처리 대상으로
-안내하지 않기 위한 것이다. `unmatched`, `ambiguous`, `error`와 기준 미달 `partial`은
-추천 모드를 null로 보고한다.
+추천 정책은 매칭 알고리즘과 렌더 실행에서 분리된 순수 함수다. `matched`는 `replace`를 추천한다. `partial`은 confidence 0.75, peak margin 0.05, coverage 0.10을 모두 통과하고, 영상 길이의 25% 또는 30초 중 더 짧은 값 이상의 단일 연속 구간이 있을 때만 `fallback`을 추천한다. 이 추가 조건은 반복 음악에서 짧게 흩어진 창을 자동 처리 대상으로 안내하지 않기 위한 것이다. `unmatched`, `ambiguous`, `error`와 기준 미달 `partial`은 추천 모드를 null로 보고한다.
 
-추천은 분석 결과의 안내 메타데이터이며 match 상태, 종료 코드, 렌더 허용 정책을 바꾸지
-않는다. 사용자가 `process --mode ...`를 명시해야만 렌더가 시작된다.
-CLI dry-run과 실제 pipeline process는 `is_renderable_match()`를 함께 사용해 `matched`,
-fallback `partial`, `--recommended-only`의 출력 대상이 서로 달라지지 않도록 한다.
+추천은 분석 결과의 안내 메타데이터이며 match 상태, 종료 코드, 렌더 허용 정책을 바꾸지 않는다. 사용자가 `process --mode ...`를 명시해야만 렌더가 시작된다. CLI dry-run과 실제 pipeline process는 `is_renderable_match()`를 함께 사용해 `matched`, fallback `partial`, `--recommended-only`의 출력 대상이 서로 달라지지 않도록 한다.
 
-CLI는 영상별 추천을 배치 단위 명령으로 집계한다. 안전한 partial 추천이 하나라도 있으면
-전체 일치 영상도 전 구간 외부음으로 처리할 수 있는 `process --mode fallback`을 추천하고,
-그렇지 않고 matched만 있으면 기본 replace 명령을 추천한다. 부분 매칭의 권장 최소 연속
-길이는 배치에서 가장 보수적인 최댓값과 사용자가 분석에 지정한 값 중 큰 값을 사용한다.
-fallback 추천에는 `--recommended-only`를 넣어 같은 배치의 기준 미달 partial은 렌더하지
-않는다. 사람용 출력은 `shlex.join`으로 quoting하고 JSON은 문자열을 실행하지 않도록 argv
-배열을 제공한다.
+CLI는 영상별 추천을 배치 단위 명령으로 집계한다. 안전한 partial 추천이 하나라도 있으면 전체 일치 영상도 전 구간 외부음으로 처리할 수 있는 `process --mode fallback`을 추천하고, 그렇지 않고 matched만 있으면 기본 replace 명령을 추천한다. 부분 매칭의 권장 최소 연속 길이는 배치에서 가장 보수적인 최댓값과 사용자가 분석에 지정한 값 중 큰 값을 사용한다. fallback 추천에는 `--recommended-only`를 넣어 같은 배치의 기준 미달 partial은 렌더하지 않는다. 사람용 출력은 `shlex.join`으로 quoting하고 JSON은 문자열을 실행하지 않도록 argv 배열을 제공한다.
 
 ## 정밀 시작점과 clock drift
 
-30초 미만 클립은 coarse offset을 그대로 사용한다. 긴 클립은 앞뒤 특징 창을 coarse
-위치 주변 기본 ±5초에서 다시 검색한다. 두 기준점은 correlation 0.5와 peak margin
-0.02를 통과해야 하며, 신뢰할 수 있는 중간 기준점이 있으면 앞뒤 선형 모델과 150ms
-이내로 일치해야 한다. 앞 창과 뒤 창의 외부 span을 영상 span으로 나눈 값이
-`tempo_ratio`다.
+30초 미만 클립은 coarse offset을 그대로 사용한다. 긴 클립은 앞뒤 특징 창을 coarse 위치 주변 기본 ±5초에서 다시 검색한다. 두 기준점은 correlation 0.5와 peak margin 0.02를 통과해야 하며, 신뢰할 수 있는 중간 기준점이 있으면 앞뒤 선형 모델과 150ms 이내로 일치해야 한다. 앞 창과 뒤 창의 외부 span을 영상 span으로 나눈 값이 `tempo_ratio`다.
 
 ```text
 tempo_ratio = external_feature_span / video_feature_span
 ```
 
-FFmpeg `atempo`에 그대로 전달하므로 1보다 크면 외부 음원을 빠르게 재생한다. 동시에
-녹음한 기기의 clock drift로 인정하는 안전 범위는 0.99~1.01이다. 기준점 신뢰도·중간
-일관성·안전 범위 중 하나라도 충족하지 못하면 반복 음악의 다른 구간을 drift로 오인하지
-않도록 시작점과 속도 보정을 적용하지 않고 coarse offset과 `tempo_ratio=1.0`을 사용한다.
+FFmpeg `atempo`에 그대로 전달하므로 1보다 크면 외부 음원을 빠르게 재생한다. 동시에 녹음한 기기의 clock drift로 인정하는 안전 범위는 0.99~1.01이다. 기준점 신뢰도·중간 일관성·안전 범위 중 하나라도 충족하지 못하면 반복 음악의 다른 구간을 drift로 오인하지 않도록 시작점과 속도 보정을 적용하지 않고 coarse offset과 `tempo_ratio=1.0`을 사용한다.
 
 ## 렌더링
 
-세션 조각은 절대 경로를 사용한 임시 concat demuxer 매니페스트로 연결한다. 상대
-경로를 사용하면 임시 매니페스트 디렉터리를 기준으로 해석되므로 금지한다.
+세션 조각은 절대 경로를 사용한 임시 concat demuxer 매니페스트로 연결한다. 상대 경로를 사용하면 임시 매니페스트 디렉터리를 기준으로 해석되므로 금지한다.
 
 | 항목 | 값 |
 |---|---|
@@ -188,18 +137,11 @@ FFmpeg `atempo`에 그대로 전달하므로 1보다 크면 외부 음원을 빠
 | 오디오 | AAC 48kHz 256kbps |
 | 폴백 | `libx265`, `yuv420p10le`, preset medium |
 
-FFmpeg 기본 autorotate가 스마트폰의 display matrix를 실제 픽셀 방향에 적용한다.
-렌더 필터는 `scale`, `pad`, `crop`, 배경 `overlay`를 사용하지 않으므로 1080×1920 세로
-입력은 1080×1920, 3840×2160 가로 입력은 3840×2160으로 출력된다. HLG/PQ 입력은
-TubeArchive와 같은 `colorspace=all=bt709:iall=bt2020:dither=fsb` 필터를 사용한다.
-`zscale`은 기본 Homebrew FFmpeg 구성에 없을 수 있으므로 의존하지 않는다.
+FFmpeg 기본 autorotate가 스마트폰의 display matrix를 실제 픽셀 방향에 적용한다. 렌더 필터는 `scale`, `pad`, `crop`, 배경 `overlay`를 사용하지 않으므로 1080×1920 세로 입력은 1080×1920, 3840×2160 가로 입력은 3840×2160으로 출력된다. HLG/PQ 입력은 TubeArchive와 같은 `colorspace=all=bt709:iall=bt2020:dither=fsb` 필터를 사용한다. `zscale`은 기본 Homebrew FFmpeg 구성에 없을 수 있으므로 의존하지 않는다.
 
-고정 `-r` 대신 `-fps_mode:v passthrough`를 사용한다. 따라서 24/25/30/60fps와 스마트폰
-VFR의 프레임 타임스탬프를 임의 CFR로 변환하지 않는다. 오디오의 drift 보정과 출력
-길이 제한은 기존 `atempo`, `atrim` 정책을 그대로 적용한다.
+고정 `-r` 대신 `-fps_mode:v passthrough`를 사용한다. 따라서 24/25/30/60fps와 스마트폰 VFR의 프레임 타임스탬프를 임의 CFR로 변환하지 않는다. 오디오의 drift 보정과 출력 길이 제한은 기존 `atempo`, `atrim` 정책을 그대로 적용한다.
 
-외부 오디오는 `--external-audio-volume`을 `volume` 필터에 먼저 적용한다. `mix` 기본은 카메라 1.0, 외부 `10^(-12/20)`, 외부 HP80이다. mono 입력은 카메라와 외부 모두 추가 gain 없이 dual-mono로 만들고 stereo 입력은 그대로 유지한 뒤 `amix normalize=0`으로 합산한다. 3채널 이상인 카메라나 외부 입력은 승인 없는 downmix를 피하기 위해 렌더 전에 거부한다. 두 볼륨과 HPF는 사용자가 덮어쓸 수 있으며, `--external-highpass-hz 0`은 HPF를 해제한다.
-이 네 구성값과 최종 음량 계약은 불변 `MixPolicy`로 묶는다. 현재 CLI는 검증된 기본 정책을 사용하고, 향후 음향 분석기는 같은 객체를 결과로 반환해 렌더 경로를 재사용할 수 있다. 분석기가 없는 상태에서 장비 이름만으로 정책을 바꾸지는 않는다.
+외부 오디오는 `--external-audio-volume`을 `volume` 필터에 먼저 적용한다. `mix` 기본은 카메라 1.0, 외부 `10^(-12/20)`, 외부 HP80이다. mono 입력은 카메라와 외부 모두 추가 gain 없이 dual-mono로 만들고 stereo 입력은 그대로 유지한 뒤 `amix normalize=0`으로 합산한다. 3채널 이상인 카메라나 외부 입력은 승인 없는 downmix를 피하기 위해 렌더 전에 거부한다. 두 볼륨과 HPF는 사용자가 덮어쓸 수 있으며, `--external-highpass-hz 0`은 HPF를 해제한다. 이 네 구성값과 최종 음량 계약은 불변 `MixPolicy`로 묶는다. 현재 CLI는 검증된 기본 정책을 사용하고, 향후 음향 분석기는 같은 객체를 결과로 반환해 렌더 경로를 재사용할 수 있다. 분석기가 없는 상태에서 장비 이름만으로 정책을 바꾸지는 않는다.
 
 `replace`의 opt-in 음량 안전 경로는 목표 LUFS, 최대 dBTP, 출력 채널 정책, LU 허용 오차를 모두 받은 경우에만 활성화한다. `mix`는 `-16 LUFS`, 최대 `-1 dBTP`, stereo, `0.5 LU` 허용 오차를 기본 사용한다. 실제 렌더 구간에 drift, padding/trimming, 채널 정책을 적용하고, mix는 component gain과 HPF까지 적용한 합산 신호를 `fltp` 상태에서 `ebur128=peak=sample+true`로 측정한다. 이 분석은 카메라와 외부 오디오를 모두 오류 즉시 중단 모드로 디코드하므로 어느 입력에서든 decoder error가 발생하면 렌더하지 않는다.
 
@@ -208,62 +150,30 @@ requested_gain_db = target_lufs - measured_lufs
 maximum_safe_gain_db = maximum_true_peak_dbtp - measured_true_peak_dbtp
 ```
 
-요청 gain이 안전 gain보다 크면 동적 처리 없이 달성할 수 없는 계약이므로 렌더하지 않는다.
-그 외에는 dB static gain만 합산 뒤에 적용해 mix 비율을 보존한다. limiter, compressor, noise suppression, AGC는 자동 적용하지 않는다. mix HP80은 모드의 문서화된 기본값이며 명시적으로 해제할 수 있다. mono→stereo는 동일 신호 복사이고 stereo→mono는 replace에서 사용자가 `mono`를 명시한 경우에만 `0.5L + 0.5R`로 처리한다. 렌더된 임시 AAC를 오류 즉시 중단 모드로 다시 디코딩해 목표 LUFS 허용 오차, true peak ceiling, 채널 수, 48kHz, AAC codec, 영상 길이, decoder error를 검사하며 하나라도 실패하면 최종 경로로 이동하지 않는다.
+요청 gain이 안전 gain보다 크면 동적 처리 없이 달성할 수 없는 계약이므로 렌더하지 않는다. 그 외에는 dB static gain만 합산 뒤에 적용해 mix 비율을 보존한다. limiter, compressor, noise suppression, AGC는 자동 적용하지 않는다. mix HP80은 모드의 문서화된 기본값이며 명시적으로 해제할 수 있다. mono→stereo는 동일 신호 복사이고 stereo→mono는 replace에서 사용자가 `mono`를 명시한 경우에만 `0.5L + 0.5R`로 처리한다. 렌더된 임시 AAC를 오류 즉시 중단 모드로 다시 디코딩해 목표 LUFS 허용 오차, true peak ceiling, 채널 수, 48kHz, AAC codec, 영상 길이, decoder error를 검사하며 하나라도 실패하면 최종 경로로 이동하지 않는다.
 
-`fallback`에서는 승인 구간별 녹음 세션 concat 입력을 만들고 영상 시간축 순서로 오디오
-조각을 구성한다. 승인 구간은 외부 레코더음, 영상 앞뒤와 구간 사이는 카메라음이다.
-경계 클릭을 줄이기 위해 양쪽을 기본 50ms 확장해 `acrossfade`하고, 마지막에 영상 길이로
-`apad/atrim`한다. 카메라와 레코더의 mono/stereo 차이가 필터 연결을 깨뜨리지 않도록
-각 조각을 48kHz stereo로 정규화한다. 카메라음 기본 볼륨은 1.0, 외부음은 1.0이며 사용자가 두 옵션으로
-조정할 수 있다. 겹치는 구간, 영상 경계를 넘는 구간, 없는 세션 참조는 FFmpeg 실행 전에
-거부한다.
+`fallback`에서는 승인 구간별 녹음 세션 concat 입력을 만들고 영상 시간축 순서로 오디오 조각을 구성한다. 승인 구간은 외부 레코더음, 영상 앞뒤와 구간 사이는 카메라음이다. 경계 클릭을 줄이기 위해 양쪽을 기본 50ms 확장해 `acrossfade`하고, 마지막에 영상 길이로 `apad/atrim`한다. 카메라와 레코더의 mono/stereo 차이가 필터 연결을 깨뜨리지 않도록 각 조각을 48kHz stereo로 정규화한다. 카메라음 기본 볼륨은 1.0, 외부음은 1.0이며 사용자가 두 옵션으로 조정할 수 있다. 겹치는 구간, 영상 경계를 넘는 구간, 없는 세션 참조는 FFmpeg 실행 전에 거부한다.
 
-렌더는 숨김 임시 파일에 먼저 쓰고 성공한 뒤 최종 경로로 원자적으로 이동한다.
-VideoToolbox가 실패하면 임시 파일을 제거하고 libx265로 재시도한다. 최종 파일이 이미
-있으면 `--overwrite` 없이는 시작하지 않는다.
+렌더는 숨김 임시 파일에 먼저 쓰고 성공한 뒤 최종 경로로 원자적으로 이동한다. VideoToolbox가 실패하면 임시 파일을 제거하고 libx265로 재시도한다. 최종 파일이 이미 있으면 `--overwrite` 없이는 시작하지 않는다.
 
-기본 출력명은 `OUTPUT_DIR/<원본 stem>.mp4`다. `--output-prefix`와 `--output-suffix`는
-사용자가 전달한 경우에만 stem 앞뒤에 적용한다. 두 값에 `/`, `\\`, NUL을 허용하지
-않아 출력 디렉터리 탈출을 막는다. 계산된 출력 경로와 원본 경로가 같으면
-`--overwrite`가 있어도 렌더 전에 거부한다.
+기본 출력명은 `OUTPUT_DIR/<원본 stem>.mp4`다. `--output-prefix`와 `--output-suffix`는 사용자가 전달한 경우에만 stem 앞뒤에 적용한다. 두 값에 `/`, `\\`, NUL을 허용하지 않아 출력 디렉터리 탈출을 막는다. 계산된 출력 경로와 원본 경로가 같으면 `--overwrite`가 있어도 렌더 전에 거부한다.
 
 ## 리포트 버전과 국제화
 
-리포트 v2는 `partial` 상태, `coverage_ratio`, 시간순 `segments`, 처리 모드 추천을
-제공한다. JSON 키, 상태, 수치 필드는 언어와 무관한 자동화 계약이다. `language`은
-사람이 읽는 `reason`과 `recommendation_reason`의 언어를 나타내며 `ko/en`만 지원한다.
-번역은 직렬화 경계에서만 수행하므로 내부 매칭·오류 사유는 안정적인 영어 원문을
-유지한다. 알 수 없는 FFmpeg 진단은 정보 손실을 막기 위해 번역하지 않는다.
+리포트 v2는 `partial` 상태, `coverage_ratio`, 시간순 `segments`, 처리 모드 추천을 제공한다. JSON 키, 상태, 수치 필드는 언어와 무관한 자동화 계약이다. `language`은 사람이 읽는 `reason`과 `recommendation_reason`의 언어를 나타내며 `ko/en`만 지원한다. 번역은 직렬화 경계에서만 수행하므로 내부 매칭·오류 사유는 안정적인 영어 원문을 유지한다. 알 수 없는 FFmpeg 진단은 정보 손실을 막기 위해 번역하지 않는다.
 
 ## 오류와 자동화 계약
 
-- `0`: 모든 영상이 명령 정책상 성공하고 필요한 렌더가 완료됨. `process --mode fallback`은
-  `partial` 렌더도 성공으로 포함
+- `0`: 모든 영상이 명령 정책상 성공하고 필요한 렌더가 완료됨. `process --mode fallback`은 `partial` 렌더도 성공으로 포함
 - `1`: 입력 디렉터리, 세션 분석 등 배치 전체를 진행할 수 없는 치명적 실패
-- `2`: 배치는 완료했지만 하나 이상 `unmatched`, `ambiguous`, `error`, 또는 렌더하지 않은
-  `partial`. `analyze`의 부분 진단은 성공 렌더로 간주하지 않음
+- `2`: 배치는 완료했지만 하나 이상 `unmatched`, `ambiguous`, `error`, 또는 렌더하지 않은 `partial`. `analyze`의 부분 진단은 성공 렌더로 간주하지 않음
 
-개별 영상의 probe/특징/렌더 실패는 가능한 경우 다른 영상을 계속 처리하고 JSON의
-`error`로 남긴다. 원본은 항상 읽기 전용이다.
+개별 영상의 probe/특징/렌더 실패는 가능한 경우 다른 영상을 계속 처리하고 JSON의 `error`로 남긴다. 원본은 항상 읽기 전용이다.
 
-파이프라인은 선택된 오디오·영상 경로와 각 단계의 `(current, total, item)`을 선택적
-콜백으로 전달한다. CLI는 이를 stderr에 표시한다. `analyze`의 기본 stdout은 전체 성공률과
-파일별 매칭 여부·confidence 백분율·실패 사유·권장 모드를 포함하며 파일명은 basename으로
-제한한다. 마지막에는 배치 권장 명령 또는 처리 보류 사유를 표시한다.
-`analyze --json`, `process` stdout, `--report` 파일만 기존 상세 JSON 계약을 사용한다.
-인자 없이 실행하면 파일을 탐색하지 않고 최상위 도움말만 출력한다.
+파이프라인은 선택된 오디오·영상 경로와 각 단계의 `(current, total, item)`을 선택적 콜백으로 전달한다. CLI는 이를 stderr에 표시한다. `analyze`의 기본 stdout은 전체 성공률과 파일별 매칭 여부·confidence 백분율·실패 사유·권장 모드를 포함하며 파일명은 basename으로 제한한다. 마지막에는 배치 권장 명령 또는 처리 보류 사유를 표시한다. `analyze --json`, `process` stdout, `--report` 파일만 기존 상세 JSON 계약을 사용한다. 인자 없이 실행하면 파일을 탐색하지 않고 최상위 도움말만 출력한다.
 
-분석 `--report` 파일에는 별도 버전의 `analysis_inputs`를 추가한다. 오디오 조각과 영상의 절대 경로, size, mtime, probe 메타데이터, 영상 오디오 채널 수, 번역 전 매칭 결과를 저장한다.
-`process --analysis-report`는 모든 지문과 `VIDEO_DIR` 소속을 검증한 뒤 `AnalysisBundle`을
-복원한다.
-하나라도 바뀌면 stale 결과를 렌더하거나 자동 재분석하지 않고 종료 코드 1로 실패한다.
-리포트 쓰기는 임시 파일을 완성한 뒤 원자 이동한다.
+분석 `--report` 파일에는 별도 버전의 `analysis_inputs`를 추가한다. 오디오 조각과 영상의 절대 경로, size, mtime, probe 메타데이터, 영상 오디오 채널 수, 번역 전 매칭 결과를 저장한다. `process --analysis-report`는 모든 지문과 `VIDEO_DIR` 소속을 검증한 뒤 `AnalysisBundle`을 복원한다. 하나라도 바뀌면 stale 결과를 렌더하거나 자동 재분석하지 않고 종료 코드 1로 실패한다. 리포트 쓰기는 임시 파일을 완성한 뒤 원자 이동한다.
 
 ## 성능 기준
 
-`scripts/benchmark_matcher.py`가 12시간 특징 타임라인과 60초 영상 200개를 생성한다.
-2026-07-17 Apple Silicon 측정값은 일반 모드 총 31.683초, 영상당 p95 0.159초,
-p99 0.162초, peak RSS 287.5MB였다. 전체 매칭이 실패하고 중간 단절 뒤 전역 재탐색하는
-실제 `--partial` 입력은 총 160.178초, p95 0.806초, p99 0.809초, peak RSS
-288.5MB였다. 기준은 총 600초와 2GB다. 숫자를 갱신할 때 하드웨어와 날짜를 함께 기록한다.
+`scripts/benchmark_matcher.py`가 12시간 특징 타임라인과 60초 영상 200개를 생성한다. 2026-07-17 Apple Silicon 측정값은 일반 모드 총 31.683초, 영상당 p95 0.159초, p99 0.162초, peak RSS 287.5MB였다. 전체 매칭이 실패하고 중간 단절 뒤 전역 재탐색하는 실제 `--partial` 입력은 총 160.178초, p95 0.806초, p99 0.809초, peak RSS 288.5MB였다. 기준은 총 600초와 2GB다. 숫자를 갱신할 때 하드웨어와 날짜를 함께 기록한다.
