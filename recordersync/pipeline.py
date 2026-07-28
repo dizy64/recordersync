@@ -235,7 +235,7 @@ class RecorderSyncPipeline:
         recommendation: MixRecommendation | None = None
         try:
             recommendation = self._recommend_mix(match, video, sessions, output_dir, options)
-            if recommendation is not None and (not recommendation.passed or recommendation.policy is None):
+            if recommendation is not None and not recommendation.passed:
                 return _ProcessedMatch(
                     _failed_match(match, "Automatic mix analysis failed"),
                     mix_recommendation=recommendation,
