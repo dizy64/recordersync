@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 
@@ -19,6 +19,7 @@ from recordersync.render import (
     MixPolicy,
     RenderMode,
     RenderPlan,
+    _number,
     build_concat_manifest,
 )
 
@@ -126,8 +127,8 @@ class MixRecommendation:
             raise ValueError("external gain and volume must describe the same attenuation")
         if not self.reasons:
             raise ValueError("successful recommendation requires reasons")
-        if self.failures:
-            raise ValueError("successful recommendation cannot have failures")
+        if self.failures and self.applied:
+            raise ValueError("failed application cannot be marked as applied")
 
     @property
     def passed(self) -> bool:
@@ -144,6 +145,15 @@ class MixRecommendation:
         if not failure:
             raise ValueError("failure must not be empty")
         return cls(camera=camera, external=external, failures=(failure,))
+
+    def with_application_failure(self, failure: str) -> MixRecommendation:
+        """분석은 성공했지만 추천 정책을 최종 출력에 적용하지 못한 상태를 만든다."""
+
+        if self.policy is None or self.failures:
+            raise ValueError("application failure requires a successful recommendation")
+        if not failure:
+            raise ValueError("failure must not be empty")
+        return replace(self, failures=(failure,), applied=False)
 
 
 def analyze_spectral_metrics(
@@ -263,10 +273,6 @@ def recommend_auto_mix(
         external_gain_db=external_gain_db,
         reasons=tuple(reasons),
     )
-
-
-def _number(value: float) -> str:
-    return f"{value:.9f}".rstrip("0").rstrip(".") or "0"
 
 
 class FFmpegMixAnalyzer:

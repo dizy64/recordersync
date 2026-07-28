@@ -32,6 +32,7 @@ from recordersync.models import (
 )
 from recordersync.pipeline import AnalysisBundle, RecorderSyncPipeline, is_renderable_match
 from recordersync.render import (
+    DEFAULT_MIX_POLICY,
     AudioLevelRenderError,
     FFmpegRenderer,
     MixPolicy,
@@ -412,6 +413,97 @@ def test_파이프라인_자동_mix_분석_실패는_영상별_오류로_격리�
     assert report.matches[0].status is MatchStatus.ERROR
     assert report.matches[0].reason == "Automatic mix analysis failed"
     assert report.mix_recommendations == (failure,)
+
+
+def test_파이프라인_자동_mix_렌더_실패는_추천_상태와_구분한다(tmp_path: Path) -> None:
+    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True, audio_channels=2)
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 30, 48_000, 1, "pcm_f32le", None),),
+    )
+    match = AudioMatch(
+        video.path,
+        5,
+        MatchStatus.MATCHED,
+        session_id=session.id,
+        external_start_seconds=3,
+    )
+    source_levels = AudioLevelMetrics(2, 48_000, -12, 7, -1.1, -1, 5, "float_analysis")
+    source = MixSourceMetrics(source_levels, 0.2, 1_300, 0.8, -18)
+    recommendation = MixRecommendation(
+        camera=source,
+        external=source,
+        policy=MixPolicy(
+            camera_audio_volume=1.0,
+            external_audio_volume=10 ** (-12 / 20),
+            external_highpass_hz=80,
+            audio_level_policy=AudioLevelPolicy(-16, -1, OutputChannelLayout.STEREO, 0.5),
+        ),
+        external_gain_db=-12,
+        reasons=("측정 기반 보수 감쇠",),
+    )
+    mix_analyzer = MagicMock(spec=FFmpegMixAnalyzer)
+    mix_analyzer.recommend.return_value = recommendation
+    renderer = MagicMock(spec=FFmpegRenderer)
+    renderer.render_with_report.side_effect = RuntimeError("final AAC validation failed")
+
+    report = RecorderSyncPipeline(renderer=renderer, mix_analyzer=mix_analyzer).process(
+        AnalysisBundle((session,), (video,), (match,)),
+        tmp_path,
+        mode=RenderMode.MIX,
+        mix_profile=MixProfile.AUTO,
+    )
+
+    assert report.matches[0].status is MatchStatus.ERROR
+    failed_recommendation = report.mix_recommendations[0]
+    assert failed_recommendation is not None
+    assert failed_recommendation.failures == ("final AAC validation failed",)
+    assert report.to_dict()["matches"][0]["mix_recommendation"]["status"] == "application_error"
+
+
+@pytest.mark.parametrize(
+    ("mode", "mix_profile", "recommend_mix_only", "mix_policy", "error"),
+    (
+        (
+            RenderMode.REPLACE,
+            MixProfile.AUTO,
+            False,
+            None,
+            "automatic mix analysis requires mix mode",
+        ),
+        (
+            RenderMode.MIX,
+            MixProfile.AUTO,
+            False,
+            DEFAULT_MIX_POLICY,
+            "automatic mix analysis cannot be combined with manual mix options",
+        ),
+        (
+            RenderMode.MIX,
+            MixProfile.CONSERVATIVE,
+            True,
+            None,
+            "mix recommendation-only processing requires the auto profile",
+        ),
+    ),
+)
+def test_파이프라인은_직접_호출에서도_자동_mix_옵션_조합을_검증한다(
+    tmp_path: Path,
+    mode: RenderMode,
+    mix_profile: MixProfile,
+    recommend_mix_only: bool,
+    mix_policy: MixPolicy | None,
+    error: str,
+) -> None:
+    with pytest.raises(ValueError, match=error):
+        RecorderSyncPipeline().process(
+            AnalysisBundle((), (), ()),
+            tmp_path,
+            mode=mode,
+            mix_profile=mix_profile,
+            recommend_mix_only=recommend_mix_only,
+            mix_policy=mix_policy,
+        )
 
 
 def test_파이프라인은_음량_안전_결과를_영상별_리포트에_연결한다(tmp_path: Path) -> None:

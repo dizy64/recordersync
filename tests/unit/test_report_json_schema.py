@@ -128,9 +128,10 @@ def test_리포트_스키마는_자동_mix_추천과_분석_실패를_검증한�
         applied=True,
     )
     failure = MixRecommendation.failed("camera analysis error: invalid frame")
+    application_failure = success.with_application_failure("final AAC validation failed")
     validator = Draft202012Validator(schema)
 
-    for recommendation in (success, failure):
+    for recommendation in (success, failure, application_failure):
         report = MatchReport(
             sessions=bundle.sessions,
             matches=bundle.matches,

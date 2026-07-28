@@ -103,15 +103,15 @@ mix의 `input.codec` 값 `float_mix`는 실제 codec 이름이 아니라 카메�
 
 ### mix_recommendation
 
-`process --mode mix --mix-profile auto`를 사용한 영상에 포함하는 additive v2 필드다. `--dry-run`이면 `status`는 `recommended`, 실제 렌더와 최종 AAC 검증까지 성공하면 `applied`, 원본 분석이 실패하면 `error`다.
+`process --mode mix --mix-profile auto`를 사용한 영상에 포함하는 additive v2 필드다. `--dry-run`이면 `status`는 `recommended`, 실제 렌더와 최종 AAC 검증까지 성공하면 `applied`, 추천은 성공했지만 렌더나 최종 검증이 실패하면 `application_error`, 원본 분석이 실패하면 `error`다.
 
 | 하위 필드 | 의미 |
 |---|---|
-| `status` | `recommended`, `applied`, `error` |
+| `status` | `recommended`, `applied`, `application_error`, `error` |
 | `camera`, `external` | 원본별 `audio`, 160Hz 이하 에너지 비중, spectral centroid, stereo correlation, Side/Mid dB. 분석하지 못한 입력은 null |
 | `policy` | 카메라/외부 volume, 외부 gain dB, 외부 HPF, 합산 후 `audio_level_policy`. 분석 실패면 null |
 | `reasons` | 측정값에서 gain과 HPF를 선택한 이유 |
-| `failures` | FFmpeg decode, EBU R128, PCM 스펙트럼 또는 정책 계산 실패. 성공이면 빈 배열 |
+| `failures` | FFmpeg decode, EBU R128, PCM 스펙트럼, 정책 계산, 렌더 또는 최종 검증 실패. `recommended`와 `applied`면 빈 배열 |
 
 원본별 `audio.codec` 값 `float_analysis`는 source codec 이름이 아니라 48kHz float 경로에서 EBU R128을 측정했다는 내부 식별자다. mono의 `audio.channels`는 원본 1채널을 표시하지만 integrated loudness와 peak는 최종 stereo mix와 같은 gain 없는 dual-mono 조건으로 측정한다. 스펙트럼·stereo 지표는 같은 디코딩 신호를 8kHz float PCM으로 내려 계산한다. auto는 외부 음원을 boost하지 않으므로 `policy.external_gain_db`는 0 이하이고, 성공 상태는 non-null `camera`·`external`·`policy`, 하나 이상의 `reasons`, 빈 `failures`를 요구한다.
 

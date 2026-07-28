@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
+from typing import cast
 
 from recordersync.audio_levels import AudioLevelMetrics, AudioLevelPolicy, AudioLevelReport
 from recordersync.mix_analysis import MixRecommendation, MixSourceMetrics
@@ -186,7 +187,11 @@ def _mix_source_payload(source: MixSourceMetrics) -> dict[str, object]:
 
 def _mix_recommendation_payload(recommendation: MixRecommendation) -> dict[str, object]:
     policy = recommendation.policy
-    status = "error" if recommendation.failures else ("applied" if recommendation.applied else "recommended")
+    status = (
+        "application_error"
+        if policy is not None and recommendation.failures
+        else ("error" if recommendation.failures else ("applied" if recommendation.applied else "recommended"))
+    )
     return {
         "status": status,
         "camera": _mix_source_payload(recommendation.camera) if recommendation.camera is not None else None,
@@ -297,13 +302,13 @@ def format_mix_recommendation_summary(
 ) -> str:
     """CLI stderr에 표시할 자동 mix 추천 한 줄 요약."""
 
+    if recommendation.policy is not None and recommendation.failures:
+        return f"{match.video_path.name} | 상태: 적용 실패 | {'; '.join(recommendation.failures)}"
     if not recommendation.passed or recommendation.policy is None:
         failures = "; ".join(recommendation.failures) or "unknown analysis failure"
         return f"{match.video_path.name} | 상태: 실패 | {failures}"
     status = "적용" if recommendation.applied else "추천"
-    gain = recommendation.external_gain_db
-    if gain is None:
-        raise ValueError("successful recommendation requires external_gain_db")
+    gain = cast(float, recommendation.external_gain_db)
     highpass = recommendation.policy.external_highpass_hz
     highpass_label = "해제" if highpass is None else f"{highpass:g} Hz"
     return f"{match.video_path.name} | 상태: {status} | 외부 gain: {gain:+.1f} dB | 외부 HPF: {highpass_label}"

@@ -268,12 +268,16 @@ class RecorderSyncPipeline:
             return _ProcessedMatch(
                 _failed_match(match, str(exc)),
                 audio_levels=exc.report,
-                mix_recommendation=recommendation,
+                mix_recommendation=(
+                    recommendation.with_application_failure(str(exc)) if recommendation is not None else None
+                ),
             )
         except (FileExistsError, ValueError, RuntimeError) as exc:
             return _ProcessedMatch(
                 _failed_match(match, str(exc)),
-                mix_recommendation=recommendation,
+                mix_recommendation=(
+                    recommendation.with_application_failure(str(exc)) if recommendation is not None else None
+                ),
             )
         return _ProcessedMatch(
             replace(match, output_path=rendered_output.output_path),

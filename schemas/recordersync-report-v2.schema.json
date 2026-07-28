@@ -383,6 +383,34 @@
           "if": {
             "properties": {
               "status": {
+                "const": "application_error"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "camera": {
+                "$ref": "#/$defs/mixSource"
+              },
+              "external": {
+                "$ref": "#/$defs/mixSource"
+              },
+              "policy": {
+                "$ref": "#/$defs/mixPolicy"
+              },
+              "reasons": {
+                "minItems": 1
+              },
+              "failures": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
                 "const": "error"
               }
             }
@@ -401,7 +429,7 @@
       ],
       "properties": {
         "status": {
-          "enum": ["recommended", "applied", "error"]
+          "enum": ["recommended", "applied", "application_error", "error"]
         },
         "camera": {
           "oneOf": [

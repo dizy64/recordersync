@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from subprocess import CompletedProcess, TimeoutExpired
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -46,6 +48,46 @@ def _source_metrics(
         stereo_correlation=0.8 if channels == 2 else None,
         stereo_side_to_mid_db=-18.0 if channels == 2 else None,
     )
+
+
+def _render_plan() -> RenderPlan:
+    return RenderPlan(
+        video=VideoInfo(Path("clip.mov"), 5.0, 1920, 1080, True, audio_channels=2),
+        session=RecordingSession(
+            "session-001",
+            (AudioChunk(Path("REC.wav"), 30.0, 48_000, 1, "pcm_s24le", None),),
+        ),
+        output_path=Path("replace/clip.mp4"),
+        external_start_seconds=3.0,
+        tempo_ratio=1.001,
+        mode=RenderMode.MIX,
+        external_highpass_hz=80.0,
+    )
+
+
+def _ebur128_summary() -> bytes:
+    return b"""
+[Parsed_ebur128_0] Summary:
+
+  Integrated loudness:
+    I:         -16.1 LUFS
+
+  Loudness range:
+    LRA:         7.0 LU
+
+  Sample peak:
+    Peak:       -1.2 dBFS
+
+  True peak:
+    Peak:       -1.1 dBFS
+"""
+
+
+def _successful_analysis() -> CompletedProcess[bytes]:
+    sample_rate = 8_000
+    time = np.arange(sample_rate, dtype=np.float32) / sample_rate
+    samples = np.sin(2 * np.pi * 440 * time).astype("<f4")
+    return CompletedProcess(["ffmpeg"], 0, samples.tobytes(), _ebur128_summary())
 
 
 def test_자동_mix는_loudness와_peak중_더_보수적인_감쇠를_선택한다() -> None:
@@ -121,20 +163,7 @@ def test_스펙트럼_분석은_저역_비중과_stereo_공간_지표를_계산�
 
 
 def test_자동_mix_분석_명령은_두_입력을_float로_분리_측정하고_원본_gain을_바꾸지_않는다() -> None:
-    video = VideoInfo(Path("clip.mov"), 5.0, 1920, 1080, True, audio_channels=2)
-    session = RecordingSession(
-        "session-001",
-        (AudioChunk(Path("REC.wav"), 30.0, 48_000, 1, "pcm_s24le", None),),
-    )
-    plan = RenderPlan(
-        video=video,
-        session=session,
-        output_path=Path("replace/clip.mp4"),
-        external_start_seconds=3.0,
-        tempo_ratio=1.001,
-        mode=RenderMode.MIX,
-        external_highpass_hz=80.0,
-    )
+    plan = _render_plan()
     analyzer = FFmpegMixAnalyzer(ffmpeg_path="/opt/ffmpeg")
 
     camera = analyzer.build_command(plan, Path("concat.txt"), MixSource.CAMERA)
@@ -159,6 +188,38 @@ def test_자동_mix_분석_명령은_두_입력을_float로_분리_측정하고_
     assert external[-1] == "pipe:1"
 
 
+def test_자동_mix_분석은_FFmpeg_진단의_마지막_세_줄을_실패로_보고한다() -> None:
+    failed = CompletedProcess(["ffmpeg"], 1, b"", b"first\nsecond\nthird\nfourth\n")
+
+    with patch("recordersync.mix_analysis.subprocess.run", return_value=failed):
+        recommendation = FFmpegMixAnalyzer().recommend(_render_plan())
+
+    assert recommendation.failures == ("camera analysis error: second | third | fourth",)
+
+
+def test_자동_mix_분석은_camera_성공_후_external_실패를_구분한다() -> None:
+    failed = CompletedProcess(["ffmpeg"], 1, b"", b"external decoder failure")
+
+    with patch(
+        "recordersync.mix_analysis.subprocess.run",
+        side_effect=[_successful_analysis(), failed],
+    ):
+        recommendation = FFmpegMixAnalyzer().recommend(_render_plan())
+
+    assert recommendation.camera is not None
+    assert recommendation.external is None
+    assert recommendation.failures == ("external analysis error: external decoder failure",)
+
+
+def test_자동_mix_분석은_timeout을_영상별_실패로_격리한다() -> None:
+    timeout = TimeoutExpired(["ffmpeg"], 1)
+
+    with patch("recordersync.mix_analysis.subprocess.run", side_effect=timeout):
+        recommendation = FFmpegMixAnalyzer().recommend(_render_plan())
+
+    assert recommendation.failures == ("camera analysis error: camera analysis timed out",)
+
+
 def test_자동_mix_추천은_gain과_linear_volume의_불일치를_거부한다() -> None:
     source = _source_metrics(
         integrated_loudness_lufs=-12,
@@ -177,6 +238,23 @@ def test_자동_mix_추천은_gain과_linear_volume의_불일치를_거부한다
             external_gain_db=-6,
             reasons=("불일치 정책",),
         )
+
+
+def test_자동_mix_추천은_렌더_실패를_분석_실패와_구분한다() -> None:
+    source = _source_metrics(
+        integrated_loudness_lufs=-12,
+        true_peak_dbtp=-1,
+        low_frequency_energy_ratio=0.2,
+        spectral_centroid_hz=1_300,
+    )
+    recommendation = recommend_auto_mix(source, source)
+
+    failed = recommendation.with_application_failure("final AAC validation failed")
+
+    assert not failed.passed
+    assert failed.policy is recommendation.policy
+    assert failed.failures == ("final AAC validation failed",)
+    assert not failed.applied
 
 
 def test_자동_mix_원본_측정값은_암묵적인_다채널_downmix를_허용하지_않는다() -> None:

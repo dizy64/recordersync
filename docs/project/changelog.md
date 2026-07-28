@@ -14,7 +14,7 @@ RecorderSync의 사용자 동작과 공개 연동 계약 변경을 버전별로 
 - 카메라 오디오 채널 수를 보존하는 `analysis_inputs` v2와 mono dual-mono 처리, 다채널 자동 downmix 거부
 - `--mix-profile auto`의 원본별 float LUFS/true peak와 스펙트럼·stereo 분석, 추천 전용 dry-run, 같은 `MixPolicy` 렌더 적용
 - JSON v2 영상별 optional `mix_recommendation`과 stderr `[믹스 추천]` 요약
-- session gap 정확 경계와 VFR 프레임 타임스탬프 보존 E2E 회귀
+- 앞선 PR #32의 session gap 정확 경계와 PR #33의 VFR 프레임 타임스탬프 보존 E2E 회귀
 
 ### 호환성
 

@@ -24,7 +24,12 @@ from recordersync.models import (
     RecordingSession,
 )
 from recordersync.render import MixPolicy
-from recordersync.report import MatchReport, ReportLanguage, format_audio_level_summary
+from recordersync.report import (
+    MatchReport,
+    ReportLanguage,
+    format_audio_level_summary,
+    format_mix_recommendation_summary,
+)
 
 
 def test_매칭_리포트는_세션과_매칭과_요약을_직렬화한다() -> None:
@@ -242,6 +247,31 @@ def test_처리_리포트는_자동_mix의_원본_측정값과_적용_정책을_
         "reasons": ["외부 true peak 여유를 우선했습니다."],
         "failures": [],
     }
+
+
+def test_자동_mix_요약은_추천과_적용_실패를_구분한다() -> None:
+    match = AudioMatch(Path("clip.mov"), 30, MatchStatus.MATCHED)
+    level_policy = AudioLevelPolicy(-16, -1, OutputChannelLayout.STEREO, 0.5)
+    levels = AudioLevelMetrics(2, 48_000, -12, 7, -1.1, -1, 30, "float_analysis")
+    source = MixSourceMetrics(levels, 0.2, 1_300, 0.8, -18)
+    recommendation = MixRecommendation(
+        camera=source,
+        external=source,
+        policy=MixPolicy(1.0, 10 ** (-12 / 20), None, level_policy),
+        external_gain_db=-12,
+        reasons=("측정 기반 보수 감쇠",),
+    )
+
+    assert format_mix_recommendation_summary(match, recommendation) == (
+        "clip.mov | 상태: 추천 | 외부 gain: -12.0 dB | 외부 HPF: 해제"
+    )
+    assert (
+        format_mix_recommendation_summary(
+            match,
+            recommendation.with_application_failure("final AAC validation failed"),
+        )
+        == "clip.mov | 상태: 적용 실패 | final AAC validation failed"
+    )
 
 
 def test_사람용_음량_요약은_peak_충돌의_필수_판정값을_표시한다() -> None:
