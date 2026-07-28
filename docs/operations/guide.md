@@ -239,9 +239,7 @@ recordersync process /path/to/media \
 접두사·접미사에는 경로 구분자를 사용할 수 없다. `--output-dir`를 원본 디렉터리로
 지정해 계산된 출력 경로가 원본 MP4와 같아지는 경우에는 `--overwrite`도 허용되지 않는다.
 
-카메라 stereo를 주 음원으로 유지하면서 외부 녹음을 보강하려면 명시적으로 mix를
-사용한다. 기본값은 카메라 1.0, 외부 `-12dB` 상당, 외부 HP80이다. 합산 결과를
-`-16 LUFS`, 최대 `-1 dBTP`, stereo, `0.5 LU` 허용 오차로 검증한다.
+카메라 stereo를 주 음원으로 유지하면서 외부 녹음을 보강하려면 명시적으로 mix를 사용한다. 기본값은 카메라 1.0, 외부 `-12dB` 상당, 외부 HP80이다. 합산 결과를 `-16 LUFS`, 최대 `-1 dBTP`, stereo, `0.5 LU` 허용 오차로 검증한다.
 
 ```bash
 recordersync process /path/to/media \
@@ -279,10 +277,7 @@ fallback은 영상 앞뒤와 승인 구간 사이에 카메라음을 쓰고, 승
 `analyze`의 보수적인 추천 대상만 자동 처리하려면 `--recommended-only`를 함께 사용한다.
 이때 기준 미달 partial은 출력하지 않으며 배치 종료 코드는 2로 남는다.
 
-두 값은 0.0~1.0 범위의 독립적인 FFmpeg 볼륨 배수다. 외부 음량은 모든 모드에 적용되고,
-카메라 음량은 mix와 fallback에 적용된다. fallback은 양쪽 1.0이다. mix는 두 component를
-`normalize=0`으로 합산한 뒤 float 신호를 측정해 최종 static gain을 적용하므로 비율을
-보존한다. 합산 목표와 true-peak ceiling이 충돌하면 출력하지 않는다.
+두 값은 0.0~1.0 범위의 독립적인 FFmpeg 볼륨 배수다. 외부 음량은 모든 모드에 적용되고, 카메라 음량은 mix와 fallback에 적용된다. fallback은 양쪽 1.0이다. mix는 두 component를 `normalize=0`으로 합산한 뒤 float 신호를 측정해 최종 static gain을 적용하므로 비율을 보존한다. 합산 목표와 true-peak ceiling이 충돌하면 출력하지 않는다.
 
 ### LUFS와 true peak를 검증하는 교체
 
@@ -298,10 +293,7 @@ recordersync process /path/to/media \
   --loudness-tolerance-lu 0.5
 ```
 
-replace에서 이 계약은 `--external-audio-volume`의 비기본값, `--dry-run`과 조합할 수
-없다. 네 옵션 중 하나라도 없으면 실행하지 않는다. mix는 기본 계약을 자동 사용하며,
-네 옵션을 모두 지정하면 목표와 허용 오차를 바꿀 수 있다. mix 출력 채널은 stereo로
-고정한다.
+replace에서 이 계약은 `--external-audio-volume`의 비기본값, `--dry-run`과 조합할 수 없다. 네 옵션 중 하나라도 없으면 실행하지 않는다. mix는 기본 계약을 자동 사용하며, 네 옵션을 모두 지정하면 목표와 허용 오차를 바꿀 수 있다. mix 출력 채널은 stereo로 고정한다.
 
 - `preserve`: 레코더 mono/stereo 유지
 - `stereo`: mono는 gain 없이 dual-mono로 복사, stereo는 유지

@@ -118,9 +118,7 @@ v1 소비자는 새 상태를 알 수 없으므로 v2를 명시적으로 지원�
 
 ### audio_levels
 
-`process`에서 replace 음량 안전 옵션을 모두 지정했거나 기본/사용자 지정 mix 음량
-안전을 수행한 영상에 포함하는 additive v2 필드다. 일반 분석과 안전 처리가 없는
-replace/fallback 리포트에는 생략된다.
+`process`에서 replace 음량 안전 옵션을 모두 지정했거나 기본/사용자 지정 mix 음량 안전을 수행한 영상에 포함하는 additive v2 필드다. 일반 분석과 안전 처리가 없는 replace/fallback 리포트에는 생략된다.
 
 | 하위 필드 | 의미 |
 |---|---|
