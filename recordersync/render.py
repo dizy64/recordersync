@@ -77,6 +77,8 @@ DEFAULT_MIX_POLICY = MixPolicy(
     audio_level_policy=DEFAULT_MIX_AUDIO_LEVEL_POLICY,
 )
 
+_MIX_AUDIO_FILTER = "[camera][external]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]"
+
 
 @dataclass(frozen=True, slots=True)
 class RenderSegment:
@@ -455,7 +457,7 @@ class FFmpegCommandBuilder:
                 filters.extend(
                     [
                         f"[0:a:0]{self._camera_audio_chain(plan)}[camera]",
-                        ("[camera][external]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]"),
+                        _MIX_AUDIO_FILTER,
                     ]
                 )
                 audio_label = "[mixed]"
@@ -579,7 +581,7 @@ class FFmpegCommandBuilder:
             analysis_filters.extend(
                 (
                     f"[0:a:0]{self._camera_audio_chain(plan)}[camera]",
-                    ("[camera][external]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]"),
+                    _MIX_AUDIO_FILTER,
                 )
             )
             measured_input = "[mixed]"

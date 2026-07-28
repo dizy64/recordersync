@@ -326,7 +326,7 @@ def test_처리_CLI는_믹스_음량_안전_출력을_stereo로_제한한다(
     assert "mix loudness safety requires --output-channel-layout stereo" in capsys.readouterr().err
 
 
-def test_메인_믹스는_보수적인_기본_음량_정책과_필터를_파이프라인에_전달한다(
+def test_메인_믹스는_기본_음량_정책과_필터_결정을_렌더_계층에_맡긴다(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
@@ -347,11 +347,7 @@ def test_메인_믹스는_보수적인_기본_음량_정책과_필터를_파이�
     assert kwargs["camera_audio_volume"] is None
     assert kwargs["external_audio_volume"] is None
     assert kwargs["external_highpass_hz"] is None
-    policy = kwargs["audio_level_policy"]
-    assert policy.target_lufs == pytest.approx(-16)
-    assert policy.maximum_true_peak_dbtp == pytest.approx(-1)
-    assert policy.output_channel_layout is OutputChannelLayout.STEREO
-    assert policy.loudness_tolerance_lu == pytest.approx(0.5)
+    assert kwargs["audio_level_policy"] is None
     assert json.loads(capsys.readouterr().out)["summary"]["matched"] == 1
 
 

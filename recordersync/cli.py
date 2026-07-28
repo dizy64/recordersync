@@ -18,12 +18,7 @@ from recordersync.recommendation import (
     RecommendationMode,
     recommend_batch_mode,
 )
-from recordersync.render import (
-    DEFAULT_MIX_AUDIO_LEVEL_POLICY,
-    RenderMode,
-    resolve_output_path,
-    validate_output_affix,
-)
+from recordersync.render import RenderMode, resolve_output_path, validate_output_affix
 from recordersync.report import MatchReport, ReportLanguage, format_audio_level_summary
 
 if TYPE_CHECKING:
@@ -387,12 +382,11 @@ def _validate_process_options(
 def _audio_level_policy(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
-    render_mode: RenderMode,
 ) -> AudioLevelPolicy | None:
     if args.command != "process":
         return None
     if args.target_lufs is None:
-        return DEFAULT_MIX_AUDIO_LEVEL_POLICY if render_mode is RenderMode.MIX else None
+        return None
     try:
         return AudioLevelPolicy(
             target_lufs=args.target_lufs,
@@ -443,7 +437,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     report_language = ReportLanguage(args.report_language)
     render_mode = RenderMode(args.mode) if args.command == "process" else RenderMode.REPLACE
     _validate_process_options(parser, args, render_mode)
-    audio_level_policy = _audio_level_policy(parser, args, render_mode)
+    audio_level_policy = _audio_level_policy(parser, args)
 
     try:
         bundle = _analysis_bundle(
