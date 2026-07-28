@@ -6,13 +6,21 @@ import json
 import subprocess
 import sys
 from fractions import Fraction
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 
-from .conftest import DriftSyntheticProject, PartialSyntheticProject, SyntheticProject, probe_media
+from .conftest import (
+    DriftSyntheticProject,
+    PartialSyntheticProject,
+    SyntheticProject,
+    VfrSyntheticProject,
+    probe_media,
+    probe_video_timestamps,
+)
 
 pytestmark = pytest.mark.e2e
 
@@ -217,6 +225,40 @@ def test_처리_CLI는_분할_오디오를_매칭하고_원본_프로필로_렌�
     final_source_stat = synthetic_project.video_path.stat()
     assert final_source_stat.st_size == source_stat.st_size
     assert final_source_stat.st_mtime_ns == source_stat.st_mtime_ns
+
+
+def test_처리_CLI는_VFR_프레임_타임스탬프를_보존한다(
+    vfr_synthetic_project: VfrSyntheticProject,
+) -> None:
+    source_timestamps = probe_video_timestamps(vfr_synthetic_project.video_path)
+    source_deltas = tuple(current - previous for previous, current in pairwise(source_timestamps))
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "recordersync",
+            "process",
+            str(vfr_synthetic_project.video_dir),
+            "--audio-dir",
+            str(vfr_synthetic_project.audio_dir),
+            "--output-dir",
+            str(vfr_synthetic_project.output_dir),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=180,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    output = vfr_synthetic_project.output_dir / "vfr.mp4"
+    assert output.is_file()
+    output_timestamps = probe_video_timestamps(output)
+    assert len(source_timestamps) == 120
+    assert len(output_timestamps) == len(source_timestamps)
+    assert max(source_deltas) - min(source_deltas) > 0.02
+    assert output_timestamps == pytest.approx(source_timestamps, abs=0.001)
 
 
 def test_처리_CLI는_옵션_없는_기본_mix_정책을_실제_FFmpeg_경계에_적용한다(
