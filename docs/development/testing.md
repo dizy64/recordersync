@@ -29,7 +29,7 @@ RecorderSync의 비즈니스 정책은 단위 테스트로 검증한다. FFmpeg�
 | `test_check_markdown_links.py` | 로컬 링크, 외부 URL, 코드 블록, 저장소 이탈, CLI 오류 목록 |
 | `test_check_release_version.py` | 프로젝트·패키지·릴리스 태그 버전 일치와 오류 진단 |
 | `test_report_json_schema.py` | Draft 2020-12 적합성, 실제 payload, 문서 예시, 잘못된 상태·미지 필드 거부 |
-| `e2e/test_cli_pipeline.py` | 분할 WAV, 세로 해상도/FPS, mix·다중 구간 fallback 렌더, 반복 끝 구간 drift 차단 |
+| `e2e/test_cli_pipeline.py` | 분할 WAV, 세로 해상도/FPS, 안전 mix·다중 구간 fallback 렌더, 반복 끝 구간 drift 차단 |
 
 새 테스트 파일을 추가하거나 책임이 바뀌면 이 지도만 갱신한다.
 
@@ -75,7 +75,7 @@ RecorderSync의 비즈니스 정책은 단위 테스트로 검증한다. FFmpeg�
 
 - concat 경로에 공백과 작은따옴표가 있어도 escaping되는가
 - 매니페스트 경로가 임시 디렉터리가 아닌 절대 원본 경로인가
-- replace에 `amix`가 없고 mix에는 요청한 카메라/외부 볼륨이 있는가
+- replace에 `amix`가 없고 mix에는 보수 기본값 또는 요청한 카메라/외부 볼륨, HPF, `amix normalize=0`이 있는가
 - fallback이 일치 구간마다 올바른 세션 concat 입력을 쓰고 나머지는 카메라음인가
 - 다중 구간 경계를 기본 50ms crossfade로 연결하고 출력 길이를 영상에 맞추는가
 - fallback에 카메라 오디오가 없거나 구간이 겹치면 렌더 전에 거부하는가
@@ -87,7 +87,7 @@ RecorderSync의 비즈니스 정책은 단위 테스트로 검증한다. FFmpeg�
 - 가로·세로 입력 모두 고정 scale/pad/crop/overlay 없이 원본 표시 해상도를 유지하는가
 - 고정 `-r` 없이 `-fps_mode:v passthrough`로 원본 프레임 타임스탬프를 유지하는가
 - HLG/PQ 입력이 설치된 FFmpeg에 없는 `zscale`을 요구하지 않는가
-- 음량 안전 분석이 실제 렌더 구간과 승인된 채널 정책을 float 상태에서 측정하는가
+- 음량 안전 분석이 replace의 실제 렌더 구간 또는 component 처리까지 끝낸 mix 합산 신호를 float 상태에서 측정하는가
 - 목표 LUFS gain이 true-peak 한계를 넘으면 렌더 전에 중단하는가
 - 입력 decoder error와 최종 AAC의 LUFS/true peak/channel/rate/duration/codec 오류가
   최종 파일 게시를 막는가
@@ -191,7 +191,7 @@ PR에 동일 하드웨어 전후 수치를 기록한다.
 - 시작점이 약 3.00초인가
 - 기본 임계값에서 `matched`인가
 - process 결과가 180×320 세로, 24fps, HEVC 10-bit, AAC 48kHz를 유지하는가
-- 원본/외부 볼륨 0.2/0.8 mix가 실제 렌더되는가
+- 원본/외부 볼륨 override와 HP80 mix가 합산 뒤 static gain·AAC 재검증을 통과하는가
 - 두 부분 구간만 레코더음으로 교체되고 사이·앞뒤는 카메라음으로 남는가
 - stereo 카메라음과 mono 레코더음의 채널 레이아웃 차이에도 렌더되는가
 - 구간별 RMS가 설정한 레코더/카메라 볼륨 차이를 반영하는가

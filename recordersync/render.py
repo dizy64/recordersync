@@ -42,6 +42,44 @@ class RenderMode(StrEnum):
     FALLBACK = "fallback"
 
 
+DEFAULT_MIX_AUDIO_LEVEL_POLICY = AudioLevelPolicy(
+    target_lufs=-16.0,
+    maximum_true_peak_dbtp=-1.0,
+    output_channel_layout=OutputChannelLayout.STEREO,
+    loudness_tolerance_lu=0.5,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class MixPolicy:
+    """고정 preset과 향후 자동 분석이 공유하는 mix 렌더 계약."""
+
+    camera_audio_volume: float
+    external_audio_volume: float
+    external_highpass_hz: float | None
+    audio_level_policy: AudioLevelPolicy
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.camera_audio_volume <= 1:
+            raise ValueError("camera_audio_volume must be in [0, 1]")
+        if not 0 <= self.external_audio_volume <= 1:
+            raise ValueError("external_audio_volume must be in [0, 1]")
+        if self.external_highpass_hz is not None and not 20 <= self.external_highpass_hz <= 20_000:
+            raise ValueError("external_highpass_hz must be in [20, 20000]")
+        if self.audio_level_policy.output_channel_layout is not OutputChannelLayout.STEREO:
+            raise ValueError("mix loudness safety requires stereo output")
+
+
+DEFAULT_MIX_POLICY = MixPolicy(
+    camera_audio_volume=1.0,
+    external_audio_volume=10 ** (-12.0 / 20.0),
+    external_highpass_hz=80.0,
+    audio_level_policy=DEFAULT_MIX_AUDIO_LEVEL_POLICY,
+)
+
+_MIX_AUDIO_FILTER = "[camera][external]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]"
+
+
 @dataclass(frozen=True, slots=True)
 class RenderSegment:
     """영상의 한 구간에 배치할 외부 녹음 입력."""
@@ -80,13 +118,14 @@ class RenderPlan:
     external_start_seconds: float
     tempo_ratio: float
     mode: RenderMode = RenderMode.REPLACE
-    camera_audio_volume: float = 0.1
+    camera_audio_volume: float = 1.0
     external_audio_volume: float = 1.0
+    external_highpass_hz: float | None = None
     overwrite: bool = False
     segments: tuple[RenderSegment, ...] = ()
     crossfade_seconds: float = 0.05
     audio_level_policy: AudioLevelPolicy | None = None
-    external_audio_gain_db: float | None = None
+    output_audio_gain_db: float | None = None
 
     def __post_init__(self) -> None:
         if self.external_start_seconds < 0:
@@ -97,18 +136,36 @@ class RenderPlan:
             raise ValueError("camera_audio_volume must be in [0, 1]")
         if not 0 <= self.external_audio_volume <= 1:
             raise ValueError("external_audio_volume must be in [0, 1]")
+        if self.external_highpass_hz is not None and not 20 <= self.external_highpass_hz <= 20_000:
+            raise ValueError("external_highpass_hz must be in [20, 20000]")
+        if self.external_highpass_hz is not None and self.mode is not RenderMode.MIX:
+            raise ValueError("external_highpass_hz requires mix mode")
         if self.crossfade_seconds < 0:
             raise ValueError("crossfade_seconds must be >= 0")
         if self.mode in {RenderMode.MIX, RenderMode.FALLBACK} and not self.video.has_audio:
             raise ValueError(f"{self.mode.value} mode requires camera audio")
+        if self.mode is RenderMode.MIX and self.video.audio_channels not in {1, 2}:
+            raise ValueError("mix mode supports mono or stereo camera audio")
+        if self.mode is RenderMode.MIX and self.session.chunks[0].channels not in {1, 2}:
+            raise ValueError("mix mode supports mono or stereo recorder audio")
         if self.segments and self.mode is not RenderMode.FALLBACK:
             raise ValueError("explicit render segments require fallback mode")
-        if self.audio_level_policy is not None and self.mode is not RenderMode.REPLACE:
-            raise ValueError("loudness safety requires replace mode")
-        if self.audio_level_policy is not None and self.external_audio_volume != 1.0:
+        if self.audio_level_policy is not None and self.mode not in {RenderMode.REPLACE, RenderMode.MIX}:
+            raise ValueError("loudness safety requires replace or mix mode")
+        if (
+            self.audio_level_policy is not None
+            and self.mode is RenderMode.REPLACE
+            and self.external_audio_volume != 1.0
+        ):
             raise ValueError("loudness safety cannot be combined with external_audio_volume")
-        if self.external_audio_gain_db is not None and self.audio_level_policy is None:
-            raise ValueError("external_audio_gain_db requires audio_level_policy")
+        if (
+            self.audio_level_policy is not None
+            and self.mode is RenderMode.MIX
+            and self.audio_level_policy.output_channel_layout is not OutputChannelLayout.STEREO
+        ):
+            raise ValueError("mix loudness safety requires stereo output")
+        if self.output_audio_gain_db is not None and self.audio_level_policy is None:
+            raise ValueError("output_audio_gain_db requires audio_level_policy")
 
         previous_end = 0.0
         for index, segment in enumerate(self.segments):
@@ -199,8 +256,10 @@ def build_render_plan(
     output_dir: Path,
     *,
     mode: RenderMode = RenderMode.REPLACE,
+    mix_policy: MixPolicy | None = None,
     camera_audio_volume: float | None = None,
-    external_audio_volume: float = 1.0,
+    external_audio_volume: float | None = None,
+    external_highpass_hz: float | None = None,
     overwrite: bool = False,
     output_prefix: str = "",
     output_suffix: str = "",
@@ -208,6 +267,18 @@ def build_render_plan(
 ) -> RenderPlan:
     """승인된 매칭과 미디어 메타데이터를 검증하고 렌더 계획으로 변환한다."""
 
+    if mix_policy is not None and mode is not RenderMode.MIX:
+        raise ValueError("mix_policy requires mix mode")
+    if mix_policy is not None and any(
+        value is not None
+        for value in (
+            camera_audio_volume,
+            external_audio_volume,
+            external_highpass_hz,
+            audio_level_policy,
+        )
+    ):
+        raise ValueError("mix_policy cannot be combined with individual mix options")
     if match.status is MatchStatus.PARTIAL and mode is not RenderMode.FALLBACK:
         raise ValueError("Partial audio can only be rendered in fallback mode")
     if match.status not in {MatchStatus.MATCHED, MatchStatus.PARTIAL}:
@@ -235,8 +306,27 @@ def build_render_plan(
         external_start = match_external_start
         tempo_ratio = match.tempo_ratio
 
-    resolved_camera_volume = (
-        camera_audio_volume if camera_audio_volume is not None else (1.0 if mode is RenderMode.FALLBACK else 0.1)
+    resolved_mix_policy = mix_policy or DEFAULT_MIX_POLICY
+    resolved_camera_volume = camera_audio_volume if camera_audio_volume is not None else 1.0
+    resolved_external_volume = external_audio_volume if external_audio_volume is not None else 1.0
+    if mode is RenderMode.MIX:
+        resolved_camera_volume = (
+            camera_audio_volume if camera_audio_volume is not None else resolved_mix_policy.camera_audio_volume
+        )
+        resolved_external_volume = (
+            external_audio_volume if external_audio_volume is not None else resolved_mix_policy.external_audio_volume
+        )
+    if external_highpass_hz is not None and mode is not RenderMode.MIX:
+        raise ValueError("external_highpass_hz requires mix mode")
+    resolved_highpass_hz = (
+        resolved_mix_policy.external_highpass_hz
+        if mode is RenderMode.MIX and external_highpass_hz is None
+        else (None if external_highpass_hz == 0 else external_highpass_hz)
+    )
+    resolved_audio_level_policy = (
+        resolved_mix_policy.audio_level_policy
+        if mode is RenderMode.MIX and audio_level_policy is None
+        else audio_level_policy
     )
     return RenderPlan(
         video=video,
@@ -251,10 +341,11 @@ def build_render_plan(
         tempo_ratio=tempo_ratio,
         mode=mode,
         camera_audio_volume=resolved_camera_volume,
-        external_audio_volume=external_audio_volume,
+        external_audio_volume=resolved_external_volume,
+        external_highpass_hz=resolved_highpass_hz,
         overwrite=overwrite,
         segments=render_segments if mode is RenderMode.FALLBACK else (),
-        audio_level_policy=audio_level_policy,
+        audio_level_policy=resolved_audio_level_policy,
     )
 
 
@@ -278,6 +369,8 @@ class FFmpegCommandBuilder:
 
     @staticmethod
     def expected_output_channels(plan: RenderPlan) -> int:
+        if plan.mode is RenderMode.MIX:
+            return 2
         policy = plan.audio_level_policy
         source_channels = plan.session.chunks[0].channels
         if policy is None or policy.output_channel_layout is OutputChannelLayout.PRESERVE:
@@ -302,32 +395,53 @@ class FFmpegCommandBuilder:
         return "pan=stereo|c0=c0|c1=c0" if source_channels == 1 else "aformat=channel_layouts=stereo"
 
     @classmethod
-    def _replace_audio_chain(
+    def _external_audio_chain(
         cls,
         plan: RenderPlan,
         *,
-        include_gain: bool,
+        include_component_volume: bool,
     ) -> str:
         filters: list[str] = []
-        if include_gain:
-            if plan.audio_level_policy is None:
-                filters.append(f"volume={_number(plan.external_audio_volume)}")
-            else:
-                if plan.external_audio_gain_db is None:
-                    raise ValueError("loudness-safe render requires measured static gain")
-                filters.append(f"volume={_number(plan.external_audio_gain_db)}dB")
+        if include_component_volume:
+            filters.append(f"volume={_number(plan.external_audio_volume)}")
+        filters.append(f"atempo={_number(plan.tempo_ratio)}")
+        if plan.external_highpass_hz is not None:
+            filters.append(f"highpass=f={_number(plan.external_highpass_hz)}")
+        channel_filter: str | None
+        if plan.mode is RenderMode.MIX:
+            filters.append("aresample=48000")
         filters.extend(
-            [
-                f"atempo={_number(plan.tempo_ratio)}",
+            (
                 "apad",
                 f"atrim=duration={_number(plan.video.duration_seconds)}",
                 "asetpts=PTS-STARTPTS",
-            ]
+            )
         )
-        channel_filter = cls._approved_channel_filter(plan)
+        if plan.mode is RenderMode.MIX:
+            source_channels = plan.session.chunks[0].channels
+            channel_filter = "pan=stereo|c0=c0|c1=c0" if source_channels == 1 else "aformat=channel_layouts=stereo"
+        else:
+            channel_filter = cls._approved_channel_filter(plan)
         if channel_filter is not None:
             filters.extend((channel_filter, "aformat=sample_fmts=fltp"))
         return ",".join(filters)
+
+    @staticmethod
+    def _camera_audio_chain(plan: RenderPlan) -> str:
+        channel_filter = (
+            "pan=stereo|c0=c0|c1=c0" if plan.video.audio_channels == 1 else "aformat=channel_layouts=stereo"
+        )
+        return ",".join(
+            (
+                f"volume={_number(plan.camera_audio_volume)}",
+                "aresample=48000",
+                "apad",
+                f"atrim=duration={_number(plan.video.duration_seconds)}",
+                "asetpts=PTS-STARTPTS",
+                channel_filter,
+                "aformat=sample_fmts=fltp",
+            )
+        )
 
     def build(
         self,
@@ -336,26 +450,26 @@ class FFmpegCommandBuilder:
         *,
         software_fallback: bool = False,
     ) -> list[str]:
-        duration = _number(plan.video.duration_seconds)
         filters = _video_filter(plan.video)
         segments = plan.resolved_segments
         if plan.mode is RenderMode.FALLBACK:
             fallback_filters, audio_label = self._fallback_audio_filters(plan, segments)
             filters.extend(fallback_filters)
         else:
-            filters.append(f"[1:a:0]{self._replace_audio_chain(plan, include_gain=True)}[external]")
+            filters.append(f"[1:a:0]{self._external_audio_chain(plan, include_component_volume=True)}[external]")
             audio_label = "[external]"
             if plan.mode is RenderMode.MIX:
                 filters.extend(
                     [
-                        (
-                            f"[0:a:0]volume={_number(plan.camera_audio_volume)},"
-                            f"aresample=48000,apad,atrim=duration={duration},"
-                            "asetpts=PTS-STARTPTS[camera]"
-                        ),
-                        ("[camera][external]amix=inputs=2:duration=first:dropout_transition=0:weights=1 1[aout]"),
+                        f"[0:a:0]{self._camera_audio_chain(plan)}[camera]",
+                        _MIX_AUDIO_FILTER,
                     ]
                 )
+                audio_label = "[mixed]"
+            if plan.audio_level_policy is not None:
+                if plan.output_audio_gain_db is None:
+                    raise ValueError("loudness-safe render requires measured static gain")
+                filters.append(f"{audio_label}volume={_number(plan.output_audio_gain_db)}dB[aout]")
                 audio_label = "[aout]"
 
         video_codec = "libx265" if software_fallback else "hevc_videotoolbox"
@@ -430,39 +544,67 @@ class FFmpegCommandBuilder:
         plan: RenderPlan,
         manifest_paths: Path | Mapping[str, Path],
     ) -> list[str]:
-        """실제 replace 구간을 gain 적용 전 float 상태로 EBU R128 측정한다."""
+        """실제 replace 또는 mix 신호를 최종 gain 적용 전 float 상태로 측정한다."""
 
         if plan.audio_level_policy is None:
             raise ValueError("audio analysis requires audio_level_policy")
-        if plan.mode is not RenderMode.REPLACE:
-            raise ValueError("audio analysis requires replace mode")
+        if plan.mode not in {RenderMode.REPLACE, RenderMode.MIX}:
+            raise ValueError("audio analysis requires replace or mix mode")
         segment = plan.resolved_segments[0]
-        return [
+        command = [
             self.ffmpeg_path,
             "-hide_banner",
             "-nostats",
             "-xerror",
             "-err_detect",
             "explode",
-            "-ss",
-            _number(segment.external_start_seconds),
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(self._manifest_path(manifest_paths, segment.session.id)),
-            "-filter_complex",
-            (
-                f"[0:a:0]{self._replace_audio_chain(plan, include_gain=False)},"
-                "ebur128=peak=sample+true:framelog=quiet[measured]"
-            ),
-            "-map",
-            "[measured]",
-            "-f",
-            "null",
-            "-",
         ]
+        if plan.mode is RenderMode.MIX:
+            command.extend(("-i", str(plan.video.path)))
+        command.extend(
+            [
+                "-ss",
+                _number(segment.external_start_seconds),
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(self._manifest_path(manifest_paths, segment.session.id)),
+            ]
+        )
+        external_input = 1 if plan.mode is RenderMode.MIX else 0
+        analysis_filters = [
+            (
+                f"[{external_input}:a:0]"
+                f"{self._external_audio_chain(plan, include_component_volume=plan.mode is RenderMode.MIX)}"
+                "[external]"
+            )
+        ]
+        measured_input = "[external]"
+        if plan.mode is RenderMode.MIX:
+            analysis_filters.extend(
+                (
+                    f"[0:a:0]{self._camera_audio_chain(plan)}[camera]",
+                    _MIX_AUDIO_FILTER,
+                )
+            )
+            measured_input = "[mixed]"
+        analysis_filters.append(
+            f"{measured_input}aformat=sample_fmts=fltp,ebur128=peak=sample+true:framelog=quiet[measured]"
+        )
+        command.extend(
+            [
+                "-filter_complex",
+                ";".join(analysis_filters),
+                "-map",
+                "[measured]",
+                "-f",
+                "null",
+                "-",
+            ]
+        )
+        return command
 
     def build_output_audio_analysis(self, output_path: Path) -> list[str]:
         """최종 AAC를 오류 즉시 중단 모드로 재디코딩해 EBU R128 측정한다."""
@@ -633,9 +775,9 @@ class FFmpegAudioAnalyzer:
         return self._metrics(
             result,
             channels=self.command_builder.expected_output_channels(plan),
-            sample_rate=chunk.sample_rate,
+            sample_rate=48_000 if plan.mode is RenderMode.MIX else chunk.sample_rate,
             duration_seconds=plan.video.duration_seconds,
-            codec=chunk.codec,
+            codec="float_mix" if plan.mode is RenderMode.MIX else chunk.codec,
         )
 
     def measure_output(self, output_path: Path) -> AudioLevelMetrics:
@@ -750,7 +892,7 @@ class FFmpegRenderer:
                             "Loudness target conflicts with true-peak ceiling",
                             audio_levels,
                         )
-                    effective_plan = replace(temp_plan, external_audio_gain_db=decision.applied_gain_db)
+                    effective_plan = replace(temp_plan, output_audio_gain_db=decision.applied_gain_db)
 
                 try:
                     hardware = self._run(self.command_builder.build(effective_plan, manifest_paths))

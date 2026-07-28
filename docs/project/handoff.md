@@ -13,14 +13,10 @@
   0.159초/0.806초, p99 0.162초/0.809초, peak RSS 287.5MB/288.5MB
   (2026-07-17 Apple Silicon)
 
-현재 구현은 분할 녹음 세션 구성, 영상별 FFT NCC 전체/부분/다중 구간 매칭, 반복 후보
-거부, 구간별 clock drift, replace/mix/fallback과 두 오디오 볼륨, opt-in static gain
-음량/true-peak 안전 검증,
-VideoToolbox/libx265 렌더, 선택 파일/진행률, 기본 부분 분석, 사람용 분석 목록과 보수적인
-처리 모드·배치 명령 추천, dry-run/process 공통 렌더 정책, 입력 지문을 검증하는 분석
-리포트 재사용, Draft 2020-12 스키마가 있는 opt-in JSON v2 리포트, 영상별 오류를
-격리하는 공개 Python API, 태그 기반 GitHub Release 자동화를 포함한다.
+현재 구현은 분할 녹음 세션 구성, 영상별 FFT NCC 전체/부분/다중 구간 매칭, 반복 후보 거부, 구간별 clock drift, replace/mix/fallback과 두 오디오 볼륨, 보수적인 기본 mix HP80·합산 음량 검증, opt-in replace static gain 음량/true-peak 안전 검증, VideoToolbox/libx265 렌더, 선택 파일/진행률, 기본 부분 분석, 사람용 분석 목록과 보수적인 처리 모드·배치 명령 추천, dry-run/process 공통 렌더 정책, 입력 지문을 검증하는 분석 리포트 재사용, Draft 2020-12 스키마가 있는 opt-in JSON v2 리포트, 영상별 오류를 격리하는 공개 Python API, 태그 기반 GitHub Release 자동화를 포함한다.
 TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
+
+`MixPolicy`는 현재의 검증된 기본 mix와 향후 측정 기반 자동 추천이 같은 렌더 경로를 사용하기 위한 경계다. 음질 자동 평가는 아직 구현하지 않았으며, 장비명 분기나 주관적 점수를 추가하기 전에 stereo 폭, 저역 비중, 위상 상쇄, loudness/peak 기준을 더 많은 실파일로 calibration해야 한다.
 
 ## 먼저 읽을 문서
 
@@ -54,8 +50,7 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 - 분석 추천은 안내만 제공하며 process 모드, 종료 코드, 렌더 여부를 자동으로 바꾸지 않는다.
 - fallback 추천 명령은 `--recommended-only`로 추천 기준 미달 partial을 렌더하지 않는다.
 - 전체 일치 성공 시 부분 탐색을 건너뛰고, `--full-only`은 모든 부분 탐색을 생략한다.
-- 음량 안전 모드는 네 입력을 모두 명시한 replace에서만 활성화하고, 동적 처리를 자동
-  적용하지 않으며 최종 AAC 재검증 실패 결과를 게시하지 않는다.
+- mix는 카메라 1.0, 외부 `-12dB` 상당, 외부 HP80과 합산 뒤 음량 검증을 기본 적용하고, replace는 네 음량 입력을 모두 명시할 때만 활성화한다. 동적 처리를 자동 적용하지 않으며 최종 AAC 재검증 실패 결과를 게시하지 않는다.
 
 이 불변식을 바꾸는 요구는 단순 리팩터가 아니라 제품 정책 변경이다. 별도 합의, RED
 테스트, 문서와 REPORT_VERSION 영향을 먼저 정리한다.
@@ -90,8 +85,7 @@ TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 
 - 출력 해상도·방향·프레임 타임스탬프/VFR은 원본을 유지하지만 BT.709 HEVC
   10-bit/AAC 프로파일과 영상 bitrate는 고정되어 있다.
-- 음량 안전 처리는 현재 전체 replace만 지원한다. mix/fallback의 여러 소스에 대한
-  loudness 계약과 true-peak limiter/compressor는 지원하지 않는다.
+- 음량 안전 처리는 전체 replace와 전체 mix를 지원한다. fallback 여러 구간의 loudness 계약과 true-peak limiter/compressor는 지원하지 않는다.
 - 진행률은 완료 개수/비율만 제공하며 ETA·취소 후 resume·디스크 사전 용량 검사는 없다.
 - macOS 외 플랫폼은 지원 대상으로 검증하지 않았다.
 - PyPI 배포 파이프라인은 없으며 Git 태그와 GitHub Release 산출물을 사용한다.

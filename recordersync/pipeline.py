@@ -20,6 +20,7 @@ from recordersync.recommendation import RecommendationMode, recommend_mode
 from recordersync.render import (
     AudioLevelRenderError,
     FFmpegRenderer,
+    MixPolicy,
     RenderedOutput,
     RenderMode,
     build_render_plan,
@@ -148,8 +149,10 @@ class RecorderSyncPipeline:
         *,
         mode: RenderMode = RenderMode.REPLACE,
         recommended_only: bool = False,
+        mix_policy: MixPolicy | None = None,
         camera_audio_volume: float | None = None,
-        external_audio_volume: float = 1.0,
+        external_audio_volume: float | None = None,
+        external_highpass_hz: float | None = None,
         overwrite: bool = False,
         output_prefix: str = "",
         output_suffix: str = "",
@@ -165,9 +168,6 @@ class RecorderSyncPipeline:
             is_renderable_match(match, mode, recommended_only=recommended_only) for match in bundle.matches
         )
         render_completed = 0
-        resolved_camera_volume = (
-            camera_audio_volume if camera_audio_volume is not None else (1.0 if mode is RenderMode.FALLBACK else 0.1)
-        )
         if progress_callback is not None:
             progress_callback("render", 0, render_total, "")
 
@@ -205,8 +205,10 @@ class RecorderSyncPipeline:
                     sessions,
                     output_dir,
                     mode=mode,
-                    camera_audio_volume=resolved_camera_volume,
+                    mix_policy=mix_policy,
+                    camera_audio_volume=camera_audio_volume,
                     external_audio_volume=external_audio_volume,
+                    external_highpass_hz=external_highpass_hz,
                     overwrite=overwrite,
                     output_prefix=output_prefix,
                     output_suffix=output_suffix,
@@ -214,7 +216,7 @@ class RecorderSyncPipeline:
                 )
                 rendered_output = (
                     self.renderer.render_with_report(plan)
-                    if audio_level_policy is not None
+                    if plan.audio_level_policy is not None
                     else RenderedOutput(self.renderer.render(plan))
                 )
             except AudioLevelRenderError as exc:

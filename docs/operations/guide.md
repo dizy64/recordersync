@@ -239,13 +239,28 @@ recordersync process /path/to/media \
 접두사·접미사에는 경로 구분자를 사용할 수 없다. `--output-dir`를 원본 디렉터리로
 지정해 계산된 출력 경로가 원본 MP4와 같아지는 경우에는 `--overwrite`도 허용되지 않는다.
 
-현장음을 남기려면 명시적으로 mix를 사용한다.
+카메라 stereo를 주 음원으로 유지하면서 외부 녹음을 보강하려면 명시적으로 mix를 사용한다. 기본값은 카메라 1.0, 외부 `-12dB` 상당, 외부 HP80이다. 합산 결과를 `-16 LUFS`, 최대 `-1 dBTP`, stereo, `0.5 LU` 허용 오차로 검증한다. 카메라와 외부 입력이 mono이면 추가 gain 없이 dual-mono로 복사하고 stereo이면 그대로 유지한다. 3채널 이상 입력은 자동 downmix하지 않고 오류로 보고한다.
+
+```bash
+recordersync process /path/to/media \
+  --mode mix
+```
+
+카메라 원본 음질이 좋지 않지만 공간감은 일부 남기려면 비율을 바꾼다.
 
 ```bash
 recordersync process /path/to/media \
   --mode mix \
-  --camera-audio-volume 0.20 \
-  --external-audio-volume 0.80
+  --camera-audio-volume 0.25 \
+  --external-audio-volume 1.0
+```
+
+외부 녹음에 HP80이 적합하지 않으면 주파수를 바꾸거나 명시적으로 해제한다.
+
+```bash
+recordersync process /path/to/media \
+  --mode mix \
+  --external-highpass-hz 0
 ```
 
 레코더와 일치하는 부분만 교체하고 나머지를 카메라음으로 유지하려면 fallback을 명시한다.
@@ -262,10 +277,7 @@ fallback은 영상 앞뒤와 승인 구간 사이에 카메라음을 쓰고, 승
 `analyze`의 보수적인 추천 대상만 자동 처리하려면 `--recommended-only`를 함께 사용한다.
 이때 기준 미달 partial은 출력하지 않으며 배치 종료 코드는 2로 남는다.
 
-두 값은 0.0~1.0 범위의 독립적인 FFmpeg 볼륨 배수다. 외부 음량은 모든 모드에 적용되고,
-카메라 음량은 mix와 fallback에 적용된다. 카메라 음량 기본값은 mix 0.1, fallback 1.0이다.
-합이 1일 필요는 없으며 큰 합은 clipping을
-유발할 수 있으므로 결과를 청취한다.
+두 값은 0.0~1.0 범위의 독립적인 FFmpeg 볼륨 배수다. 외부 음량은 모든 모드에 적용되고, 카메라 음량은 mix와 fallback에 적용된다. fallback은 양쪽 1.0이다. mix는 두 component를 `normalize=0`으로 합산한 뒤 float 신호를 측정해 최종 static gain을 적용하므로 비율을 보존한다. 합산 목표와 true-peak ceiling이 충돌하면 출력하지 않는다.
 
 ### LUFS와 true peak를 검증하는 교체
 
@@ -281,8 +293,7 @@ recordersync process /path/to/media \
   --loudness-tolerance-lu 0.5
 ```
 
-현재 이 계약은 `--mode replace`에서만 지원하며 `--external-audio-volume`의 비기본값,
-`--dry-run`과 조합할 수 없다. 네 옵션 중 하나라도 없으면 실행하지 않는다.
+replace에서 이 계약은 `--external-audio-volume`의 비기본값, `--dry-run`과 조합할 수 없다. 네 옵션 중 하나라도 없으면 실행하지 않는다. mix는 기본 계약을 자동 사용하며, 네 옵션을 모두 지정하면 목표와 허용 오차를 바꿀 수 있다. mix 출력 채널은 stereo로 고정한다.
 
 - `preserve`: 레코더 mono/stereo 유지
 - `stereo`: mono는 gain 없이 dual-mono로 복사, stereo는 유지
@@ -355,7 +366,7 @@ esac
 | libx265도 실패 | JSON error와 FFmpeg stderr, 지원 filter/codec 확인 |
 | 뒤쪽 싱크가 밀림 | `tempo_ratio`, 입력 클립 길이, 조각 경계 frame padding 회귀 확인 |
 | 외부 음악이 눈에 띄게 빠르거나 느림 | 리포트의 `tempo_ratio` 확인. 0.99~1.01 밖인 이전 출력은 사용하지 말고 최신 버전으로 다시 분석·렌더 |
-| 음량 안전 처리가 error | `audio_levels`에서 decoder error, gain 충돌량, 최종 AAC 검증 실패를 확인 |
+| 음량 안전 처리가 error | `audio_levels`에서 카메라·외부 입력 decoder error, 합산 gain 충돌량, 최종 AAC 검증 실패를 확인. mix는 두 입력 중 하나라도 엄격 디코드에 실패하면 출력하지 않음 |
 | 전역 명령이 없음 | `uv tool dir --bin`, `uv tool update-shell`, `type -a` 확인 |
 
 ## 공개 합성 smoke

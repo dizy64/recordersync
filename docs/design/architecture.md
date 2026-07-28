@@ -39,7 +39,7 @@ CLI와 다른 애플리케이션은 `pipeline.py` 또는 `api.py`를 호출한�
 | `recommendation.py` | 매칭 결과의 보수적인 처리 모드 추천 | `recommend_mode()` |
 | `media.py` | 파일 탐색, ffprobe, PCM/특징 추출 | `FFmpegTools`, `VideoInfo` |
 | `audio_levels.py` | 음량 측정값, static gain 판정, 최종 출력 검증 정책 | `AudioLevelPolicy`, `decide_static_gain()`, `validate_output_metrics()` |
-| `render.py` | 매칭의 렌더 계획 변환, concat 매니페스트, FFmpeg 명령, 원자적 출력 | `build_render_plan()`, `RenderPlan`, `FFmpegRenderer` |
+| `render.py` | mix 정책, 매칭의 렌더 계획 변환, concat 매니페스트, FFmpeg 명령, 원자적 출력 | `MixPolicy`, `build_render_plan()`, `RenderPlan`, `FFmpegRenderer` |
 | `report.py` | 버전 있는 JSON 계약 | `MatchReport` |
 | `analysis_plan.py` | 분석 입력 지문 저장·검증과 번들 복원 | `write_analysis_report()`, `load_analysis_report()` |
 | `pipeline.py` | 디렉터리 단위 분석·처리 orchestration | `RecorderSyncPipeline` |
@@ -198,13 +198,10 @@ TubeArchive와 같은 `colorspace=all=bt709:iall=bt2020:dither=fsb` 필터를 �
 VFR의 프레임 타임스탬프를 임의 CFR로 변환하지 않는다. 오디오의 drift 보정과 출력
 길이 제한은 기존 `atempo`, `atrim` 정책을 그대로 적용한다.
 
-외부 오디오는 `--external-audio-volume`을 `volume` 필터에 먼저 적용한다. `mix`에서는
-원본에도 `--camera-audio-volume`을 적용한 뒤 두 스트림을 `amix`한다. 두 값은 독립적인
-0.0~1.0 배수이고 자동 정규화하지 않으므로 사용자가 의도한 비율을 그대로 보존한다.
+외부 오디오는 `--external-audio-volume`을 `volume` 필터에 먼저 적용한다. `mix` 기본은 카메라 1.0, 외부 `10^(-12/20)`, 외부 HP80이다. mono 입력은 카메라와 외부 모두 추가 gain 없이 dual-mono로 만들고 stereo 입력은 그대로 유지한 뒤 `amix normalize=0`으로 합산한다. 3채널 이상인 카메라나 외부 입력은 승인 없는 downmix를 피하기 위해 렌더 전에 거부한다. 두 볼륨과 HPF는 사용자가 덮어쓸 수 있으며, `--external-highpass-hz 0`은 HPF를 해제한다.
+이 네 구성값과 최종 음량 계약은 불변 `MixPolicy`로 묶는다. 현재 CLI는 검증된 기본 정책을 사용하고, 향후 음향 분석기는 같은 객체를 결과로 반환해 렌더 경로를 재사용할 수 있다. 분석기가 없는 상태에서 장비 이름만으로 정책을 바꾸지는 않는다.
 
-`replace`의 opt-in 음량 안전 경로는 목표 LUFS, 최대 dBTP, 출력 채널 정책, LU 허용 오차를
-모두 받은 경우에만 활성화한다. 실제 렌더 구간에 drift, padding/trimming, 승인된 채널
-정책을 적용하고 `fltp` 상태에서 `ebur128=peak=sample+true`로 측정한다.
+`replace`의 opt-in 음량 안전 경로는 목표 LUFS, 최대 dBTP, 출력 채널 정책, LU 허용 오차를 모두 받은 경우에만 활성화한다. `mix`는 `-16 LUFS`, 최대 `-1 dBTP`, stereo, `0.5 LU` 허용 오차를 기본 사용한다. 실제 렌더 구간에 drift, padding/trimming, 채널 정책을 적용하고, mix는 component gain과 HPF까지 적용한 합산 신호를 `fltp` 상태에서 `ebur128=peak=sample+true`로 측정한다. 이 분석은 카메라와 외부 오디오를 모두 오류 즉시 중단 모드로 디코드하므로 어느 입력에서든 decoder error가 발생하면 렌더하지 않는다.
 
 ```text
 requested_gain_db = target_lufs - measured_lufs
@@ -212,11 +209,7 @@ maximum_safe_gain_db = maximum_true_peak_dbtp - measured_true_peak_dbtp
 ```
 
 요청 gain이 안전 gain보다 크면 동적 처리 없이 달성할 수 없는 계약이므로 렌더하지 않는다.
-그 외에는 dB static gain만 적용한다. limiter, compressor, noise suppression, AGC, EQ는
-자동 적용하지 않는다. mono→stereo는 동일 신호 복사이고 stereo→mono는 사용자가 `mono`를
-명시한 경우에만 `0.5L + 0.5R`로 처리한다. 렌더된 임시 AAC를 오류 즉시 중단 모드로 다시
-디코딩해 목표 LUFS 허용 오차, true peak ceiling, 채널 수, 48kHz, AAC codec, 영상 길이,
-decoder error를 검사하며 하나라도 실패하면 최종 경로로 이동하지 않는다.
+그 외에는 dB static gain만 합산 뒤에 적용해 mix 비율을 보존한다. limiter, compressor, noise suppression, AGC는 자동 적용하지 않는다. mix HP80은 모드의 문서화된 기본값이며 명시적으로 해제할 수 있다. mono→stereo는 동일 신호 복사이고 stereo→mono는 replace에서 사용자가 `mono`를 명시한 경우에만 `0.5L + 0.5R`로 처리한다. 렌더된 임시 AAC를 오류 즉시 중단 모드로 다시 디코딩해 목표 LUFS 허용 오차, true peak ceiling, 채널 수, 48kHz, AAC codec, 영상 길이, decoder error를 검사하며 하나라도 실패하면 최종 경로로 이동하지 않는다.
 
 `fallback`에서는 승인 구간별 녹음 세션 concat 입력을 만들고 영상 시간축 순서로 오디오
 조각을 구성한다. 승인 구간은 외부 레코더음, 영상 앞뒤와 구간 사이는 카메라음이다.
@@ -261,8 +254,7 @@ VideoToolbox가 실패하면 임시 파일을 제거하고 libx265로 재시도�
 `analyze --json`, `process` stdout, `--report` 파일만 기존 상세 JSON 계약을 사용한다.
 인자 없이 실행하면 파일을 탐색하지 않고 최상위 도움말만 출력한다.
 
-분석 `--report` 파일에는 별도 버전의 `analysis_inputs`를 추가한다. 오디오 조각과 영상의
-절대 경로, size, mtime, probe 메타데이터, 번역 전 매칭 결과를 저장한다.
+분석 `--report` 파일에는 별도 버전의 `analysis_inputs`를 추가한다. 오디오 조각과 영상의 절대 경로, size, mtime, probe 메타데이터, 영상 오디오 채널 수, 번역 전 매칭 결과를 저장한다.
 `process --analysis-report`는 모든 지문과 `VIDEO_DIR` 소속을 검증한 뒤 `AnalysisBundle`을
 복원한다.
 하나라도 바뀌면 stale 결과를 렌더하거나 자동 재분석하지 않고 종료 코드 1로 실패한다.

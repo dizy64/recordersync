@@ -39,6 +39,16 @@ def _unit_interval(value: str) -> float:
     return parsed
 
 
+def _highpass_frequency(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be 0 or a number in [20, 20000]") from exc
+    if parsed != 0 and not 20 <= parsed <= 20_000:
+        raise argparse.ArgumentTypeError("must be 0 or in [20, 20000]")
+    return parsed
+
+
 def _add_common_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("video_dir", type=Path, help="카메라 영상 파일 디렉터리")
     parser.add_argument(
@@ -137,13 +147,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--camera-audio-volume",
         type=_unit_interval,
         default=None,
-        help="원본 영상 오디오 볼륨(기본: mix 0.1, fallback 1.0)",
+        help="원본 영상 오디오 볼륨(기본: mix/fallback 1.0)",
     )
     process.add_argument(
         "--external-audio-volume",
         type=_unit_interval,
-        default=1.0,
-        help="외부 보이스레코더 오디오 볼륨(0.0~1.0, 기본: 1.0)",
+        default=None,
+        help="외부 보이스레코더 오디오 볼륨(기본: mix -12dB 상당, replace/fallback 1.0)",
+    )
+    process.add_argument(
+        "--external-highpass-hz",
+        type=_highpass_frequency,
+        default=None,
+        help="mix 외부 오디오 high-pass 주파수(기본: 80Hz, 0은 해제)",
     )
     process.add_argument(
         "--target-lufs",
@@ -326,6 +342,8 @@ def _validate_process_options(
         return
     if args.recommended_only and render_mode is not RenderMode.FALLBACK:
         parser.error("--recommended-only requires --mode fallback")
+    if args.external_highpass_hz is not None and render_mode is not RenderMode.MIX:
+        parser.error("--external-highpass-hz requires --mode mix")
     loudness_values = (
         args.target_lufs,
         args.max_true_peak_dbtp,
@@ -335,10 +353,16 @@ def _validate_process_options(
     if any(value is not None for value in loudness_values):
         if not all(value is not None for value in loudness_values):
             parser.error("loudness safety options must be provided together")
-        if render_mode is not RenderMode.REPLACE:
-            parser.error("loudness safety requires --mode replace")
-        if args.external_audio_volume != 1.0:
+        if render_mode not in {RenderMode.REPLACE, RenderMode.MIX}:
+            parser.error("loudness safety requires --mode replace or mix")
+        if (
+            render_mode is RenderMode.REPLACE
+            and args.external_audio_volume is not None
+            and args.external_audio_volume != 1.0
+        ):
             parser.error("--external-audio-volume cannot be combined with loudness safety")
+        if render_mode is RenderMode.MIX and args.output_channel_layout != OutputChannelLayout.STEREO.value:
+            parser.error("mix loudness safety requires --output-channel-layout stereo")
         if args.dry_run:
             parser.error("loudness safety cannot be combined with --dry-run")
     if args.analysis_report is None:
@@ -359,7 +383,9 @@ def _audio_level_policy(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
 ) -> AudioLevelPolicy | None:
-    if args.command != "process" or args.target_lufs is None:
+    if args.command != "process":
+        return None
+    if args.target_lufs is None:
         return None
     try:
         return AudioLevelPolicy(
@@ -444,6 +470,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 recommended_only=args.recommended_only,
                 camera_audio_volume=args.camera_audio_volume,
                 external_audio_volume=args.external_audio_volume,
+                external_highpass_hz=args.external_highpass_hz,
                 overwrite=args.overwrite,
                 output_prefix=args.output_prefix,
                 output_suffix=args.output_suffix,

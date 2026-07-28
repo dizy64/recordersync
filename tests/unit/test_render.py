@@ -15,17 +15,19 @@ from recordersync.audio_levels import (
     OutputChannelLayout,
 )
 from recordersync.media import VideoInfo
-from recordersync.models import AudioChunk, RecordingSession
+from recordersync.models import AudioChunk, AudioMatch, MatchStatus, RecordingSession
 from recordersync.render import (
     AudioLevelRenderError,
     FFmpegAudioAnalyzer,
     FFmpegCommandBuilder,
     FFmpegRenderer,
+    MixPolicy,
     RenderError,
     RenderMode,
     RenderPlan,
     RenderSegment,
     build_concat_manifest,
+    build_render_plan,
     resolve_output_path,
 )
 
@@ -40,7 +42,7 @@ def _session() -> RecordingSession:
     )
 
 
-def _video(*, portrait: bool = False, hdr: bool = False) -> VideoInfo:
+def _video(*, portrait: bool = False, hdr: bool = False, audio_channels: int = 2) -> VideoInfo:
     return VideoInfo(
         path=Path("clip.mov"),
         duration_seconds=30.0,
@@ -48,6 +50,7 @@ def _video(*, portrait: bool = False, hdr: bool = False) -> VideoInfo:
         height=1920 if portrait else 2160,
         has_audio=True,
         color_transfer="arib-std-b67" if hdr else "bt709",
+        audio_channels=audio_channels,
     )
 
 
@@ -272,16 +275,15 @@ def test_오디오_분석기는_실패_stderr의_마지막_오류_줄을_진단�
     assert FFmpegAudioAnalyzer._decoder_error(result) == "Error while decoding stream #0:0: corrupt input packet"
 
 
-@pytest.mark.parametrize("mode", [RenderMode.MIX, RenderMode.FALLBACK])
-def test_음량_안전_정책은_교체_모드에서만_허용한다(mode: RenderMode) -> None:
-    with pytest.raises(ValueError, match="replace mode"):
+def test_음량_안전_정책은_폴백_모드에서_허용하지_않는다() -> None:
+    with pytest.raises(ValueError, match="replace or mix mode"):
         RenderPlan(
             video=_video(),
             session=_session(),
             output_path=Path("out.mp4"),
             external_start_seconds=0,
             tempo_ratio=1,
-            mode=mode,
+            mode=RenderMode.FALLBACK,
             audio_level_policy=_audio_level_policy(),
         )
 
@@ -569,6 +571,7 @@ def test_믹스_명령_생성은_카메라_오디오를_요청한_볼륨으로_�
         mode=RenderMode.MIX,
         camera_audio_volume=0.08,
         external_audio_volume=0.65,
+        external_highpass_hz=100,
         overwrite=True,
     )
 
@@ -578,10 +581,163 @@ def test_믹스_명령_생성은_카메라_오디오를_요청한_볼륨으로_�
     assert "-y" in command[:8]
     assert "volume=0.08" in joined
     assert "volume=0.65,atempo=1" in joined
-    assert "amix=inputs=2" in joined
+    assert "highpass=f=100" in joined
+    assert "amix=inputs=2:duration=first:dropout_transition=0:normalize=0" in joined
     assert "scale=" not in joined
     assert "pad=" not in joined
     assert "colorspace=all=bt709:iall=bt2020:dither=fsb" in joined
+
+
+def test_믹스_음량_분석은_보수적인_비율과_HP80을_합산한_float_신호를_측정한다() -> None:
+    mono_session = RecordingSession(
+        id="session-mono",
+        chunks=(AudioChunk(Path("mono.wav"), 60, 48_000, 1, "pcm_f32le", None),),
+    )
+    plan = RenderPlan(
+        video=_video(),
+        session=mono_session,
+        output_path=Path("out.mp4"),
+        external_start_seconds=5,
+        tempo_ratio=1.0001,
+        mode=RenderMode.MIX,
+        camera_audio_volume=1.0,
+        external_audio_volume=10 ** (-12 / 20),
+        external_highpass_hz=80,
+        audio_level_policy=_audio_level_policy(),
+    )
+
+    command = FFmpegCommandBuilder().build_audio_analysis(plan, Path("concat.txt"))
+    joined = " ".join(command)
+
+    assert "-i clip.mov" in joined
+    assert "-ss 5 -f concat -safe 0 -i concat.txt" in joined
+    assert "volume=0.251188643" in joined
+    assert "atempo=1.0001" in joined
+    assert "highpass=f=80" in joined
+    assert "pan=stereo|c0=c0|c1=c0" in joined
+    assert "volume=1,aresample=48000" in joined
+    assert "amix=inputs=2:duration=first:dropout_transition=0:normalize=0" in joined
+    assert "aformat=sample_fmts=fltp" in joined
+    assert "ebur128=peak=sample+true:framelog=quiet" in joined
+
+
+def test_믹스_렌더는_측정한_static_gain을_합산_뒤에_적용한다(tmp_path: Path) -> None:
+    output = tmp_path / "mix" / "clip.mp4"
+    plan = RenderPlan(
+        video=_video(),
+        session=_session(),
+        output_path=output,
+        external_start_seconds=1,
+        tempo_ratio=1,
+        mode=RenderMode.MIX,
+        camera_audio_volume=1.0,
+        external_audio_volume=10 ** (-12 / 20),
+        external_highpass_hz=80,
+        audio_level_policy=_audio_level_policy(),
+    )
+    analyzer = MagicMock(spec=FFmpegAudioAnalyzer)
+    analyzer.measure_render_input.return_value = _audio_metrics(
+        integrated_loudness_lufs=-14.9,
+        true_peak_dbtp=-5.6,
+    )
+    analyzer.measure_output.return_value = _audio_metrics(
+        integrated_loudness_lufs=-16.0,
+        true_peak_dbtp=-6.7,
+    )
+    renderer = FFmpegRenderer(audio_analyzer=analyzer)
+
+    def run(command: list[str]) -> CompletedProcess[str]:
+        Path(command[-1]).write_bytes(b"rendered")
+        return CompletedProcess(command, 0, "", "")
+
+    with patch.object(renderer, "_run", side_effect=run) as mocked_run:
+        rendered = renderer.render_with_report(plan)
+
+    joined = " ".join(mocked_run.call_args.args[0])
+    assert rendered.audio_levels is not None
+    assert rendered.audio_levels.passed
+    assert rendered.audio_levels.decision.applied_gain_db == pytest.approx(-1.1)
+    assert joined.index("amix=inputs=2") < joined.index("volume=-1.1dB")
+
+
+def test_믹스_렌더는_static_gain과_peak_제한이_충돌하면_렌더하지_않는다(tmp_path: Path) -> None:
+    output = tmp_path / "mix" / "clip.mp4"
+    plan = RenderPlan(
+        video=_video(),
+        session=_session(),
+        output_path=output,
+        external_start_seconds=1,
+        tempo_ratio=1,
+        mode=RenderMode.MIX,
+        camera_audio_volume=1.0,
+        external_audio_volume=10 ** (-12 / 20),
+        external_highpass_hz=80,
+        audio_level_policy=_audio_level_policy(target_lufs=-7.3, maximum_true_peak_dbtp=-1.0),
+    )
+    analyzer = MagicMock(spec=FFmpegAudioAnalyzer)
+    analyzer.measure_render_input.return_value = _audio_metrics(
+        integrated_loudness_lufs=-11.1,
+        true_peak_dbtp=7.7,
+    )
+    renderer = FFmpegRenderer(audio_analyzer=analyzer)
+
+    with (
+        patch.object(renderer, "_run") as run,
+        pytest.raises(AudioLevelRenderError, match="conflicts") as error,
+    ):
+        renderer.render_with_report(plan)
+
+    assert error.value.report.decision.conflict_db == pytest.approx(12.5)
+    assert not output.exists()
+    run.assert_not_called()
+    analyzer.measure_output.assert_not_called()
+
+
+def test_믹스_명령은_mono_카메라를_추가_gain_없이_dual_mono로_만든다() -> None:
+    plan = RenderPlan(
+        video=_video(audio_channels=1),
+        session=_session(),
+        output_path=Path("out.mp4"),
+        external_start_seconds=1,
+        tempo_ratio=1,
+        mode=RenderMode.MIX,
+        audio_level_policy=_audio_level_policy(),
+        output_audio_gain_db=-3,
+    )
+
+    joined = " ".join(FFmpegCommandBuilder().build(plan, Path("concat.txt")))
+
+    assert "[0:a:0]volume=1,aresample=48000" in joined
+    assert "pan=stereo|c0=c0|c1=c0" in joined
+
+
+def test_믹스_렌더_계획은_다채널_카메라의_암묵적_downmix를_거부한다() -> None:
+    with pytest.raises(ValueError, match="mix mode supports mono or stereo camera audio"):
+        RenderPlan(
+            video=_video(audio_channels=6),
+            session=_session(),
+            output_path=Path("out.mp4"),
+            external_start_seconds=1,
+            tempo_ratio=1,
+            mode=RenderMode.MIX,
+        )
+
+
+def test_믹스_렌더_계획은_다채널_레코더의_암묵적_downmix를_거부한다() -> None:
+    multichannel_session = RecordingSession(
+        id="session-multichannel",
+        chunks=(AudioChunk(Path("surround.wav"), 60, 48_000, 3, "pcm_f32le", None),),
+    )
+
+    with pytest.raises(ValueError, match="mix mode supports mono or stereo recorder audio"):
+        RenderPlan(
+            video=_video(),
+            session=multichannel_session,
+            output_path=Path("out.mp4"),
+            external_start_seconds=1,
+            tempo_ratio=1,
+            mode=RenderMode.MIX,
+        )
 
 
 def test_렌더_계획은_잘못된_카메라_볼륨을_거부한다() -> None:
@@ -607,6 +763,112 @@ def test_렌더_계획은_잘못된_외부_오디오_볼륨을_거부한다() ->
             tempo_ratio=1,
             external_audio_volume=1.1,
         )
+
+
+def test_렌더_계획은_지원_범위_밖의_highpass를_거부한다() -> None:
+    with pytest.raises(ValueError, match="external_highpass_hz"):
+        RenderPlan(
+            video=_video(),
+            session=_session(),
+            output_path=Path("out.mp4"),
+            external_start_seconds=0,
+            tempo_ratio=1,
+            mode=RenderMode.MIX,
+            external_highpass_hz=10,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("camera_audio_volume", 1.1, "camera_audio_volume"),
+        ("external_audio_volume", -0.1, "external_audio_volume"),
+        ("external_highpass_hz", 10, "external_highpass_hz"),
+    ],
+)
+def test_믹스_정책은_지원_범위_밖의_값을_거부한다(
+    field: str,
+    value: float,
+    message: str,
+) -> None:
+    values: dict[str, object] = {
+        "camera_audio_volume": 1.0,
+        "external_audio_volume": 0.25,
+        "external_highpass_hz": 80,
+        "audio_level_policy": _audio_level_policy(),
+    }
+    values[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        MixPolicy(**values)  # type: ignore[arg-type]
+
+
+def test_믹스_정책은_개별_옵션과_동시에_사용할_수_없다() -> None:
+    match = AudioMatch(
+        _video().path,
+        _video().duration_seconds,
+        MatchStatus.MATCHED,
+        session_id=_session().id,
+        external_start_seconds=1,
+    )
+    policy = MixPolicy(1.0, 0.25, 80, _audio_level_policy())
+
+    with pytest.raises(ValueError, match="individual mix options"):
+        build_render_plan(
+            match,
+            _video(),
+            _session(),
+            Path("replace"),
+            mode=RenderMode.MIX,
+            mix_policy=policy,
+            external_audio_volume=0.5,
+        )
+
+
+def test_믹스_정책은_mix_모드에서만_사용할_수_있다() -> None:
+    match = AudioMatch(
+        _video().path,
+        _video().duration_seconds,
+        MatchStatus.MATCHED,
+        session_id=_session().id,
+        external_start_seconds=1,
+    )
+    policy = MixPolicy(1.0, 0.25, 80, _audio_level_policy())
+
+    with pytest.raises(ValueError, match="mix_policy requires mix mode"):
+        build_render_plan(
+            match,
+            _video(),
+            _session(),
+            Path("replace"),
+            mode=RenderMode.REPLACE,
+            mix_policy=policy,
+        )
+
+
+def test_믹스는_음량_정책만_덮어써도_기본_비율과_HP80을_유지한다() -> None:
+    match = AudioMatch(
+        _video().path,
+        _video().duration_seconds,
+        MatchStatus.MATCHED,
+        session_id=_session().id,
+        external_start_seconds=1,
+    )
+    audio_level_policy = _audio_level_policy(target_lufs=-18, maximum_true_peak_dbtp=-2)
+
+    plan = build_render_plan(
+        match,
+        _video(),
+        _session(),
+        Path("replace"),
+        mode=RenderMode.MIX,
+        audio_level_policy=audio_level_policy,
+    )
+
+    assert plan.camera_audio_volume == pytest.approx(1.0)
+    assert plan.external_audio_volume == pytest.approx(10 ** (-12 / 20))
+    assert plan.external_highpass_hz == pytest.approx(80)
+    assert plan.audio_level_policy == audio_level_policy
 
 
 def test_렌더러는_libx265로_대체하고_원자적으로_결과를_공개한다(tmp_path: Path) -> None:

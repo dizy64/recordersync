@@ -63,10 +63,7 @@ PY
 
 ## analysis_inputs
 
-`analyze --report PATH`로 파일에 저장할 때만 포함한다. `version`은 리포트 버전과 별개인
-실행 계획 버전이며 현재 `1`이다. 오디오 세션·영상의 절대 경로, size, mtime, probe
-메타데이터와 번역 전 매칭 결과를 포함한다. `process --analysis-report PATH`는 모든 입력
-지문과 요청한 `VIDEO_DIR`를 검증한 뒤 재분석 없이 렌더한다.
+`analyze --report PATH`로 파일에 저장할 때만 포함한다. `version`은 리포트 버전과 별개인 실행 계획 버전이며 현재 `2`다. 오디오 세션·영상의 절대 경로, size, mtime, probe 메타데이터, 영상 오디오 채널 수와 번역 전 매칭 결과를 포함한다. `process --analysis-report PATH`는 모든 입력 지문과 요청한 `VIDEO_DIR`를 검증한 뒤 재분석 없이 렌더한다.
 
 입력이 없거나 바뀌었거나 계획 버전이 다르면 재사용을 거부한다. 자동 재분석 폴백은
 stale 결과를 사용자가 눈치채지 못하게 만들 수 있으므로 제공하지 않는다. 분석 리포트와
@@ -118,8 +115,7 @@ v1 소비자는 새 상태를 알 수 없으므로 v2를 명시적으로 지원�
 
 ### audio_levels
 
-`process`에서 네 가지 음량 안전 옵션을 모두 지정한 영상에만 포함하는 additive v2
-필드다. 일반 분석·처리 리포트에는 생략된다.
+`process`에서 replace 음량 안전 옵션을 모두 지정했거나 기본/사용자 지정 mix 음량 안전을 수행한 영상에 포함하는 additive v2 필드다. 일반 분석과 안전 처리가 없는 replace/fallback 리포트에는 생략된다.
 
 | 하위 필드 | 의미 |
 |---|---|
@@ -128,6 +124,8 @@ v1 소비자는 새 상태를 알 수 없으므로 v2를 명시적으로 지원�
 | `decision` | 요청 gain, true peak가 허용하는 최대 gain, 적용 gain 또는 null, 예상 peak, 충돌량, limiter 없이 가능한 LUFS |
 | `output` | 최종 AAC 재디코딩 측정값. 렌더 전 중단이면 null |
 | `validation` | 전체 통과 여부와 실패 문자열 배열 |
+
+mix의 `input.codec` 값 `float_mix`는 실제 codec 이름이 아니라 카메라와 외부 입력의 component 처리 후 합산한 32-bit float 신호를 측정했다는 내부 식별자다.
 
 `decision.applied_gain_db`가 null이면 목표 LUFS와 true-peak ceiling이 충돌했거나 gain을
 적용하지 못한 상태다. `validation.passed`가 false인 결과를 성공 파일로 취급하지 않는다.

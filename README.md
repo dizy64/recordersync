@@ -71,23 +71,26 @@ uv run recordersync process ~/Capture/day1
 uv run recordersync process ~/Videos/day1 --audio-dir ~/Recordings/day1
 ```
 
-카메라 현장음을 10% 섞으려면 `mix` 모드를 명시합니다. 낮은 신뢰도의 매칭이
-자동으로 mix로 전환되지는 않습니다.
+카메라 stereo를 주 음원으로 유지하면서 외부 녹음을 보수적으로 보강하려면 `mix`를 명시합니다. 기본 mix는 카메라 `1.0`, 외부 녹음 `-12dB` 상당, 외부 HP80이며 합산 뒤 `-16 LUFS / -1 dBTP / stereo`를 검증합니다. 낮은 신뢰도의 매칭이 자동으로 mix로 전환되지는 않습니다.
+
+```bash
+uv run recordersync process ~/Videos/day1 \
+  --audio-dir ~/Recordings/day1 \
+  --mode mix
+```
+
+원본 영상 음질이 좋지 않으면 두 볼륨을 0.0~1.0 범위에서 바꿀 수 있습니다. 아래 예시는 카메라음을 `-12dB` 상당으로 낮추고 외부 녹음을 주 음원으로 사용합니다. 외부 음원의 저역을 그대로 유지하려면 `--external-highpass-hz 0`을 명시합니다.
 
 ```bash
 uv run recordersync process ~/Videos/day1 \
   --audio-dir ~/Recordings/day1 \
   --mode mix \
-  --camera-audio-volume 0.20 \
-  --external-audio-volume 0.80
+  --camera-audio-volume 0.25 \
+  --external-audio-volume 1.0 \
+  --external-highpass-hz 0
 ```
 
-두 볼륨은 각각 0.0~1.0 범위입니다. `replace`에서도 외부 음량을 줄일 수 있고,
-원본 영상 음량은 `mix`와 `fallback`에서 사용됩니다.
-
-피크와 평균 음량을 함께 검증하면서 교체하려면 네 가지 음량 안전 옵션을 모두
-명시합니다. 이 모드는 자동 판단을 피하기 위해 기본값이 없으며 현재 `replace`에서만
-지원합니다.
+`replace`에서 피크와 평균 음량을 함께 검증하려면 네 가지 음량 안전 옵션을 모두 명시합니다. `mix`는 위의 보수적인 기본 정책을 자동 사용하며 같은 네 옵션을 모두 지정해 목표값을 바꿀 수 있습니다.
 
 ```bash
 uv run recordersync process ~/Videos/day1 \
@@ -105,12 +108,7 @@ RecorderSync는 실제로 사용할 외부 오디오 구간을 32-bit float 처�
 true peak, 채널 수, 48kHz, 길이, codec, decoder error를 검증하고 모두 통과한 파일만
 최종 경로에 게시합니다.
 
-`preserve`는 레코더 채널을 유지합니다. mono 입력을 `stereo`로 출력할 때는 추가 gain 없이
-동일 신호를 좌우에 복사하며, stereo 입력을 `mono`로 합치는 작업은 사용자가
-`--output-channel-layout mono`를 명시한 경우에만 수행합니다. 음량 안전 모드는
-`--external-audio-volume`의 비기본값 및 `--dry-run`과 함께 사용할 수 없습니다. 측정값,
-gain 결정, 최종 검증은 JSON의 영상별 `audio_levels`와 stderr의 `[음량 검증]` 요약에
-남습니다.
+`preserve`는 레코더 채널을 유지합니다. mono 입력을 `stereo`로 출력할 때는 추가 gain 없이 동일 신호를 좌우에 복사하며, stereo 입력을 `mono`로 합치는 작업은 사용자가 `--output-channel-layout mono`를 명시한 경우에만 수행합니다. `replace` 음량 안전은 `--external-audio-volume`의 비기본값과 함께 사용할 수 없고, mix 음량 안전은 stereo 출력만 지원합니다. 명시적 음량 안전 옵션은 `--dry-run`과 함께 사용할 수 없습니다. 측정값, gain 결정, 최종 검증은 JSON의 영상별 `audio_levels`와 stderr의 `[음량 검증]` 요약에 남습니다.
 
 레코더가 중간에 멈췄거나 영상과 녹음 길이가 다르면 `fallback`을 명시합니다. 일치하는
 구간은 레코더음으로 교체하고, 영상 앞뒤와 중간의 불일치 구간은 카메라음을 유지합니다.
@@ -199,8 +197,9 @@ analyze의 부분 진단은 종료 코드 2입니다. `process`는 기본적으�
 --mode replace|mix|fallback   전체 교체, 혼합, 부분 구간 폴백
 --recommended-only            fallback에서 추천 기준을 통과한 부분 매칭만 출력
 --analysis-report PATH        저장한 분석 결과를 검증해 재분석 없이 처리
---camera-audio-volume NUMBER  카메라 음량(기본: mix 0.1, fallback 1.0)
---external-audio-volume 1.0   외부 레코더 음량(0.0~1.0)
+--camera-audio-volume NUMBER  카메라 음량(기본: mix/fallback 1.0)
+--external-audio-volume NUM   외부 음량(기본: mix -12dB 상당, 그 외 1.0)
+--external-highpass-hz NUM    mix 외부 HPF(기본: 80Hz, 0은 해제)
 --target-lufs NUMBER          음량 안전 모드의 목표 integrated loudness
 --max-true-peak-dbtp NUMBER   음량 안전 모드의 최대 true peak
 --output-channel-layout MODE  preserve, mono, stereo 중 명시

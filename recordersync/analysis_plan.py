@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from recordersync.pipeline import AnalysisBundle
 
 
-ANALYSIS_INPUT_VERSION = 1
+ANALYSIS_INPUT_VERSION = 2
 _REPORT_SCHEMA_NAME = "recordersync-report-v2.schema.json"
 
 
@@ -59,6 +59,7 @@ def _video_payload(video: VideoInfo) -> dict[str, object]:
         "height": video.height,
         "has_audio": video.has_audio,
         "color_transfer": video.color_transfer,
+        "audio_channels": video.audio_channels,
     }
 
 
@@ -177,6 +178,12 @@ def _integer(value: object, field: str) -> int:
     return value
 
 
+def _optional_integer(value: object, field: str) -> int | None:
+    if value is None:
+        return None
+    return _integer(value, field)
+
+
 def _boolean(value: object, field: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"Invalid analysis report field: {field}")
@@ -260,6 +267,7 @@ def _load_video(value: object, index: int) -> VideoInfo:
         height=_integer(payload.get("height"), f"{field}.height"),
         has_audio=_boolean(payload.get("has_audio"), f"{field}.has_audio"),
         color_transfer=_optional_string(payload.get("color_transfer"), f"{field}.color_transfer"),
+        audio_channels=_optional_integer(payload.get("audio_channels"), f"{field}.audio_channels"),
     )
 
 

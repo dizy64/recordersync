@@ -38,12 +38,17 @@ class VideoInfo:
     height: int
     has_audio: bool
     color_transfer: str | None = None
+    audio_channels: int | None = None
 
     def __post_init__(self) -> None:
         if self.duration_seconds <= 0:
             raise ValueError("duration_seconds must be > 0")
         if self.width <= 0 or self.height <= 0:
             raise ValueError("video dimensions must be > 0")
+        if self.audio_channels is not None and self.audio_channels <= 0:
+            raise ValueError("audio_channels must be > 0")
+        if not self.has_audio and self.audio_channels is not None:
+            raise ValueError("audio_channels requires has_audio")
 
     @property
     def is_portrait(self) -> bool:
@@ -179,6 +184,10 @@ class FFmpegTools:
         video_stream = _first_stream(payload, "video")
         if video_stream is None:
             raise MediaError(f"No video stream found: {path}")
+        audio_stream = _first_stream(payload, "audio")
+        audio_channels = int(audio_stream.get("channels", 0)) if audio_stream is not None else None
+        if audio_channels is not None and audio_channels <= 0:
+            raise MediaError(f"Invalid audio channels: {audio_channels}")
         raw_format = payload.get("format", {})
         file_format = raw_format if isinstance(raw_format, dict) else {}
         duration = _positive_float(
@@ -190,8 +199,9 @@ class FFmpegTools:
             duration_seconds=duration,
             width=int(video_stream.get("width", 0)),
             height=int(video_stream.get("height", 0)),
-            has_audio=_first_stream(payload, "audio") is not None,
+            has_audio=audio_stream is not None,
             color_transfer=(str(video_stream["color_transfer"]) if video_stream.get("color_transfer") else None),
+            audio_channels=audio_channels,
         )
 
     def extract_features(self, path: Path) -> FloatArray:
