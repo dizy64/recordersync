@@ -25,7 +25,13 @@ from recordersync.models import (
     RecordingSession,
 )
 from recordersync.pipeline import AnalysisBundle, RecorderSyncPipeline, is_renderable_match
-from recordersync.render import AudioLevelRenderError, FFmpegRenderer, RenderedOutput, RenderMode
+from recordersync.render import (
+    AudioLevelRenderError,
+    FFmpegRenderer,
+    MixPolicy,
+    RenderedOutput,
+    RenderMode,
+)
 
 
 def _features() -> tuple[np.ndarray, np.ndarray]:
@@ -163,7 +169,7 @@ def test_파이프라인_처리는_매칭된_영상만_렌더링한다(tmp_path:
     )
     renderer = MagicMock(spec=FFmpegRenderer)
     expected = tmp_path / "final_clip_synced.mp4"
-    renderer.render.return_value = expected
+    renderer.render_with_report.return_value = RenderedOutput(expected)
     progress_callback = MagicMock()
 
     report = RecorderSyncPipeline(renderer=renderer).process(
@@ -172,16 +178,19 @@ def test_파이프라인_처리는_매칭된_영상만_렌더링한다(tmp_path:
         mode=RenderMode.MIX,
         camera_audio_volume=0.08,
         external_audio_volume=0.7,
+        external_highpass_hz=0,
         output_prefix="final_",
         output_suffix="_synced",
         progress_callback=progress_callback,
     )
 
-    assert renderer.render.call_count == 1
-    plan = renderer.render.call_args.args[0]
+    assert renderer.render_with_report.call_count == 1
+    plan = renderer.render_with_report.call_args.args[0]
     assert plan.mode is RenderMode.MIX
     assert plan.camera_audio_volume == 0.08
     assert plan.external_audio_volume == 0.7
+    assert plan.external_highpass_hz is None
+    assert plan.audio_level_policy == AudioLevelPolicy(-16, -1, OutputChannelLayout.STEREO, 0.5)
     assert plan.output_path == expected
     assert report.matches[0].output_path == expected
     assert report.matches[1].status is MatchStatus.AMBIGUOUS
@@ -189,6 +198,80 @@ def test_파이프라인_처리는_매칭된_영상만_렌더링한다(tmp_path:
         call("render", 0, 1, ""),
         call("render", 1, 1, "clip.mov"),
     ]
+
+
+def test_파이프라인_믹스는_카메라를_주음원으로_두는_보수적인_기본값을_사용한다(
+    tmp_path: Path,
+) -> None:
+    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True)
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 30, 48_000, 1, "pcm_f32le", None),),
+    )
+    match = AudioMatch(
+        video.path,
+        5,
+        MatchStatus.MATCHED,
+        session_id=session.id,
+        external_start_seconds=3,
+    )
+    renderer = MagicMock(spec=FFmpegRenderer)
+    renderer.render_with_report.return_value = RenderedOutput(tmp_path / "clip.mp4")
+
+    RecorderSyncPipeline(renderer=renderer).process(
+        AnalysisBundle((session,), (video,), (match,)),
+        tmp_path,
+        mode=RenderMode.MIX,
+    )
+
+    plan = renderer.render_with_report.call_args.args[0]
+    assert plan.camera_audio_volume == pytest.approx(1.0)
+    assert plan.external_audio_volume == pytest.approx(10 ** (-12 / 20))
+    assert plan.external_highpass_hz == pytest.approx(80)
+    assert plan.audio_level_policy == AudioLevelPolicy(-16, -1, OutputChannelLayout.STEREO, 0.5)
+
+
+def test_파이프라인_믹스는_분석기가_제안한_정책을_같은_렌더_경로에_전달한다(
+    tmp_path: Path,
+) -> None:
+    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True)
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 30, 48_000, 1, "pcm_f32le", None),),
+    )
+    match = AudioMatch(
+        video.path,
+        5,
+        MatchStatus.MATCHED,
+        session_id=session.id,
+        external_start_seconds=3,
+    )
+    renderer = MagicMock(spec=FFmpegRenderer)
+    renderer.render_with_report.return_value = RenderedOutput(tmp_path / "clip.mp4")
+    suggested_policy = MixPolicy(
+        camera_audio_volume=1.0,
+        external_audio_volume=0.2,
+        external_highpass_hz=100,
+        audio_level_policy=AudioLevelPolicy(
+            target_lufs=-18,
+            maximum_true_peak_dbtp=-2,
+            output_channel_layout=OutputChannelLayout.STEREO,
+            loudness_tolerance_lu=0.5,
+        ),
+    )
+
+    RecorderSyncPipeline(renderer=renderer).process(
+        AnalysisBundle((session,), (video,), (match,)),
+        tmp_path,
+        mode=RenderMode.MIX,
+        mix_policy=suggested_policy,
+    )
+
+    plan = renderer.render_with_report.call_args.args[0]
+    assert plan.camera_audio_volume == pytest.approx(1.0)
+    assert plan.external_audio_volume == pytest.approx(0.2)
+    assert plan.external_highpass_hz == pytest.approx(100)
+    assert plan.audio_level_policy == suggested_policy.audio_level_policy
 
 
 def test_파이프라인은_음량_안전_결과를_영상별_리포트에_연결한다(tmp_path: Path) -> None:

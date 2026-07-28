@@ -11,10 +11,15 @@ RecorderSync의 사용자 동작과 공개 연동 계약 변경을 버전별로 
   opt-in 음량 안전 처리 추가
 - gain 전 float EBU R128 분석, static gain/true-peak 충돌 차단, 최종 AAC 재디코딩 검증
 - JSON v2 영상별 optional `audio_levels`와 stderr `[음량 검증]` 요약
+- `mix`의 카메라 1.0, 외부 `-12dB` 상당, 외부 HP80 보수 기본값과 HPF override
+- component 처리 후 합산 float 신호의 음량 측정, 합산 뒤 static gain, 최종 AAC 검증
 
 ### 호환성
 
-- 기존 명령은 바뀌지 않으며 음량 안전 옵션에는 기본값이나 자동 추론이 없다.
+- 사용자가 단독 사용하므로 기존 mix의 카메라 0.1/외부 1.0 기본값 호환성을 유지하지
+  않는다. 기존 비율이 필요하면 두 volume 옵션으로 명시한다.
+- replace 음량 안전 옵션에는 기본값이나 자동 추론이 없다. mix는 모드를 명시한 경우에만
+  문서화된 기본 음량·HPF·출력 계약을 적용한다.
 - limiter/compressor를 자동 적용하지 않고, gain 충돌 또는 최종 검증 실패 파일은
   최종 경로에 게시하지 않는다.
 - JSON 계약은 additive optional 필드이므로 v2를 유지한다.

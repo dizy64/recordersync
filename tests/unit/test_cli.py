@@ -101,7 +101,8 @@ def test_처리_CLI는_안전한_교체_정책을_기본값으로_사용한다()
     assert args.output_dir is None
     assert args.mode == "replace"
     assert args.camera_audio_volume is None
-    assert args.external_audio_volume == pytest.approx(1.0)
+    assert args.external_audio_volume is None
+    assert args.external_highpass_hz is None
     assert args.min_confidence == pytest.approx(0.75)
     assert args.min_peak_margin == pytest.approx(0.05)
     assert args.session_gap_seconds == pytest.approx(10.0)
@@ -201,9 +202,43 @@ def test_처리_CLI는_단위_구간_밖의_카메라_볼륨을_거부한다() -
 
 
 def test_처리_CLI는_외부_오디오_볼륨을_허용한다() -> None:
-    args = build_parser().parse_args(["process", "/video", "--mode", "mix", "--external-audio-volume", "0.8"])
+    args = build_parser().parse_args(
+        [
+            "process",
+            "/video",
+            "--mode",
+            "mix",
+            "--external-audio-volume",
+            "0.8",
+            "--external-highpass-hz",
+            "100",
+        ]
+    )
 
     assert args.external_audio_volume == pytest.approx(0.8)
+    assert args.external_highpass_hz == pytest.approx(100)
+
+
+def test_처리_CLI는_믹스_highpass를_명시적으로_해제할_수_있다() -> None:
+    args = build_parser().parse_args(["process", "/video", "--mode", "mix", "--external-highpass-hz", "0"])
+
+    assert args.external_highpass_hz == pytest.approx(0)
+
+
+@pytest.mark.parametrize("frequency", ["-1", "10", "20001"])
+def test_처리_CLI는_지원_범위_밖의_highpass를_거부한다(frequency: str) -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["process", "/video", "--mode", "mix", "--external-highpass-hz", frequency])
+
+
+def test_처리_CLI는_믹스_외의_highpass를_거부한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(["process", "/video", "--external-highpass-hz", "80"])
+
+    assert exit_info.value.code == 2
+    assert "--external-highpass-hz requires --mode mix" in capsys.readouterr().err
 
 
 def test_처리_CLI는_음량_안전_옵션을_모두_명시해야_한다(
@@ -241,7 +276,32 @@ def test_처리_CLI는_음량_안전_모드와_수동_외부_볼륨을_함께_�
     assert "--external-audio-volume cannot be combined" in capsys.readouterr().err
 
 
-def test_처리_CLI는_음량_안전_모드를_replace에서만_허용한다(
+def test_처리_CLI는_음량_안전_모드를_fallback에서_허용하지_않는다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(
+            [
+                "process",
+                "/video",
+                "--mode",
+                "fallback",
+                "--target-lufs",
+                "-16",
+                "--max-true-peak-dbtp",
+                "-1",
+                "--output-channel-layout",
+                "stereo",
+                "--loudness-tolerance-lu",
+                "0.5",
+            ]
+        )
+
+    assert exit_info.value.code == 2
+    assert "loudness safety requires --mode replace or mix" in capsys.readouterr().err
+
+
+def test_처리_CLI는_믹스_음량_안전_출력을_stereo로_제한한다(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit) as exit_info:
@@ -256,14 +316,43 @@ def test_처리_CLI는_음량_안전_모드를_replace에서만_허용한다(
                 "--max-true-peak-dbtp",
                 "-1",
                 "--output-channel-layout",
-                "stereo",
+                "mono",
                 "--loudness-tolerance-lu",
                 "0.5",
             ]
         )
 
     assert exit_info.value.code == 2
-    assert "loudness safety requires --mode replace" in capsys.readouterr().err
+    assert "mix loudness safety requires --output-channel-layout stereo" in capsys.readouterr().err
+
+
+def test_메인_믹스는_보수적인_기본_음량_정책과_필터를_파이프라인에_전달한다(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    bundle = AnalysisBundle(
+        sessions=(),
+        videos=(),
+        matches=(AudioMatch(Path("clip.mov"), 5, MatchStatus.MATCHED),),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = bundle
+    pipeline.process.return_value = MatchReport(sessions=(), matches=bundle.matches)
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(["process", str(tmp_path), "--mode", "mix"])
+
+    assert exit_code == 0
+    kwargs = pipeline.process.call_args.kwargs
+    assert kwargs["camera_audio_volume"] is None
+    assert kwargs["external_audio_volume"] is None
+    assert kwargs["external_highpass_hz"] is None
+    policy = kwargs["audio_level_policy"]
+    assert policy.target_lufs == pytest.approx(-16)
+    assert policy.maximum_true_peak_dbtp == pytest.approx(-1)
+    assert policy.output_channel_layout is OutputChannelLayout.STEREO
+    assert policy.loudness_tolerance_lu == pytest.approx(0.5)
+    assert json.loads(capsys.readouterr().out)["summary"]["matched"] == 1
 
 
 def test_처리_CLI는_음량_안전_모드와_dry_run을_함께_허용하지_않는다(

@@ -173,8 +173,20 @@ def test_처리_CLI는_분할_오디오를_매칭하고_원본_프로필로_렌�
     }
     assert len(report["audio_sessions"]) == 1
     assert len(report["audio_sessions"][0]["chunks"]) == 2
-    assert report["matches"][0]["external_start_seconds"] == pytest.approx(3.0, abs=0.15)
-    assert report["matches"][0]["output"] == str(output)
+    match = report["matches"][0]
+    assert match["external_start_seconds"] == pytest.approx(3.0, abs=0.15)
+    assert match["output"] == str(output)
+    assert match["audio_levels"]["policy"] == {
+        "target_lufs": -16.0,
+        "maximum_true_peak_dbtp": -1.0,
+        "output_channel_layout": "stereo",
+        "loudness_tolerance_lu": 0.5,
+        "dynamics": "none",
+    }
+    assert match["audio_levels"]["input"]["codec"] == "float_mix"
+    assert match["audio_levels"]["output"]["integrated_loudness_lufs"] == pytest.approx(-16.0, abs=0.5)
+    assert match["audio_levels"]["output"]["true_peak_dbtp"] <= -1.0
+    assert match["audio_levels"]["validation"] == {"passed": True, "failures": []}
     assert output.is_file()
     assert (synthetic_project.output_dir / "recordersync-report.json").is_file()
     assert f"분석 리포트 재사용: {analysis_report}" in result.stderr
