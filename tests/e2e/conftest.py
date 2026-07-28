@@ -96,11 +96,15 @@ def probe_video_timestamps(path: Path) -> tuple[float, ...]:
     frames = parsed.get("frames")
     if not isinstance(frames, list):
         raise TypeError("ffprobe frames must be a list")
-    return tuple(
-        float(frame["best_effort_timestamp_time"])
-        for frame in frames
-        if isinstance(frame, dict) and isinstance(frame.get("best_effort_timestamp_time"), str)
-    )
+    timestamps: list[float] = []
+    for index, frame in enumerate(frames):
+        if not isinstance(frame, dict):
+            raise TypeError(f"ffprobe frame {index} must be an object")
+        timestamp = frame.get("best_effort_timestamp_time")
+        if not isinstance(timestamp, str):
+            raise TypeError(f"ffprobe frame {index} timestamp must be a string")
+        timestamps.append(float(timestamp))
+    return tuple(timestamps)
 
 
 @pytest.fixture(scope="module")
