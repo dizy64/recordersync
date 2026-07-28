@@ -201,7 +201,7 @@ VFR의 프레임 타임스탬프를 임의 CFR로 변환하지 않는다. 오디
 외부 오디오는 `--external-audio-volume`을 `volume` 필터에 먼저 적용한다. `mix` 기본은 카메라 1.0, 외부 `10^(-12/20)`, 외부 HP80이다. 외부 mono는 추가 gain 없이 dual-mono로 만들고 카메라 stereo와 `amix normalize=0`으로 합산한다. 두 볼륨과 HPF는 사용자가 덮어쓸 수 있으며, `--external-highpass-hz 0`은 HPF를 해제한다.
 이 네 구성값과 최종 음량 계약은 불변 `MixPolicy`로 묶는다. 현재 CLI는 검증된 기본 정책을 사용하고, 향후 음향 분석기는 같은 객체를 결과로 반환해 렌더 경로를 재사용할 수 있다. 분석기가 없는 상태에서 장비 이름만으로 정책을 바꾸지는 않는다.
 
-`replace`의 opt-in 음량 안전 경로는 목표 LUFS, 최대 dBTP, 출력 채널 정책, LU 허용 오차를 모두 받은 경우에만 활성화한다. `mix`는 `-16 LUFS`, 최대 `-1 dBTP`, stereo, `0.5 LU` 허용 오차를 기본 사용한다. 실제 렌더 구간에 drift, padding/trimming, 채널 정책을 적용하고, mix는 component gain과 HPF까지 적용한 합산 신호를 `fltp` 상태에서 `ebur128=peak=sample+true`로 측정한다.
+`replace`의 opt-in 음량 안전 경로는 목표 LUFS, 최대 dBTP, 출력 채널 정책, LU 허용 오차를 모두 받은 경우에만 활성화한다. `mix`는 `-16 LUFS`, 최대 `-1 dBTP`, stereo, `0.5 LU` 허용 오차를 기본 사용한다. 실제 렌더 구간에 drift, padding/trimming, 채널 정책을 적용하고, mix는 component gain과 HPF까지 적용한 합산 신호를 `fltp` 상태에서 `ebur128=peak=sample+true`로 측정한다. 이 분석은 카메라와 외부 오디오를 모두 오류 즉시 중단 모드로 디코드하므로 어느 입력에서든 decoder error가 발생하면 렌더하지 않는다.
 
 ```text
 requested_gain_db = target_lufs - measured_lufs

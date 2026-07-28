@@ -366,7 +366,7 @@ esac
 | libx265도 실패 | JSON error와 FFmpeg stderr, 지원 filter/codec 확인 |
 | 뒤쪽 싱크가 밀림 | `tempo_ratio`, 입력 클립 길이, 조각 경계 frame padding 회귀 확인 |
 | 외부 음악이 눈에 띄게 빠르거나 느림 | 리포트의 `tempo_ratio` 확인. 0.99~1.01 밖인 이전 출력은 사용하지 말고 최신 버전으로 다시 분석·렌더 |
-| 음량 안전 처리가 error | `audio_levels`에서 decoder error, 합산 gain 충돌량, 최종 AAC 검증 실패를 확인 |
+| 음량 안전 처리가 error | `audio_levels`에서 카메라·외부 입력 decoder error, 합산 gain 충돌량, 최종 AAC 검증 실패를 확인. mix는 두 입력 중 하나라도 엄격 디코드에 실패하면 출력하지 않음 |
 | 전역 명령이 없음 | `uv tool dir --bin`, `uv tool update-shell`, `type -a` 확인 |
 
 ## 공개 합성 smoke
