@@ -15,17 +15,18 @@ RecorderSync의 비즈니스 정책은 단위 테스트로 검증한다. FFmpeg�
 | `test_matching.py` | 전체 조기 반환, 부분/다중 구간, 전역 재탐색 상한, 입력 검증, drift, 다중 카메라 |
 | `test_media.py` | 탐색, ffprobe 파싱, PCM, 실패, 조각 frame padding |
 | `test_audio_levels.py` | EBU R128 파싱, static gain/true-peak 충돌 판정, 최종 AAC 계약 검증 |
+| `test_mix_analysis.py` | 원본별 float 분석 명령, 스펙트럼·stereo 지표, auto component gain/HPF 추천 |
 | `test_render.py` | 출력명·경로 안전, 다중 구간 폴백, 음량 분석/채널 정책, 최종 AAC 검증, 원자 출력 |
-| `test_pipeline.py` | 배치 분석, 공통 렌더 정책, 음량 결과 연결, 추천 전용 필터, 영상별 오류·지역화 |
-| `test_cli.py` | 도움말, 기본 부분 분석, 분석 재사용, 음량 필수 입력, 배치 명령 추천, 리포트, 종료 코드 |
+| `test_pipeline.py` | 배치 분석, 공통 렌더 정책, auto 추천·적용, 음량 결과 연결, 추천 전용 필터, 영상별 오류·지역화 |
+| `test_cli.py` | 도움말, 기본 부분 분석, 분석 재사용, auto/manual 배타성, 음량 필수 입력, 배치 명령 추천, 리포트, 종료 코드 |
 | `test_analysis_plan.py` | 분석 입력 round-trip, 지문·디렉터리·버전 검증, 언어 독립성 |
 | `test_api.py` | 외부 소비자용 세션·매칭·영상별 오류 격리·영상/세션 인덱스 식별 검증·다중 세션 렌더 계획 API |
-| `test_report.py` | JSON v2, 음량 정책/측정/검증, 부분 구간/사용률, 추천 명령, 한국어·영어 목록 |
+| `test_report.py` | JSON v3, 음량과 auto mix 정책/측정/검증, 부분 구간/사용률, 추천 명령, 한국어·영어 목록 |
 | `test_recommendation.py` | 영상별/배치 replace·fallback 추천과 보수적인 보류 경계 |
 | `test_check_markdown_links.py` | 로컬 링크, 외부 URL, 코드 블록, 저장소 이탈, CLI 오류 목록 |
 | `test_check_release_version.py` | 프로젝트·패키지·릴리스 태그 버전 일치와 오류 진단 |
 | `test_report_json_schema.py` | Draft 2020-12 적합성, 실제 payload, 문서 예시, 잘못된 상태·미지 필드 거부 |
-| `e2e/test_cli_pipeline.py` | 분할 WAV, 세로 해상도/FPS, VFR 프레임 타임스탬프, 안전 mix·다중 구간 fallback 렌더, 반복 끝 구간 drift 차단 |
+| `e2e/test_cli_pipeline.py` | 분할 WAV, 세로 해상도/FPS, VFR 프레임 타임스탬프, conservative/auto 안전 mix·다중 구간 fallback 렌더, 반복 끝 구간 drift 차단 |
 
 새 테스트 파일을 추가하거나 책임이 바뀌면 이 지도만 갱신한다.
 
@@ -172,6 +173,8 @@ CI 환경 차이 때문에 엄격한 wall-clock 단위 테스트로 만들지 �
 - 기본 임계값에서 `matched`인가
 - process 결과가 180×320 세로, 24fps, HEVC 10-bit, AAC 48kHz를 유지하는가
 - 원본/외부 볼륨 override와 HP80 mix가 합산 뒤 static gain·AAC 재검증을 통과하는가
+- auto dry-run이 두 원본을 float로 측정하고 렌더 없이 `mix_recommendation`만 보고하는가
+- auto 일반 실행이 추천 `MixPolicy`를 렌더에 적용하고 최종 AAC 음량 검증까지 통과하는가
 - 두 부분 구간만 레코더음으로 교체되고 사이·앞뒤는 카메라음으로 남는가
 - stereo 카메라음과 mono 레코더음의 채널 레이아웃 차이에도 렌더되는가
 - 구간별 RMS가 설정한 레코더/카메라 볼륨 차이를 반영하는가

@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 
 ANALYSIS_INPUT_VERSION = 2
-_REPORT_SCHEMA_NAME = "recordersync-report-v2.schema.json"
+_REPORT_SCHEMA_NAME = "recordersync-report-v3.schema.json"
 
 
 def _fingerprint(path: Path) -> dict[str, object]:

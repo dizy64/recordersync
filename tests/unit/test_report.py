@@ -15,6 +15,7 @@ from recordersync.audio_levels import (
     OutputChannelLayout,
     decide_static_gain,
 )
+from recordersync.mix_analysis import MixRecommendation, MixSourceMetrics
 from recordersync.models import (
     AudioChunk,
     AudioMatch,
@@ -22,7 +23,13 @@ from recordersync.models import (
     MatchStatus,
     RecordingSession,
 )
-from recordersync.report import MatchReport, ReportLanguage, format_audio_level_summary
+from recordersync.render import MixPolicy
+from recordersync.report import (
+    MatchReport,
+    ReportLanguage,
+    format_audio_level_summary,
+    format_mix_recommendation_summary,
+)
 
 
 def test_매칭_리포트는_세션과_매칭과_요약을_직렬화한다() -> None:
@@ -55,7 +62,7 @@ def test_매칭_리포트는_세션과_매칭과_요약을_직렬화한다() -> 
 
     payload = json.loads(report.to_json())
 
-    assert payload["version"] == 2
+    assert payload["version"] == 3
     assert payload["language"] == "ko"
     assert payload["summary"] == {
         "total": 2,
@@ -149,6 +156,128 @@ def test_처리_리포트는_음량_측정_gain_결정과_최종_AAC_검증을_�
     }
     assert format_audio_level_summary(match, audio_levels) == (
         "clip.mov | 음량 검증: 통과 | 입력: -20.0 LUFS / -8.0 dBTP | gain: +4.0 dB | 출력: -16.2 LUFS / -1.1 dBTP"
+    )
+
+
+def test_처리_리포트는_자동_mix의_원본_측정값과_적용_정책을_직렬화한다() -> None:
+    match = AudioMatch(
+        Path("clip.mov"),
+        30,
+        MatchStatus.MATCHED,
+        session_id="session-001",
+        external_start_seconds=2.5,
+        output_path=Path("replace/clip.mp4"),
+    )
+    level_policy = AudioLevelPolicy(-16, -1, OutputChannelLayout.STEREO, 0.5)
+    levels = AudioLevelMetrics(2, 48_000, -12, 7, -1.1, -1, 30, "float_analysis")
+    camera = MixSourceMetrics(levels, 0.2, 1_300, 0.8, -18)
+    external = MixSourceMetrics(
+        AudioLevelMetrics(1, 48_000, -20, 8, 7.6, 7.7, 30, "float_analysis"),
+        0.35,
+        1_000,
+        None,
+        None,
+    )
+    recommendation = MixRecommendation(
+        camera=camera,
+        external=external,
+        policy=MixPolicy(1.0, 0.2, 100, level_policy),
+        external_gain_db=-13.9794,
+        reasons=("외부 true peak 여유를 우선했습니다.",),
+        applied=True,
+    )
+    report = MatchReport(
+        sessions=(),
+        matches=(match,),
+        mix_recommendations=(recommendation,),
+        created_at=datetime(2026, 7, 28, tzinfo=UTC),
+    )
+
+    payload = report.to_dict()["matches"][0]["mix_recommendation"]
+
+    assert payload == {
+        "status": "applied",
+        "camera": {
+            "audio": {
+                "channels": 2,
+                "sample_rate": 48_000,
+                "integrated_loudness_lufs": -12,
+                "loudness_range_lu": 7,
+                "sample_peak_dbfs": -1.1,
+                "true_peak_dbtp": -1,
+                "duration_seconds": 30,
+                "codec": "float_analysis",
+                "decoder_error": None,
+            },
+            "low_frequency_energy_ratio": 0.2,
+            "spectral_centroid_hz": 1_300,
+            "stereo_correlation": 0.8,
+            "stereo_side_to_mid_db": -18,
+        },
+        "external": {
+            "audio": {
+                "channels": 1,
+                "sample_rate": 48_000,
+                "integrated_loudness_lufs": -20,
+                "loudness_range_lu": 8,
+                "sample_peak_dbfs": 7.6,
+                "true_peak_dbtp": 7.7,
+                "duration_seconds": 30,
+                "codec": "float_analysis",
+                "decoder_error": None,
+            },
+            "low_frequency_energy_ratio": 0.35,
+            "spectral_centroid_hz": 1_000,
+            "stereo_correlation": None,
+            "stereo_side_to_mid_db": None,
+        },
+        "policy": {
+            "camera_audio_volume": 1.0,
+            "external_audio_volume": 0.2,
+            "external_gain_db": -13.9794,
+            "external_highpass_hz": 100,
+            "audio_level_policy": {
+                "target_lufs": -16,
+                "maximum_true_peak_dbtp": -1,
+                "output_channel_layout": "stereo",
+                "loudness_tolerance_lu": 0.5,
+                "dynamics": "none",
+            },
+        },
+        "reasons": ["외부 true peak 여유를 우선했습니다."],
+        "failures": [],
+    }
+
+
+def test_자동_mix_요약은_추천과_적용_실패를_구분한다() -> None:
+    match = AudioMatch(Path("clip.mov"), 30, MatchStatus.MATCHED)
+    level_policy = AudioLevelPolicy(-16, -1, OutputChannelLayout.STEREO, 0.5)
+    levels = AudioLevelMetrics(2, 48_000, -12, 7, -1.1, -1, 30, "float_analysis")
+    source = MixSourceMetrics(levels, 0.2, 1_300, 0.8, -18)
+    recommendation = MixRecommendation(
+        camera=source,
+        external=source,
+        policy=MixPolicy(1.0, 10 ** (-12 / 20), None, level_policy),
+        external_gain_db=-12,
+        reasons=("측정 기반 보수 감쇠",),
+    )
+
+    assert format_mix_recommendation_summary(match, recommendation) == (
+        "clip.mov | 상태: 추천 | 외부 gain: -12.0 dB | 외부 HPF: 해제"
+    )
+    assert (
+        format_mix_recommendation_summary(
+            match,
+            recommendation.with_application_failure("final AAC validation failed"),
+        )
+        == "clip.mov | 상태: 적용 실패 | final AAC validation failed"
+    )
+    assert (
+        format_mix_recommendation_summary(
+            match,
+            MixRecommendation.failed("camera analysis error: invalid frame"),
+        )
+        == "clip.mov | 상태: 실패 | camera analysis error: invalid frame"
     )
 
 

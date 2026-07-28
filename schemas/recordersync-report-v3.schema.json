@@ -1,0 +1,927 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dizy64/recordersync/raw/main/schemas/recordersync-report-v3.schema.json",
+  "title": "RecorderSync report v3",
+  "description": "RecorderSync analyze/process JSON report contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "language",
+    "created_at",
+    "summary",
+    "audio_sessions",
+    "matches"
+  ],
+  "properties": {
+    "version": {
+      "const": 3
+    },
+    "language": {
+      "enum": ["ko", "en"]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "audio_sessions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reportAudioSession"
+      }
+    },
+    "matches": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reportMatch"
+      }
+    },
+    "recommended_command": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "analysis_inputs": {
+      "$ref": "#/$defs/analysisInputs"
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "nullableNonNegativeNumber": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "matchStatus": {
+      "enum": ["matched", "partial", "unmatched", "ambiguous", "error"]
+    },
+    "tempoRatio": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 2.0
+    },
+    "correlation": {
+      "type": "number",
+      "minimum": -1.0,
+      "maximum": 1.0
+    },
+    "peakMargin": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 2.0
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "matched", "partial", "unmatched", "ambiguous", "error"],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "matched": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partial": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unmatched": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ambiguous": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "reportAudioSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "duration_seconds", "chunks"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "chunks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_id",
+        "video_start_seconds",
+        "external_start_seconds",
+        "duration_seconds",
+        "tempo_ratio",
+        "correlation",
+        "peak_margin",
+        "confidence"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "video_start_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "external_start_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "duration_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "tempo_ratio": {
+          "$ref": "#/$defs/tempoRatio"
+        },
+        "correlation": {
+          "$ref": "#/$defs/correlation"
+        },
+        "peak_margin": {
+          "$ref": "#/$defs/peakMargin"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "reportMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "video",
+        "status",
+        "session_id",
+        "external_start_seconds",
+        "duration_seconds",
+        "tempo_ratio",
+        "correlation",
+        "peak_margin",
+        "confidence",
+        "coverage_ratio",
+        "segments",
+        "reason",
+        "output",
+        "recommended_mode",
+        "recommendation_reason",
+        "recommended_options"
+      ],
+      "properties": {
+        "video": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "status": {
+          "$ref": "#/$defs/matchStatus"
+        },
+        "session_id": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "external_start_seconds": {
+          "$ref": "#/$defs/nullableNonNegativeNumber"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "tempo_ratio": {
+          "$ref": "#/$defs/tempoRatio"
+        },
+        "correlation": {
+          "$ref": "#/$defs/correlation"
+        },
+        "peak_margin": {
+          "$ref": "#/$defs/peakMargin"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "coverage_ratio": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/segment"
+          }
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "output": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "recommended_mode": {
+          "enum": ["replace", "fallback", null]
+        },
+        "recommendation_reason": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "recommended_options": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "min_partial_seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "audio_levels": {
+          "$ref": "#/$defs/audioLevels"
+        },
+        "mix_recommendation": {
+          "$ref": "#/$defs/mixRecommendation"
+        }
+      }
+    },
+    "mixSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "audio",
+        "low_frequency_energy_ratio",
+        "spectral_centroid_hz",
+        "stereo_correlation",
+        "stereo_side_to_mid_db"
+      ],
+      "properties": {
+        "audio": {
+          "$ref": "#/$defs/audioMetrics"
+        },
+        "low_frequency_energy_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "spectral_centroid_hz": {
+          "type": "number",
+          "minimum": 0
+        },
+        "stereo_correlation": {
+          "type": ["number", "null"],
+          "minimum": -1,
+          "maximum": 1
+        },
+        "stereo_side_to_mid_db": {
+          "type": ["number", "null"]
+        }
+      }
+    },
+    "mixPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "camera_audio_volume",
+        "external_audio_volume",
+        "external_gain_db",
+        "external_highpass_hz",
+        "audio_level_policy"
+      ],
+      "properties": {
+        "camera_audio_volume": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "external_audio_volume": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "external_gain_db": {
+          "type": "number",
+          "maximum": 0
+        },
+        "external_highpass_hz": {
+          "type": ["number", "null"],
+          "minimum": 20,
+          "maximum": 20000
+        },
+        "audio_level_policy": {
+          "$ref": "#/$defs/audioLevelPolicy"
+        }
+      }
+    },
+    "mixRecommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "camera", "external", "policy", "reasons", "failures"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": ["recommended", "applied"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "camera": {
+                "$ref": "#/$defs/mixSource"
+              },
+              "external": {
+                "$ref": "#/$defs/mixSource"
+              },
+              "policy": {
+                "$ref": "#/$defs/mixPolicy"
+              },
+              "reasons": {
+                "minItems": 1
+              },
+              "failures": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "application_error"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "camera": {
+                "$ref": "#/$defs/mixSource"
+              },
+              "external": {
+                "$ref": "#/$defs/mixSource"
+              },
+              "policy": {
+                "$ref": "#/$defs/mixPolicy"
+              },
+              "reasons": {
+                "minItems": 1
+              },
+              "failures": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "error"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "policy": {
+                "type": "null"
+              },
+              "failures": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "status": {
+          "enum": ["recommended", "applied", "application_error", "error"]
+        },
+        "camera": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/mixSource"
+            }
+          ]
+        },
+        "external": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/mixSource"
+            }
+          ]
+        },
+        "policy": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/mixPolicy"
+            }
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
+      }
+    },
+    "audioMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "channels",
+        "sample_rate",
+        "integrated_loudness_lufs",
+        "loudness_range_lu",
+        "sample_peak_dbfs",
+        "true_peak_dbtp",
+        "duration_seconds",
+        "codec",
+        "decoder_error"
+      ],
+      "properties": {
+        "channels": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sample_rate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "integrated_loudness_lufs": {
+          "type": "number"
+        },
+        "loudness_range_lu": {
+          "type": "number",
+          "minimum": 0
+        },
+        "sample_peak_dbfs": {
+          "type": "number"
+        },
+        "true_peak_dbtp": {
+          "type": "number"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "codec": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "decoder_error": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "audioLevelPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_lufs",
+        "maximum_true_peak_dbtp",
+        "output_channel_layout",
+        "loudness_tolerance_lu",
+        "dynamics"
+      ],
+      "properties": {
+        "target_lufs": {
+          "type": "number",
+          "minimum": -70,
+          "maximum": -5
+        },
+        "maximum_true_peak_dbtp": {
+          "type": "number",
+          "minimum": -99,
+          "maximum": 0
+        },
+        "output_channel_layout": {
+          "enum": ["preserve", "mono", "stereo"]
+        },
+        "loudness_tolerance_lu": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10
+        },
+        "dynamics": {
+          "const": "none"
+        }
+      }
+    },
+    "staticGainDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested_gain_db",
+        "maximum_safe_gain_db",
+        "applied_gain_db",
+        "expected_true_peak_dbtp",
+        "conflict_db",
+        "limiter_free_lufs"
+      ],
+      "properties": {
+        "requested_gain_db": {
+          "type": "number"
+        },
+        "maximum_safe_gain_db": {
+          "type": "number"
+        },
+        "applied_gain_db": {
+          "type": ["number", "null"]
+        },
+        "expected_true_peak_dbtp": {
+          "type": ["number", "null"]
+        },
+        "conflict_db": {
+          "type": "number",
+          "minimum": 0
+        },
+        "limiter_free_lufs": {
+          "type": "number"
+        }
+      }
+    },
+    "audioLevelValidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "failures"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "passed": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "failures": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "passed": {
+                "const": false
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "failures": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
+      }
+    },
+    "audioLevels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "input", "decision", "output", "validation"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "validation": {
+                "properties": {
+                  "passed": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "input": {
+                "$ref": "#/$defs/audioMetrics"
+              },
+              "decision": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/staticGainDecision"
+                  },
+                  {
+                    "properties": {
+                      "applied_gain_db": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                ]
+              },
+              "output": {
+                "$ref": "#/$defs/audioMetrics"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "policy": {
+          "$ref": "#/$defs/audioLevelPolicy"
+        },
+        "input": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/audioMetrics"
+            }
+          ]
+        },
+        "decision": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/staticGainDecision"
+            }
+          ]
+        },
+        "output": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/audioMetrics"
+            }
+          ]
+        },
+        "validation": {
+          "$ref": "#/$defs/audioLevelValidation"
+        }
+      }
+    },
+    "fingerprint": {
+      "type": "object",
+      "required": ["path", "size_bytes", "mtime_ns"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mtime_ns": {
+          "type": "integer"
+        }
+      }
+    },
+    "analysisAudioChunk": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "allOf": [
+        {
+          "$ref": "#/$defs/fingerprint"
+        },
+        {
+          "type": "object",
+          "required": [
+            "duration_seconds",
+            "sample_rate",
+            "channels",
+            "codec",
+            "started_at"
+          ],
+          "properties": {
+            "duration_seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "sample_rate": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "channels": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "codec": {
+              "$ref": "#/$defs/nonEmptyString"
+            },
+            "started_at": {
+              "type": ["string", "null"],
+              "format": "date-time"
+            }
+          }
+        }
+      ]
+    },
+    "analysisAudioSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "chunks"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "chunks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/analysisAudioChunk"
+          }
+        }
+      }
+    },
+    "analysisVideo": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "allOf": [
+        {
+          "$ref": "#/$defs/fingerprint"
+        },
+        {
+          "type": "object",
+          "required": [
+            "duration_seconds",
+            "width",
+            "height",
+            "has_audio",
+            "color_transfer",
+            "audio_channels"
+          ],
+          "properties": {
+            "duration_seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "has_audio": {
+              "type": "boolean"
+            },
+            "color_transfer": {
+              "$ref": "#/$defs/nullableString"
+            },
+            "audio_channels": {
+              "type": ["integer", "null"],
+              "minimum": 1
+            }
+          }
+        }
+      ]
+    },
+    "analysisMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "video",
+        "duration_seconds",
+        "status",
+        "session_id",
+        "external_start_seconds",
+        "tempo_ratio",
+        "correlation",
+        "peak_margin",
+        "confidence",
+        "reason",
+        "segments"
+      ],
+      "properties": {
+        "video": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "status": {
+          "$ref": "#/$defs/matchStatus"
+        },
+        "session_id": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "external_start_seconds": {
+          "$ref": "#/$defs/nullableNonNegativeNumber"
+        },
+        "tempo_ratio": {
+          "$ref": "#/$defs/tempoRatio"
+        },
+        "correlation": {
+          "$ref": "#/$defs/correlation"
+        },
+        "peak_margin": {
+          "$ref": "#/$defs/peakMargin"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/segment"
+          }
+        }
+      }
+    },
+    "analysisInputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "audio_sessions", "videos", "matches"],
+      "properties": {
+        "version": {
+          "const": 2
+        },
+        "audio_sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/analysisAudioSession"
+          }
+        },
+        "videos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/analysisVideo"
+          }
+        },
+        "matches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/analysisMatch"
+          }
+        }
+      }
+    }
+  }
+}

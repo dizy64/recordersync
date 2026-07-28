@@ -183,7 +183,7 @@ recordersync analyze /path/to/videos \
   --min-partial-seconds 5
 ```
 
-사람용 목록에는 `부분`, 레코더 사용률, 승인 구간 수가 표시된다. 자동화는 `analyze --json`의 v2 `coverage_ratio`, `segments`, `recommended_command`를 사용한다. 추천된 fallback 명령은 `--recommended-only`를 포함해 추천 기준에 미달한 partial은 렌더하지 않는다.
+사람용 목록에는 `부분`, 레코더 사용률, 승인 구간 수가 표시된다. 자동화는 `analyze --json`의 v3 `coverage_ratio`, `segments`, `recommended_command`를 사용한다. 추천된 fallback 명령은 `--recommended-only`를 포함해 추천 기준에 미달한 partial은 렌더하지 않는다.
 
 사람용 목록에서 실패 파일과 사유를 먼저 확인한다. 상세 JSON의 `summary`, `audio_sessions`, 각 영상의 `confidence`, `peak_margin`, 시작점은 자동화나 심층 진단에만 사용한다. JSON과 `analysis_inputs`에는 절대 경로와 파일 지문이 들어가므로 저장소나 공개 이슈에 커밋하지 않는다.
 
@@ -220,6 +220,25 @@ recordersync process /path/to/media \
 recordersync process /path/to/media \
   --mode mix
 ```
+
+실제 매칭 구간의 카메라와 외부 원본을 독립적으로 측정한 추천과 예상 출력 경로만 확인하려면 auto dry-run을 사용한다.
+
+```bash
+recordersync process /path/to/media \
+  --mode mix \
+  --mix-profile auto \
+  --dry-run
+```
+
+`mix_recommendation.status`가 `recommended`이고 `failures`가 비어 있으면 `--dry-run`을 제거해 같은 `MixPolicy`로 렌더할 수 있다. auto는 카메라를 1.0으로 고정하고 외부 음원을 자동 증폭하지 않는다. 외부 integrated loudness를 카메라보다 12 LU 낮추는 gain과 외부 true peak를 카메라보다 3 dB 낮추는 gain 중 더 큰 감쇠를 선택하며, mono loudness는 최종 stereo mix와 같은 gain 없는 dual-mono 조건으로 측정한다. 저역 에너지 비중이 카메라보다 0.08 이상 높고 spectral centroid가 150Hz 이상 낮으면 HP100, 그 외에는 HP80을 사용한다. 120초를 넘는 입력도 전체 LUFS·peak는 측정하지만 스펙트럼 지표는 시간축 전체에 균등 배치한 최대 12개 10초 대표 구간에서 계산한다.
+
+```bash
+recordersync process /path/to/media \
+  --mode mix \
+  --mix-profile auto
+```
+
+auto는 `--camera-audio-volume`, `--external-audio-volume`, `--external-highpass-hz` 또는 네 음량 안전 override와 함께 사용할 수 없다. 해당 값을 직접 결정하려면 `--mix-profile conservative`를 유지하고 수동 옵션을 명시한다. auto 분석은 장비명이나 파일명으로 분기하지 않으며, 주관적인 음질 우열을 성공 조건으로 사용하지 않는다.
 
 카메라 원본 음질이 좋지 않지만 공간감은 일부 남기려면 비율을 바꾼다.
 
@@ -273,7 +292,7 @@ replace에서 이 계약은 `--external-audio-volume`의 비기본값, `--dry-ru
 
 성공한 결과도 최종 AAC 재디코딩 측정값이 계약을 만족한 경우에만 게시된다. stderr의 `[음량 검증]`은 빠른 확인용이고 자동화는 JSON의 `audio_levels.validation.passed`와 `failures`를 사용한다. 기존에 encode 전에 clipping된 파일을 감쇠해도 이미 손실된 파형은 복원되지 않으므로 가능한 한 clipping 이전 32-bit float 원본에서 다시 처리한다.
 
-실행 중 선택된 파일 목록과 `[오디오 분석]`, `[영상 매칭]`, `[영상 렌더]` 진행률은 stderr로 출력된다. stdout JSON만 저장하려면 다음처럼 분리한다.
+실행 중 선택된 파일 목록과 `[오디오 분석]`, `[영상 매칭]`, `[영상 렌더]` 진행률은 stderr로 출력된다. auto dry-run은 렌더 대신 `[믹스 분석]` 진행률을 표시하고, auto mix는 영상별 `[믹스 추천]` 요약도 stderr에 출력한다. stdout JSON만 저장하려면 다음처럼 분리한다.
 
 ```bash
 recordersync process /path/to/media >result.json 2>progress.log
@@ -314,13 +333,14 @@ esac
 | `No supported audio files` | 확장자와 선택된 오디오 디렉터리 바로 아래 파일인지 확인. 생략 시 VIDEO_DIR 사용 |
 | `Camera audio is required` | 카메라 원본에 첫 오디오 스트림이 있는지 ffprobe 확인 |
 | 결과가 모두 ambiguous | 반복 음원, 너무 넓은 세션, peak margin 확인 |
+| auto mix가 error | `mix_recommendation.failures`에서 camera/external decode, EBU R128 또는 스펙트럼 분석 실패를 확인. 실패한 영상은 렌더하지 않음 |
 | 부분 구간이 검출되지 않음 | `--full-only` 사용 여부, 최소 부분 길이, 카메라음 확인 |
 | 결과가 이미 존재 | 다른 output dir 또는 의도적인 `--overwrite` 사용 |
 | VideoToolbox 실패 | `ffmpeg -encoders`, macOS 권한, 디스크 공간 확인 |
 | libx265도 실패 | JSON error와 FFmpeg stderr, 지원 filter/codec 확인 |
 | 뒤쪽 싱크가 밀림 | `tempo_ratio`, 입력 클립 길이, 조각 경계 frame padding 회귀 확인 |
 | 외부 음악이 눈에 띄게 빠르거나 느림 | 리포트의 `tempo_ratio` 확인. 0.99~1.01 밖인 이전 출력은 사용하지 말고 최신 버전으로 다시 분석·렌더 |
-| 음량 안전 처리가 error | `audio_levels`에서 카메라·외부 입력 decoder error, 합산 gain 충돌량, 최종 AAC 검증 실패를 확인. mix는 두 입력 중 하나라도 엄격 디코드에 실패하면 출력하지 않음 |
+| 음량 안전 처리가 error | `audio_levels`에서 합산 입력 decoder error, gain 충돌량, 최종 AAC 검증 실패를 확인. mix는 합산 입력 분석이나 최종 검증이 실패하면 출력하지 않음 |
 | 전역 명령이 없음 | `uv tool dir --bin`, `uv tool update-shell`, `type -a` 확인 |
 
 ## 공개 합성 smoke

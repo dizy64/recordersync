@@ -349,7 +349,7 @@ def build_render_plan(
     )
 
 
-def _number(value: float) -> str:
+def format_ffmpeg_number(value: float) -> str:
     return f"{value:.9f}".rstrip("0").rstrip(".") or "0"
 
 
@@ -403,17 +403,17 @@ class FFmpegCommandBuilder:
     ) -> str:
         filters: list[str] = []
         if include_component_volume:
-            filters.append(f"volume={_number(plan.external_audio_volume)}")
-        filters.append(f"atempo={_number(plan.tempo_ratio)}")
+            filters.append(f"volume={format_ffmpeg_number(plan.external_audio_volume)}")
+        filters.append(f"atempo={format_ffmpeg_number(plan.tempo_ratio)}")
         if plan.external_highpass_hz is not None:
-            filters.append(f"highpass=f={_number(plan.external_highpass_hz)}")
+            filters.append(f"highpass=f={format_ffmpeg_number(plan.external_highpass_hz)}")
         channel_filter: str | None
         if plan.mode is RenderMode.MIX:
             filters.append("aresample=48000")
         filters.extend(
             (
                 "apad",
-                f"atrim=duration={_number(plan.video.duration_seconds)}",
+                f"atrim=duration={format_ffmpeg_number(plan.video.duration_seconds)}",
                 "asetpts=PTS-STARTPTS",
             )
         )
@@ -433,10 +433,10 @@ class FFmpegCommandBuilder:
         )
         return ",".join(
             (
-                f"volume={_number(plan.camera_audio_volume)}",
+                f"volume={format_ffmpeg_number(plan.camera_audio_volume)}",
                 "aresample=48000",
                 "apad",
-                f"atrim=duration={_number(plan.video.duration_seconds)}",
+                f"atrim=duration={format_ffmpeg_number(plan.video.duration_seconds)}",
                 "asetpts=PTS-STARTPTS",
                 channel_filter,
                 "aformat=sample_fmts=fltp",
@@ -469,7 +469,7 @@ class FFmpegCommandBuilder:
             if plan.audio_level_policy is not None:
                 if plan.output_audio_gain_db is None:
                     raise ValueError("loudness-safe render requires measured static gain")
-                filters.append(f"{audio_label}volume={_number(plan.output_audio_gain_db)}dB[aout]")
+                filters.append(f"{audio_label}volume={format_ffmpeg_number(plan.output_audio_gain_db)}dB[aout]")
                 audio_label = "[aout]"
 
         video_codec = "libx265" if software_fallback else "hevc_videotoolbox"
@@ -491,7 +491,7 @@ class FFmpegCommandBuilder:
             command.extend(
                 [
                     "-ss",
-                    _number(segment.external_start_seconds),
+                    format_ffmpeg_number(segment.external_start_seconds),
                     "-f",
                     "concat",
                     "-safe",
@@ -564,7 +564,7 @@ class FFmpegCommandBuilder:
         command.extend(
             [
                 "-ss",
-                _number(segment.external_start_seconds),
+                format_ffmpeg_number(segment.external_start_seconds),
                 "-f",
                 "concat",
                 "-safe",
@@ -658,9 +658,9 @@ class FFmpegCommandBuilder:
                 return
             label = f"part{part_index}"
             filters.append(
-                f"[0:a:0]atrim=start={_number(start)}:end={_number(end)},"
+                f"[0:a:0]atrim=start={format_ffmpeg_number(start)}:end={format_ffmpeg_number(end)},"
                 "asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,"
-                f"volume={_number(plan.camera_audio_volume)}[{label}]"
+                f"volume={format_ffmpeg_number(plan.camera_audio_volume)}[{label}]"
             )
             labels.append(f"[{label}]")
             part_index += 1
@@ -676,10 +676,10 @@ class FFmpegCommandBuilder:
 
             label = f"part{part_index}"
             filters.append(
-                f"[{segment_index}:a:0]volume={_number(plan.external_audio_volume)},"
+                f"[{segment_index}:a:0]volume={format_ffmpeg_number(plan.external_audio_volume)},"
                 "aresample=48000,aformat=channel_layouts=stereo,"
-                f"atempo={_number(segment.tempo_ratio)},"
-                f"atrim=duration={_number(segment.duration_seconds)},"
+                f"atempo={format_ffmpeg_number(segment.tempo_ratio)},"
+                f"atrim=duration={format_ffmpeg_number(segment.duration_seconds)},"
                 f"asetpts=PTS-STARTPTS[{label}]"
             )
             labels.append(f"[{label}]")
@@ -693,13 +693,15 @@ class FFmpegCommandBuilder:
         if len(labels) > 1 and fade > 0:
             for index, next_label in enumerate(labels[1:], start=1):
                 output_label = f"fade{index}"
-                filters.append(f"{current_label}{next_label}acrossfade=d={_number(fade)}:c1=tri:c2=tri[{output_label}]")
+                filters.append(
+                    f"{current_label}{next_label}acrossfade=d={format_ffmpeg_number(fade)}:c1=tri:c2=tri[{output_label}]"
+                )
                 current_label = f"[{output_label}]"
         elif len(labels) > 1:
             filters.append(f"{''.join(labels)}concat=n={len(labels)}:v=0:a=1[concatenated]")
             current_label = "[concatenated]"
 
-        filters.append(f"{current_label}apad,atrim=duration={_number(plan.video.duration_seconds)}[aout]")
+        filters.append(f"{current_label}apad,atrim=duration={format_ffmpeg_number(plan.video.duration_seconds)}[aout]")
         return filters, "[aout]"
 
 

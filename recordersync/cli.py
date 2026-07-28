@@ -12,6 +12,7 @@ from recordersync import __version__
 from recordersync.analysis_plan import load_analysis_report, write_analysis_report
 from recordersync.audio_levels import AudioLevelPolicy, OutputChannelLayout
 from recordersync.matching import MatchOptions
+from recordersync.mix_analysis import MixProfile
 from recordersync.models import AudioMatch, MatchStatus
 from recordersync.pipeline import AnalysisBundle, RecorderSyncPipeline, is_renderable_match
 from recordersync.recommendation import (
@@ -19,7 +20,12 @@ from recordersync.recommendation import (
     recommend_batch_mode,
 )
 from recordersync.render import RenderMode, resolve_output_path, validate_output_affix
-from recordersync.report import MatchReport, ReportLanguage, format_audio_level_summary
+from recordersync.report import (
+    MatchReport,
+    ReportLanguage,
+    format_audio_level_summary,
+    format_mix_recommendation_summary,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -142,6 +148,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[mode.value for mode in RenderMode],
         default="replace",
         help="오디오 처리 방식: replace=전체 교체, mix=혼합, fallback=일치 구간만 교체(기본: replace)",
+    )
+    process.add_argument(
+        "--mix-profile",
+        choices=[profile.value for profile in MixProfile],
+        default=MixProfile.CONSERVATIVE.value,
+        help="mix 정책: conservative=검증된 고정값, auto=원본 측정 기반 추천·적용(기본: conservative)",
     )
     process.add_argument(
         "--camera-audio-volume",
@@ -294,7 +306,7 @@ def _print_selection(kind: str, paths: tuple[Path, ...]) -> None:
 
 
 def _print_progress(stage: str, current: int, total: int, item: str) -> None:
-    labels = {"audio": "오디오 분석", "match": "영상 매칭", "render": "영상 렌더"}
+    labels = {"audio": "오디오 분석", "match": "영상 매칭", "mix": "믹스 분석", "render": "영상 렌더"}
     label = labels.get(stage, stage)
     percent = 100 if total == 0 else round(current / total * 100)
     detail = f" {item}" if item else ""
@@ -342,6 +354,7 @@ def _validate_process_options(
         return
     if args.recommended_only and render_mode is not RenderMode.FALLBACK:
         parser.error("--recommended-only requires --mode fallback")
+    _validate_auto_mix_options(parser, args, render_mode)
     if args.external_highpass_hz is not None and render_mode is not RenderMode.MIX:
         parser.error("--external-highpass-hz requires --mode mix")
     loudness_values = (
@@ -377,6 +390,30 @@ def _validate_process_options(
         parser.error("--analysis-report cannot be combined with analysis options")
     if args.report is not None and args.analysis_report.resolve() == args.report.resolve():
         parser.error("--analysis-report and --report must use different paths")
+
+
+def _validate_auto_mix_options(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    render_mode: RenderMode,
+) -> None:
+    if args.mix_profile != MixProfile.AUTO.value:
+        return
+    if render_mode is not RenderMode.MIX:
+        parser.error("--mix-profile auto requires --mode mix")
+    if any(
+        value is not None
+        for value in (
+            args.camera_audio_volume,
+            args.external_audio_volume,
+            args.external_highpass_hz,
+            args.target_lufs,
+            args.max_true_peak_dbtp,
+            args.output_channel_layout,
+            args.loudness_tolerance_lu,
+        )
+    ):
+        parser.error("--mix-profile auto cannot be combined with manual mix options")
 
 
 def _audio_level_policy(
@@ -436,6 +473,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     output_dir = args.output_dir or args.video_dir / "replace"
     report_language = ReportLanguage(args.report_language)
     render_mode = RenderMode(args.mode) if args.command == "process" else RenderMode.REPLACE
+    mix_profile = MixProfile(args.mix_profile) if args.command == "process" else MixProfile.CONSERVATIVE
     _validate_process_options(parser, args, render_mode)
     audio_level_policy = _audio_level_policy(parser, args)
 
@@ -453,7 +491,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 recommended_command=_recommended_process_command(args, report),
                 include_recommended_command=True,
             )
-        elif args.dry_run:
+        elif args.dry_run and mix_profile is not MixProfile.AUTO:
             report = _dry_run_report(
                 bundle,
                 output_dir,
@@ -468,6 +506,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 output_dir,
                 mode=render_mode,
                 recommended_only=args.recommended_only,
+                mix_profile=mix_profile,
+                recommend_mix_only=args.dry_run and mix_profile is MixProfile.AUTO,
                 camera_audio_volume=args.camera_audio_volume,
                 external_audio_volume=args.external_audio_volume,
                 external_highpass_hz=args.external_highpass_hz,
@@ -478,6 +518,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 progress_callback=_print_progress,
             )
 
+        if args.command == "process" and report.mix_recommendations:
+            for match, recommendation in zip(report.matches, report.mix_recommendations, strict=True):
+                if recommendation is not None:
+                    print(
+                        f"[믹스 추천] {format_mix_recommendation_summary(match, recommendation)}",
+                        file=sys.stderr,
+                    )
         if args.command == "process" and report.audio_levels:
             for match, audio_levels in zip(report.matches, report.audio_levels, strict=True):
                 if audio_levels is not None:

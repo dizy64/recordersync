@@ -313,6 +313,93 @@ def test_처리_CLI는_옵션_없는_기본_mix_정책을_실제_FFmpeg_경계�
     assert final_source_stat.st_mtime_ns == source_stat.st_mtime_ns
 
 
+def test_처리_CLI는_자동_mix_dry_run에서_원본을_측정하고_추천만_보고한다(
+    synthetic_project: SyntheticProject,
+) -> None:
+    expected_output = synthetic_project.output_dir / "clip_auto_recommend.mp4"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "recordersync",
+            "process",
+            str(synthetic_project.video_dir),
+            "--audio-dir",
+            str(synthetic_project.audio_dir),
+            "--output-dir",
+            str(synthetic_project.output_dir),
+            "--output-suffix",
+            "_auto_recommend",
+            "--mode",
+            "mix",
+            "--mix-profile",
+            "auto",
+            "--dry-run",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=180,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    match = json.loads(result.stdout)["matches"][0]
+    recommendation = match["mix_recommendation"]
+    assert match["output"] == str(expected_output)
+    assert recommendation["status"] == "recommended"
+    assert recommendation["camera"]["audio"]["codec"] == "float_analysis"
+    assert recommendation["external"]["audio"]["codec"] == "float_analysis"
+    assert recommendation["policy"]["camera_audio_volume"] == pytest.approx(1.0)
+    assert recommendation["policy"]["external_gain_db"] <= 0
+    assert recommendation["policy"]["external_highpass_hz"] in {80.0, 100.0}
+    assert recommendation["policy"]["audio_level_policy"]["dynamics"] == "none"
+    assert recommendation["failures"] == []
+    assert "[믹스 분석] 1/1 (100%) clip.mov" in result.stderr
+    assert "[영상 렌더]" not in result.stderr
+    assert "[믹스 추천] clip.mov" in result.stderr
+    assert not expected_output.exists()
+
+
+def test_처리_CLI는_자동_mix_추천을_같은_렌더_경로에_적용하고_검증한다(
+    synthetic_project: SyntheticProject,
+) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "recordersync",
+            "process",
+            str(synthetic_project.video_dir),
+            "--audio-dir",
+            str(synthetic_project.audio_dir),
+            "--output-dir",
+            str(synthetic_project.output_dir),
+            "--output-suffix",
+            "_auto_mix",
+            "--mode",
+            "mix",
+            "--mix-profile",
+            "auto",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=180,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    match = json.loads(result.stdout)["matches"][0]
+    output = synthetic_project.output_dir / "clip_auto_mix.mp4"
+    assert match["output"] == str(output)
+    assert match["mix_recommendation"]["status"] == "applied"
+    assert match["audio_levels"]["input"]["codec"] == "float_mix"
+    assert match["audio_levels"]["validation"] == {"passed": True, "failures": []}
+    assert match["audio_levels"]["output"]["true_peak_dbtp"] <= -1.0
+    assert "[믹스 추천] clip.mov | 상태: 적용" in result.stderr
+    assert "[음량 검증] clip.mov | 음량 검증: 통과" in result.stderr
+    assert output.is_file()
+
+
 def test_처리_CLI는_static_gain을_적용하고_최종_AAC_음량을_재검증한다(
     synthetic_project: SyntheticProject,
 ) -> None:
@@ -446,7 +533,7 @@ def test_폴백_처리는_다중_부분_구간만_레코더_오디오로_교체�
     match = report["matches"][0]
     output = partial_synthetic_project.output_dir / "partial.mp4"
 
-    assert report["version"] == 2
+    assert report["version"] == 3
     assert report["summary"]["partial"] == 1
     assert match["status"] == "partial"
     assert match["recommended_mode"] == "fallback"

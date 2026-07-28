@@ -8,8 +8,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
+from typing import cast
 
-from recordersync.audio_levels import AudioLevelMetrics, AudioLevelReport
+from recordersync.audio_levels import AudioLevelMetrics, AudioLevelPolicy, AudioLevelReport
+from recordersync.mix_analysis import MixRecommendation, MixSourceMetrics
 from recordersync.models import AudioMatch, MatchStatus, RecordingSession
 from recordersync.recommendation import (
     ModeRecommendation,
@@ -17,7 +19,7 @@ from recordersync.recommendation import (
     recommend_mode,
 )
 
-REPORT_VERSION = 2
+REPORT_VERSION = 3
 
 
 class ReportLanguage(StrEnum):
@@ -49,6 +51,7 @@ _KOREAN_REASONS = {
     "Loudness target conflicts with true-peak ceiling": "목표 음량과 true peak 제한이 충돌합니다.",
     "Input audio analysis failed": "입력 오디오 음량 분석에 실패했습니다.",
     "Final AAC validation failed": "최종 AAC 음량 검증에 실패했습니다.",
+    "Automatic mix analysis failed": "자동 mix 분석에 실패했습니다.",
 }
 
 _KOREAN_REASON_PREFIXES = {
@@ -137,16 +140,20 @@ def _audio_metrics_payload(metrics: AudioLevelMetrics) -> dict[str, object]:
     }
 
 
+def _audio_level_policy_payload(policy: AudioLevelPolicy) -> dict[str, object]:
+    return {
+        "target_lufs": policy.target_lufs,
+        "maximum_true_peak_dbtp": policy.maximum_true_peak_dbtp,
+        "output_channel_layout": policy.output_channel_layout.value,
+        "loudness_tolerance_lu": policy.loudness_tolerance_lu,
+        "dynamics": "none",
+    }
+
+
 def _audio_level_payload(report: AudioLevelReport) -> dict[str, object]:
     decision = report.decision
     return {
-        "policy": {
-            "target_lufs": report.policy.target_lufs,
-            "maximum_true_peak_dbtp": report.policy.maximum_true_peak_dbtp,
-            "output_channel_layout": report.policy.output_channel_layout.value,
-            "loudness_tolerance_lu": report.policy.loudness_tolerance_lu,
-            "dynamics": "none",
-        },
+        "policy": _audio_level_policy_payload(report.policy),
         "input": _audio_metrics_payload(report.input_metrics) if report.input_metrics is not None else None,
         "decision": (
             {
@@ -168,10 +175,48 @@ def _audio_level_payload(report: AudioLevelReport) -> dict[str, object]:
     }
 
 
+def _mix_source_payload(source: MixSourceMetrics) -> dict[str, object]:
+    return {
+        "audio": _audio_metrics_payload(source.audio_levels),
+        "low_frequency_energy_ratio": source.low_frequency_energy_ratio,
+        "spectral_centroid_hz": source.spectral_centroid_hz,
+        "stereo_correlation": source.stereo_correlation,
+        "stereo_side_to_mid_db": source.stereo_side_to_mid_db,
+    }
+
+
+def _mix_recommendation_payload(recommendation: MixRecommendation) -> dict[str, object]:
+    policy = recommendation.policy
+    status = (
+        "application_error"
+        if policy is not None and recommendation.failures
+        else ("error" if recommendation.failures else ("applied" if recommendation.applied else "recommended"))
+    )
+    return {
+        "status": status,
+        "camera": _mix_source_payload(recommendation.camera) if recommendation.camera is not None else None,
+        "external": _mix_source_payload(recommendation.external) if recommendation.external is not None else None,
+        "policy": (
+            {
+                "camera_audio_volume": policy.camera_audio_volume,
+                "external_audio_volume": policy.external_audio_volume,
+                "external_gain_db": recommendation.external_gain_db,
+                "external_highpass_hz": policy.external_highpass_hz,
+                "audio_level_policy": _audio_level_policy_payload(policy.audio_level_policy),
+            }
+            if policy is not None
+            else None
+        ),
+        "reasons": list(recommendation.reasons),
+        "failures": list(recommendation.failures),
+    }
+
+
 def _match_payload(
     match: AudioMatch,
     language: ReportLanguage,
     audio_levels: AudioLevelReport | None = None,
+    mix_recommendation: MixRecommendation | None = None,
 ) -> dict[str, object]:
     recommendation = recommend_mode(match)
     payload: dict[str, object] = {
@@ -206,6 +251,8 @@ def _match_payload(
     }
     if audio_levels is not None:
         payload["audio_levels"] = _audio_level_payload(audio_levels)
+    if mix_recommendation is not None:
+        payload["mix_recommendation"] = _mix_recommendation_payload(mix_recommendation)
     return payload
 
 
@@ -249,6 +296,24 @@ def format_audio_level_summary(
     return summary
 
 
+def format_mix_recommendation_summary(
+    match: AudioMatch,
+    recommendation: MixRecommendation,
+) -> str:
+    """CLI stderr에 표시할 자동 mix 추천 한 줄 요약."""
+
+    if recommendation.policy is not None and recommendation.failures:
+        return f"{match.video_path.name} | 상태: 적용 실패 | {'; '.join(recommendation.failures)}"
+    if not recommendation.passed or recommendation.policy is None:
+        failures = "; ".join(recommendation.failures) or "unknown analysis failure"
+        return f"{match.video_path.name} | 상태: 실패 | {failures}"
+    status = "적용" if recommendation.applied else "추천"
+    gain = cast(float, recommendation.external_gain_db)
+    highpass = recommendation.policy.external_highpass_hz
+    highpass_label = "해제" if highpass is None else f"{highpass:g} Hz"
+    return f"{match.video_path.name} | 상태: {status} | 외부 gain: {gain:+.1f} dB | 외부 HPF: {highpass_label}"
+
+
 @dataclass(frozen=True, slots=True)
 class MatchReport:
     sessions: tuple[RecordingSession, ...]
@@ -257,10 +322,13 @@ class MatchReport:
     recommended_command: tuple[str, ...] | None = None
     include_recommended_command: bool = False
     audio_levels: tuple[AudioLevelReport | None, ...] = ()
+    mix_recommendations: tuple[MixRecommendation | None, ...] = ()
 
     def __post_init__(self) -> None:
         if self.audio_levels and len(self.audio_levels) != len(self.matches):
             raise ValueError("audio_levels must be empty or align with matches")
+        if self.mix_recommendations and len(self.mix_recommendations) != len(self.matches):
+            raise ValueError("mix_recommendations must be empty or align with matches")
 
     def _summary(self) -> dict[str, int]:
         return {
@@ -274,6 +342,7 @@ class MatchReport:
 
     def to_dict(self, *, language: ReportLanguage = ReportLanguage.KO) -> dict[str, object]:
         audio_levels = self.audio_levels or (None,) * len(self.matches)
+        mix_recommendations = self.mix_recommendations or (None,) * len(self.matches)
         payload: dict[str, object] = {
             "version": REPORT_VERSION,
             "language": language.value,
@@ -288,8 +357,13 @@ class MatchReport:
                 for session in self.sessions
             ],
             "matches": [
-                _match_payload(match, language, match_audio_levels)
-                for match, match_audio_levels in zip(self.matches, audio_levels, strict=True)
+                _match_payload(match, language, match_audio_levels, match_mix_recommendation)
+                for match, match_audio_levels, match_mix_recommendation in zip(
+                    self.matches,
+                    audio_levels,
+                    mix_recommendations,
+                    strict=True,
+                )
             ],
         }
         if self.include_recommended_command:
