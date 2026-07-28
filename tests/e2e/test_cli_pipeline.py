@@ -219,6 +219,58 @@ def test_처리_CLI는_분할_오디오를_매칭하고_원본_프로필로_렌�
     assert final_source_stat.st_mtime_ns == source_stat.st_mtime_ns
 
 
+def test_처리_CLI는_옵션_없는_기본_mix_정책을_실제_FFmpeg_경계에_적용한다(
+    synthetic_project: SyntheticProject,
+) -> None:
+    source_stat = synthetic_project.video_path.stat()
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "recordersync",
+            "process",
+            str(synthetic_project.video_dir),
+            "--audio-dir",
+            str(synthetic_project.audio_dir),
+            "--output-dir",
+            str(synthetic_project.output_dir),
+            "--output-suffix",
+            "_default_mix",
+            "--mode",
+            "mix",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=180,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    report = json.loads(result.stdout)
+    match = report["matches"][0]
+    output = synthetic_project.output_dir / "clip_default_mix.mp4"
+
+    assert match["output"] == str(output)
+    assert match["audio_levels"]["policy"] == {
+        "target_lufs": -16.0,
+        "maximum_true_peak_dbtp": -1.0,
+        "output_channel_layout": "stereo",
+        "loudness_tolerance_lu": 0.5,
+        "dynamics": "none",
+    }
+    assert match["audio_levels"]["input"]["codec"] == "float_mix"
+    assert match["audio_levels"]["validation"] == {"passed": True, "failures": []}
+    assert output.is_file()
+
+    audio = _stream(probe_media(output), "audio")
+    assert audio["channels"] == 2
+    assert audio["sample_rate"] == "48000"
+
+    final_source_stat = synthetic_project.video_path.stat()
+    assert final_source_stat.st_size == source_stat.st_size
+    assert final_source_stat.st_mtime_ns == source_stat.st_mtime_ns
+
+
 def test_처리_CLI는_static_gain을_적용하고_최종_AAC_음량을_재검증한다(
     synthetic_project: SyntheticProject,
 ) -> None:

@@ -146,6 +146,8 @@ class RenderPlan:
             raise ValueError(f"{self.mode.value} mode requires camera audio")
         if self.mode is RenderMode.MIX and self.video.audio_channels not in {1, 2}:
             raise ValueError("mix mode supports mono or stereo camera audio")
+        if self.mode is RenderMode.MIX and self.session.chunks[0].channels not in {1, 2}:
+            raise ValueError("mix mode supports mono or stereo recorder audio")
         if self.segments and self.mode is not RenderMode.FALLBACK:
             raise ValueError("explicit render segments require fallback mode")
         if self.audio_level_policy is not None and self.mode not in {RenderMode.REPLACE, RenderMode.MIX}:
@@ -417,8 +419,6 @@ class FFmpegCommandBuilder:
         )
         if plan.mode is RenderMode.MIX:
             source_channels = plan.session.chunks[0].channels
-            if source_channels not in {1, 2}:
-                raise ValueError("mix mode supports mono or stereo recorder audio")
             channel_filter = "pan=stereo|c0=c0|c1=c0" if source_channels == 1 else "aformat=channel_layouts=stereo"
         else:
             channel_filter = cls._approved_channel_filter(plan)

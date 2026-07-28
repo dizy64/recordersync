@@ -723,6 +723,23 @@ def test_믹스_렌더_계획은_다채널_카메라의_암묵적_downmix를_거
         )
 
 
+def test_믹스_렌더_계획은_다채널_레코더의_암묵적_downmix를_거부한다() -> None:
+    multichannel_session = RecordingSession(
+        id="session-multichannel",
+        chunks=(AudioChunk(Path("surround.wav"), 60, 48_000, 3, "pcm_f32le", None),),
+    )
+
+    with pytest.raises(ValueError, match="mix mode supports mono or stereo recorder audio"):
+        RenderPlan(
+            video=_video(),
+            session=multichannel_session,
+            output_path=Path("out.mp4"),
+            external_start_seconds=1,
+            tempo_ratio=1,
+            mode=RenderMode.MIX,
+        )
+
+
 def test_렌더_계획은_잘못된_카메라_볼륨을_거부한다() -> None:
     with pytest.raises(ValueError, match="camera_audio_volume"):
         RenderPlan(
