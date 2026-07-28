@@ -380,7 +380,7 @@ def test_파이프라인_자동_mix_추천_전용은_분석만_하고_렌더하�
     renderer.render.assert_not_called()
     renderer.render_with_report.assert_not_called()
     assert report.matches[0].status is MatchStatus.MATCHED
-    assert report.matches[0].output_path is None
+    assert report.matches[0].output_path == tmp_path / "clip.mp4"
     assert report.mix_recommendations == (recommendation,)
 
 
@@ -413,6 +413,49 @@ def test_파이프라인_자동_mix_분석_실패는_영상별_오류로_격리�
     assert report.matches[0].status is MatchStatus.ERROR
     assert report.matches[0].reason == "Automatic mix analysis failed"
     assert report.mix_recommendations == (failure,)
+
+
+@pytest.mark.parametrize(
+    ("video_channels", "external_channels", "failure"),
+    (
+        (3, 1, "analysis setup error: mix mode supports mono or stereo camera audio"),
+        (2, 3, "analysis setup error: mix mode supports mono or stereo recorder audio"),
+    ),
+)
+def test_파이프라인_자동_mix는_다채널_입력을_영상별_실패로_격리한다(
+    tmp_path: Path,
+    video_channels: int,
+    external_channels: int,
+    failure: str,
+) -> None:
+    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True, audio_channels=video_channels)
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 30, 48_000, external_channels, "pcm_f32le", None),),
+    )
+    match = AudioMatch(
+        video.path,
+        5,
+        MatchStatus.MATCHED,
+        session_id=session.id,
+        external_start_seconds=3,
+    )
+    mix_analyzer = MagicMock(spec=FFmpegMixAnalyzer)
+    renderer = MagicMock(spec=FFmpegRenderer)
+
+    report = RecorderSyncPipeline(renderer=renderer, mix_analyzer=mix_analyzer).process(
+        AnalysisBundle((session,), (video,), (match,)),
+        tmp_path,
+        mode=RenderMode.MIX,
+        mix_profile=MixProfile.AUTO,
+    )
+
+    mix_analyzer.recommend.assert_not_called()
+    renderer.render_with_report.assert_not_called()
+    assert report.matches[0].status is MatchStatus.ERROR
+    recommendation = report.mix_recommendations[0]
+    assert recommendation is not None
+    assert recommendation.failures == (failure,)
 
 
 def test_파이프라인_자동_mix_렌더_실패는_추천_상태와_구분한다(tmp_path: Path) -> None:

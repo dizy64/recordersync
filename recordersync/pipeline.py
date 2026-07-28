@@ -235,14 +235,11 @@ class RecorderSyncPipeline:
         recommendation: MixRecommendation | None = None
         try:
             recommendation = self._recommend_mix(match, video, sessions, output_dir, options)
-            if recommendation is not None:
-                if not recommendation.passed or recommendation.policy is None:
-                    return _ProcessedMatch(
-                        _failed_match(match, "Automatic mix analysis failed"),
-                        mix_recommendation=recommendation,
-                    )
-                if options.recommend_mix_only:
-                    return _ProcessedMatch(match, mix_recommendation=recommendation)
+            if recommendation is not None and (not recommendation.passed or recommendation.policy is None):
+                return _ProcessedMatch(
+                    _failed_match(match, "Automatic mix analysis failed"),
+                    mix_recommendation=recommendation,
+                )
             resolved_mix_policy = recommendation.policy if recommendation is not None else options.mix_policy
             plan = build_render_plan(
                 match,
@@ -259,6 +256,11 @@ class RecorderSyncPipeline:
                 output_suffix=options.output_suffix,
                 audio_level_policy=options.audio_level_policy,
             )
+            if options.recommend_mix_only:
+                return _ProcessedMatch(
+                    replace(match, output_path=plan.output_path),
+                    mix_recommendation=recommendation,
+                )
             rendered_output = (
                 self.renderer.render_with_report(plan)
                 if plan.audio_level_policy is not None

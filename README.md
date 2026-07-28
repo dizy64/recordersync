@@ -67,7 +67,7 @@ uv run recordersync process ~/Videos/day1 \
   --mode mix
 ```
 
-고정 프리셋 대신 실제로 매칭된 카메라/외부 원본의 음량·peak·스펙트럼을 측정해 보수적인 정책을 먼저 확인하려면 auto dry-run을 사용합니다. 이 명령은 출력 영상을 만들지 않고 영상별 `mix_recommendation`만 보고합니다.
+고정 프리셋 대신 실제로 매칭된 카메라/외부 원본의 음량·peak·스펙트럼을 측정해 보수적인 정책을 먼저 확인하려면 auto dry-run을 사용합니다. 이 명령은 출력 영상을 만들지 않고 영상별 예상 `output` 경로와 `mix_recommendation`을 보고합니다.
 
 ```bash
 uv run recordersync process ~/Videos/day1 \

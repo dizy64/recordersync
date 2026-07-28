@@ -345,7 +345,7 @@ def test_처리_CLI는_자동_mix_dry_run에서_원본을_측정하고_추천만
     assert result.returncode == 0, result.stderr or result.stdout
     match = json.loads(result.stdout)["matches"][0]
     recommendation = match["mix_recommendation"]
-    assert match["output"] is None
+    assert match["output"] == str(expected_output)
     assert recommendation["status"] == "recommended"
     assert recommendation["camera"]["audio"]["codec"] == "float_analysis"
     assert recommendation["external"]["audio"]["codec"] == "float_analysis"

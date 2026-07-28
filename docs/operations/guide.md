@@ -221,7 +221,7 @@ recordersync process /path/to/media \
   --mode mix
 ```
 
-실제 매칭 구간의 카메라와 외부 원본을 독립적으로 측정한 추천만 확인하려면 auto dry-run을 사용한다.
+실제 매칭 구간의 카메라와 외부 원본을 독립적으로 측정한 추천과 예상 출력 경로만 확인하려면 auto dry-run을 사용한다.
 
 ```bash
 recordersync process /path/to/media \

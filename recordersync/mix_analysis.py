@@ -19,8 +19,8 @@ from recordersync.render import (
     MixPolicy,
     RenderMode,
     RenderPlan,
-    _number,
     build_concat_manifest,
+    format_ffmpeg_number,
 )
 
 _ANALYSIS_SAMPLE_RATE = 8_000
@@ -311,7 +311,7 @@ class FFmpegMixAnalyzer:
                 raise ValueError("automatic mix analysis supports mono or stereo recorder audio")
             input_arguments = [
                 "-ss",
-                _number(plan.external_start_seconds),
+                format_ffmpeg_number(plan.external_start_seconds),
                 "-f",
                 "concat",
                 "-safe",
@@ -319,11 +319,11 @@ class FFmpegMixAnalyzer:
                 "-i",
                 str(manifest_path),
             ]
-            source_chain = f"atempo={_number(plan.tempo_ratio)},"
+            source_chain = f"atempo={format_ffmpeg_number(plan.tempo_ratio)},"
         channel_layout = "mono" if channels == 1 else "stereo"
         meter_channel_filter = "pan=stereo|c0=c0|c1=c0," if channels == 1 else ""
         filters = (
-            f"[0:a:0]{source_chain}aresample=48000,apad,atrim=duration={_number(plan.video.duration_seconds)},"
+            f"[0:a:0]{source_chain}aresample=48000,apad,atrim=duration={format_ffmpeg_number(plan.video.duration_seconds)},"
             f"asetpts=PTS-STARTPTS,aformat=channel_layouts={channel_layout},aformat=sample_fmts=fltp,"
             "asplit=2[meter_input][spectral_input];"
             f"[meter_input]{meter_channel_filter}ebur128=peak=sample+true:framelog=quiet[metered];"

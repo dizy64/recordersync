@@ -75,6 +75,7 @@
 - 출력 해상도·방향·프레임 타임스탬프/VFR은 원본을 유지하지만 BT.709 HEVC 10-bit/AAC 프로파일과 영상 bitrate는 고정되어 있다.
 - 음량 안전 처리는 전체 replace와 전체 mix를 지원한다. fallback 여러 구간의 loudness 계약과 true-peak limiter/compressor는 지원하지 않는다.
 - auto mix의 스펙트럼 지표는 8kHz downsample을 사용하므로 4kHz 이상 고역의 음색이나 codec artifact를 직접 평가하지 않으며, 추천은 주관적인 음질 우열을 보증하지 않는다.
+- auto mix 스펙트럼 분석은 현재 한 원본의 8kHz float PCM 전체를 메모리에 보관하므로 stdout만 시간당 mono 약 110MiB, stereo 약 220MiB이며 float64 변환과 FFT 작업 메모리가 추가된다. 기존 12시간·영상 200개 벤치는 수 시간짜리 단일 영상을 대표하지 않으므로 후속 작업에서 streaming 또는 대표 window 분석으로 바꾸고 장시간 clip peak RSS를 다시 측정해야 한다.
 - 진행률은 완료 개수/비율만 제공하며 ETA·취소 후 resume·디스크 사전 용량 검사는 없다.
 - macOS 외 플랫폼은 지원 대상으로 검증하지 않았다.
 - PyPI 배포 파이프라인은 없으며 Git 태그와 GitHub Release 산출물을 사용한다.
