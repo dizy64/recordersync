@@ -15,6 +15,11 @@ from recordersync.media import (
     discover_audio_files,
     discover_video_files,
 )
+from recordersync.mix_analysis import (
+    FFmpegMixAnalyzer,
+    MixProfile,
+    MixRecommendation,
+)
 from recordersync.models import AudioMatch, MatchStatus, RecordingSession
 from recordersync.recommendation import RecommendationMode, recommend_mode
 from recordersync.render import (
@@ -42,6 +47,56 @@ class AnalysisBundle:
         return MatchReport(sessions=self.sessions, matches=self.matches)
 
 
+@dataclass(frozen=True, slots=True)
+class _ProcessOptions:
+    mode: RenderMode
+    mix_profile: MixProfile
+    recommend_mix_only: bool
+    mix_policy: MixPolicy | None
+    camera_audio_volume: float | None
+    external_audio_volume: float | None
+    external_highpass_hz: float | None
+    overwrite: bool
+    output_prefix: str
+    output_suffix: str
+    audio_level_policy: AudioLevelPolicy | None
+
+
+@dataclass(frozen=True, slots=True)
+class _ProcessedMatch:
+    match: AudioMatch
+    audio_levels: AudioLevelReport | None = None
+    mix_recommendation: MixRecommendation | None = None
+
+
+def _validate_process_options(options: _ProcessOptions) -> None:
+    if options.mix_profile is MixProfile.AUTO:
+        if options.mode is not RenderMode.MIX:
+            raise ValueError("automatic mix analysis requires mix mode")
+        if options.mix_policy is not None or any(
+            value is not None
+            for value in (
+                options.camera_audio_volume,
+                options.external_audio_volume,
+                options.external_highpass_hz,
+                options.audio_level_policy,
+            )
+        ):
+            raise ValueError("automatic mix analysis cannot be combined with manual mix options")
+    elif options.recommend_mix_only:
+        raise ValueError("mix recommendation-only processing requires the auto profile")
+
+
+def _failed_match(match: AudioMatch, reason: str) -> AudioMatch:
+    return replace(
+        match,
+        status=MatchStatus.ERROR,
+        reason=reason,
+        output_path=None,
+        segments=(),
+    )
+
+
 def is_renderable_match(
     match: AudioMatch,
     mode: RenderMode,
@@ -64,9 +119,11 @@ class RecorderSyncPipeline:
         self,
         tools: FFmpegTools | None = None,
         renderer: FFmpegRenderer | None = None,
+        mix_analyzer: FFmpegMixAnalyzer | None = None,
     ) -> None:
         self.tools = tools or FFmpegTools()
         self.renderer = renderer or FFmpegRenderer()
+        self.mix_analyzer = mix_analyzer or FFmpegMixAnalyzer()
 
     def analyze(
         self,
@@ -142,6 +199,88 @@ class RecorderSyncPipeline:
                 progress_callback("match", index, len(video_paths), video_path.name)
         return AnalysisBundle(sessions, tuple(videos), tuple(matches))
 
+    def _recommend_mix(
+        self,
+        match: AudioMatch,
+        video: VideoInfo,
+        sessions: dict[str, RecordingSession],
+        output_dir: Path,
+        options: _ProcessOptions,
+    ) -> MixRecommendation | None:
+        if options.mix_profile is not MixProfile.AUTO:
+            return None
+        try:
+            analysis_plan = build_render_plan(
+                match,
+                video,
+                sessions,
+                output_dir,
+                mode=RenderMode.MIX,
+                overwrite=options.overwrite,
+                output_prefix=options.output_prefix,
+                output_suffix=options.output_suffix,
+            )
+            return self.mix_analyzer.recommend(analysis_plan)
+        except (ValueError, RuntimeError) as exc:
+            return MixRecommendation.failed(f"analysis setup error: {exc}")
+
+    def _process_match(
+        self,
+        match: AudioMatch,
+        video: VideoInfo,
+        sessions: dict[str, RecordingSession],
+        output_dir: Path,
+        options: _ProcessOptions,
+    ) -> _ProcessedMatch:
+        recommendation: MixRecommendation | None = None
+        try:
+            recommendation = self._recommend_mix(match, video, sessions, output_dir, options)
+            if recommendation is not None:
+                if not recommendation.passed or recommendation.policy is None:
+                    return _ProcessedMatch(
+                        _failed_match(match, "Automatic mix analysis failed"),
+                        mix_recommendation=recommendation,
+                    )
+                if options.recommend_mix_only:
+                    return _ProcessedMatch(match, mix_recommendation=recommendation)
+            resolved_mix_policy = recommendation.policy if recommendation is not None else options.mix_policy
+            plan = build_render_plan(
+                match,
+                video,
+                sessions,
+                output_dir,
+                mode=options.mode,
+                mix_policy=resolved_mix_policy,
+                camera_audio_volume=options.camera_audio_volume,
+                external_audio_volume=options.external_audio_volume,
+                external_highpass_hz=options.external_highpass_hz,
+                overwrite=options.overwrite,
+                output_prefix=options.output_prefix,
+                output_suffix=options.output_suffix,
+                audio_level_policy=options.audio_level_policy,
+            )
+            rendered_output = (
+                self.renderer.render_with_report(plan)
+                if plan.audio_level_policy is not None
+                else RenderedOutput(self.renderer.render(plan))
+            )
+        except AudioLevelRenderError as exc:
+            return _ProcessedMatch(
+                _failed_match(match, str(exc)),
+                audio_levels=exc.report,
+                mix_recommendation=recommendation,
+            )
+        except (FileExistsError, ValueError, RuntimeError) as exc:
+            return _ProcessedMatch(
+                _failed_match(match, str(exc)),
+                mix_recommendation=recommendation,
+            )
+        return _ProcessedMatch(
+            replace(match, output_path=rendered_output.output_path),
+            audio_levels=rendered_output.audio_levels,
+            mix_recommendation=(replace(recommendation, applied=True) if recommendation is not None else None),
+        )
+
     def process(
         self,
         bundle: AnalysisBundle,
@@ -149,6 +288,8 @@ class RecorderSyncPipeline:
         *,
         mode: RenderMode = RenderMode.REPLACE,
         recommended_only: bool = False,
+        mix_profile: MixProfile = MixProfile.CONSERVATIVE,
+        recommend_mix_only: bool = False,
         mix_policy: MixPolicy | None = None,
         camera_audio_volume: float | None = None,
         external_audio_volume: float | None = None,
@@ -159,95 +300,55 @@ class RecorderSyncPipeline:
         audio_level_policy: AudioLevelPolicy | None = None,
         progress_callback: ProgressCallback | None = None,
     ) -> MatchReport:
+        options = _ProcessOptions(
+            mode=mode,
+            mix_profile=mix_profile,
+            recommend_mix_only=recommend_mix_only,
+            mix_policy=mix_policy,
+            camera_audio_volume=camera_audio_volume,
+            external_audio_volume=external_audio_volume,
+            external_highpass_hz=external_highpass_hz,
+            overwrite=overwrite,
+            output_prefix=output_prefix,
+            output_suffix=output_suffix,
+            audio_level_policy=audio_level_policy,
+        )
+        _validate_process_options(options)
+
         sessions = {session.id: session for session in bundle.sessions}
         videos = {video.path: video for video in bundle.videos}
         processed: list[AudioMatch] = []
         audio_levels: list[AudioLevelReport | None] = []
+        mix_recommendations: list[MixRecommendation | None] = []
 
         render_total = sum(
             is_renderable_match(match, mode, recommended_only=recommended_only) for match in bundle.matches
         )
         render_completed = 0
+        progress_stage = "mix" if recommend_mix_only else "render"
         if progress_callback is not None:
-            progress_callback("render", 0, render_total, "")
+            progress_callback(progress_stage, 0, render_total, "")
 
         for match in bundle.matches:
             if not is_renderable_match(match, mode, recommended_only=recommended_only):
                 processed.append(match)
                 audio_levels.append(None)
+                mix_recommendations.append(None)
                 continue
             video = videos.get(match.video_path)
             if video is None:
-                processed.append(
-                    replace(
-                        match,
-                        status=MatchStatus.ERROR,
-                        reason="Matched result is missing render metadata",
-                        output_path=None,
-                        segments=(),
-                    )
-                )
+                processed.append(_failed_match(match, "Matched result is missing render metadata"))
                 audio_levels.append(None)
-                render_completed += 1
-                if progress_callback is not None:
-                    progress_callback(
-                        "render",
-                        render_completed,
-                        render_total,
-                        match.video_path.name,
-                    )
-                continue
-
-            try:
-                plan = build_render_plan(
-                    match,
-                    video,
-                    sessions,
-                    output_dir,
-                    mode=mode,
-                    mix_policy=mix_policy,
-                    camera_audio_volume=camera_audio_volume,
-                    external_audio_volume=external_audio_volume,
-                    external_highpass_hz=external_highpass_hz,
-                    overwrite=overwrite,
-                    output_prefix=output_prefix,
-                    output_suffix=output_suffix,
-                    audio_level_policy=audio_level_policy,
-                )
-                rendered_output = (
-                    self.renderer.render_with_report(plan)
-                    if plan.audio_level_policy is not None
-                    else RenderedOutput(self.renderer.render(plan))
-                )
-            except AudioLevelRenderError as exc:
-                processed.append(
-                    replace(
-                        match,
-                        status=MatchStatus.ERROR,
-                        reason=str(exc),
-                        output_path=None,
-                        segments=(),
-                    )
-                )
-                audio_levels.append(exc.report)
-            except (FileExistsError, ValueError, RuntimeError) as exc:
-                processed.append(
-                    replace(
-                        match,
-                        status=MatchStatus.ERROR,
-                        reason=str(exc),
-                        output_path=None,
-                        segments=(),
-                    )
-                )
-                audio_levels.append(None)
+                mix_recommendations.append(None)
             else:
-                processed.append(replace(match, output_path=rendered_output.output_path))
-                audio_levels.append(rendered_output.audio_levels)
+                result = self._process_match(match, video, sessions, output_dir, options)
+                processed.append(result.match)
+                audio_levels.append(result.audio_levels)
+                mix_recommendations.append(result.mix_recommendation)
             render_completed += 1
             if progress_callback is not None:
                 progress_callback(
-                    "render",
+                    progress_stage,
                     render_completed,
                     render_total,
                     match.video_path.name,
@@ -257,4 +358,5 @@ class RecorderSyncPipeline:
             sessions=bundle.sessions,
             matches=tuple(processed),
             audio_levels=tuple(audio_levels),
+            mix_recommendations=tuple(mix_recommendations),
         )

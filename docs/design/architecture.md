@@ -37,6 +37,7 @@ CLI와 다른 애플리케이션은 `pipeline.py` 또는 `api.py`를 호출한�
 | `recommendation.py` | 매칭 결과의 보수적인 처리 모드 추천 | `recommend_mode()` |
 | `media.py` | 파일 탐색, ffprobe, PCM/특징 추출 | `FFmpegTools`, `VideoInfo` |
 | `audio_levels.py` | 음량 측정값, static gain 판정, 최종 출력 검증 정책 | `AudioLevelPolicy`, `decide_static_gain()`, `validate_output_metrics()` |
+| `mix_analysis.py` | 두 원본의 float 음량·스펙트럼·stereo 측정과 보수적인 mix 정책 추천 | `FFmpegMixAnalyzer`, `recommend_auto_mix()` |
 | `render.py` | mix 정책, 매칭의 렌더 계획 변환, concat 매니페스트, FFmpeg 명령, 원자적 출력 | `MixPolicy`, `build_render_plan()`, `RenderPlan`, `FFmpegRenderer` |
 | `report.py` | 버전 있는 JSON 계약 | `MatchReport` |
 | `analysis_plan.py` | 분석 입력 지문 저장·검증과 번들 복원 | `write_analysis_report()`, `load_analysis_report()` |
@@ -141,7 +142,11 @@ FFmpeg 기본 autorotate가 스마트폰의 display matrix를 실제 픽셀 방�
 
 고정 `-r` 대신 `-fps_mode:v passthrough`를 사용한다. 따라서 24/25/30/60fps와 스마트폰 VFR의 프레임 타임스탬프를 임의 CFR로 변환하지 않는다. 오디오의 drift 보정과 출력 길이 제한은 기존 `atempo`, `atrim` 정책을 그대로 적용한다.
 
-외부 오디오는 `--external-audio-volume`을 `volume` 필터에 먼저 적용한다. `mix` 기본은 카메라 1.0, 외부 `10^(-12/20)`, 외부 HP80이다. mono 입력은 카메라와 외부 모두 추가 gain 없이 dual-mono로 만들고 stereo 입력은 그대로 유지한 뒤 `amix normalize=0`으로 합산한다. 3채널 이상인 카메라나 외부 입력은 승인 없는 downmix를 피하기 위해 렌더 전에 거부한다. 두 볼륨과 HPF는 사용자가 덮어쓸 수 있으며, `--external-highpass-hz 0`은 HPF를 해제한다. 이 네 구성값과 최종 음량 계약은 불변 `MixPolicy`로 묶는다. 현재 CLI는 검증된 기본 정책을 사용하고, 향후 음향 분석기는 같은 객체를 결과로 반환해 렌더 경로를 재사용할 수 있다. 분석기가 없는 상태에서 장비 이름만으로 정책을 바꾸지는 않는다.
+외부 오디오는 `--external-audio-volume`을 `volume` 필터에 먼저 적용한다. `mix`의 conservative 기본은 카메라 1.0, 외부 `10^(-12/20)`, 외부 HP80이다. mono 입력은 카메라와 외부 모두 추가 gain 없이 dual-mono로 만들고 stereo 입력은 그대로 유지한 뒤 `amix normalize=0`으로 합산한다. 3채널 이상인 카메라나 외부 입력은 승인 없는 downmix를 피하기 위해 렌더 전에 거부한다. 두 볼륨과 HPF는 사용자가 덮어쓸 수 있으며, `--external-highpass-hz 0`은 HPF를 해제한다. 이 네 구성값과 최종 음량 계약은 불변 `MixPolicy`로 묶는다.
+
+`--mix-profile auto`는 매칭된 카메라와 외부 구간을 component gain과 HPF 적용 전 독립적으로 `fltp` 디코딩한다. 48kHz float 경로의 EBU R128에서 integrated loudness, LRA, sample peak, true peak를 측정하고, 같은 디코딩 결과의 8kHz float PCM에서 160Hz 이하 에너지 비중, spectral centroid, stereo correlation, Side/Mid 에너지 비를 계산한다. 최종 stereo mix에서 mono 입력은 gain 없이 dual-mono로 배치되므로 EBU R128 branch도 같은 dual-mono 조건으로 측정하고 스펙트럼·채널 표시는 원본 mono를 유지한다. 외부 integrated loudness를 카메라보다 12 LU 낮추는 gain과 외부 true peak에 카메라 대비 3 dB 여유를 두는 gain 중 더 큰 감쇠를 선택하며 0dB보다 큰 gain은 적용하지 않는다. 외부 저역 비중이 0.08 이상 높고 centroid가 150Hz 이상 낮을 때만 HP100을 선택하고 그 외에는 HP80을 유지한다. 추천 결과도 conservative와 같은 `MixPolicy`를 반환해 이후 합산·static gain·최종 AAC 검증 경로를 그대로 사용한다.
+
+auto dry-run은 추천을 리포트하지만 렌더하지 않고, auto 일반 실행은 추천 정책을 명시적으로 선택한 사용자의 요청에 따라 적용한다. 장비명, 제조사, 파일명으로 정책을 분기하지 않고 limiter, compressor, noise suppression, AGC를 추가하지 않는다. 측정 지표는 보수적인 component balance를 위한 기준이지 주관적인 음질 점수가 아니다.
 
 `replace`의 opt-in 음량 안전 경로는 목표 LUFS, 최대 dBTP, 출력 채널 정책, LU 허용 오차를 모두 받은 경우에만 활성화한다. `mix`는 `-16 LUFS`, 최대 `-1 dBTP`, stereo, `0.5 LU` 허용 오차를 기본 사용한다. 실제 렌더 구간에 drift, padding/trimming, 채널 정책을 적용하고, mix는 component gain과 HPF까지 적용한 합산 신호를 `fltp` 상태에서 `ebur128=peak=sample+true`로 측정한다. 이 분석은 카메라와 외부 오디오를 모두 오류 즉시 중단 모드로 디코드하므로 어느 입력에서든 decoder error가 발생하면 렌더하지 않는다.
 

@@ -272,6 +272,178 @@
         },
         "audio_levels": {
           "$ref": "#/$defs/audioLevels"
+        },
+        "mix_recommendation": {
+          "$ref": "#/$defs/mixRecommendation"
+        }
+      }
+    },
+    "mixSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "audio",
+        "low_frequency_energy_ratio",
+        "spectral_centroid_hz",
+        "stereo_correlation",
+        "stereo_side_to_mid_db"
+      ],
+      "properties": {
+        "audio": {
+          "$ref": "#/$defs/audioMetrics"
+        },
+        "low_frequency_energy_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "spectral_centroid_hz": {
+          "type": "number",
+          "minimum": 0
+        },
+        "stereo_correlation": {
+          "type": ["number", "null"],
+          "minimum": -1,
+          "maximum": 1
+        },
+        "stereo_side_to_mid_db": {
+          "type": ["number", "null"]
+        }
+      }
+    },
+    "mixPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "camera_audio_volume",
+        "external_audio_volume",
+        "external_gain_db",
+        "external_highpass_hz",
+        "audio_level_policy"
+      ],
+      "properties": {
+        "camera_audio_volume": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "external_audio_volume": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "external_gain_db": {
+          "type": "number",
+          "maximum": 0
+        },
+        "external_highpass_hz": {
+          "type": ["number", "null"],
+          "minimum": 20,
+          "maximum": 20000
+        },
+        "audio_level_policy": {
+          "$ref": "#/$defs/audioLevelPolicy"
+        }
+      }
+    },
+    "mixRecommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "camera", "external", "policy", "reasons", "failures"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": ["recommended", "applied"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "camera": {
+                "$ref": "#/$defs/mixSource"
+              },
+              "external": {
+                "$ref": "#/$defs/mixSource"
+              },
+              "policy": {
+                "$ref": "#/$defs/mixPolicy"
+              },
+              "reasons": {
+                "minItems": 1
+              },
+              "failures": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "error"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "policy": {
+                "type": "null"
+              },
+              "failures": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "status": {
+          "enum": ["recommended", "applied", "error"]
+        },
+        "camera": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/mixSource"
+            }
+          ]
+        },
+        "external": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/mixSource"
+            }
+          ]
+        },
+        "policy": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/mixPolicy"
+            }
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
         }
       }
     },

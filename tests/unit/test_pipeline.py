@@ -17,6 +17,12 @@ from recordersync.audio_levels import (
 )
 from recordersync.matching import FeatureTimeline, MatchOptions
 from recordersync.media import FFmpegTools, VideoInfo
+from recordersync.mix_analysis import (
+    FFmpegMixAnalyzer,
+    MixProfile,
+    MixRecommendation,
+    MixSourceMetrics,
+)
 from recordersync.models import (
     AudioChunk,
     AudioMatch,
@@ -272,6 +278,140 @@ def test_파이프라인_믹스는_분석기가_제안한_정책을_같은_렌�
     assert plan.external_audio_volume == pytest.approx(0.2)
     assert plan.external_highpass_hz == pytest.approx(100)
     assert plan.audio_level_policy == suggested_policy.audio_level_policy
+
+
+def test_파이프라인_자동_mix는_영상별_추천_정책을_렌더하고_리포트에_연결한다(
+    tmp_path: Path,
+) -> None:
+    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True, audio_channels=2)
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 30, 48_000, 1, "pcm_f32le", None),),
+    )
+    match = AudioMatch(
+        video.path,
+        5,
+        MatchStatus.MATCHED,
+        session_id=session.id,
+        external_start_seconds=3,
+    )
+    source_levels = AudioLevelMetrics(2, 48_000, -12, 7, -1.1, -1, 5, "float_analysis")
+    source = MixSourceMetrics(source_levels, 0.2, 1_300, 0.8, -18)
+    policy = MixPolicy(
+        camera_audio_volume=1.0,
+        external_audio_volume=0.2,
+        external_highpass_hz=100,
+        audio_level_policy=AudioLevelPolicy(-16, -1, OutputChannelLayout.STEREO, 0.5),
+    )
+    recommendation = MixRecommendation(
+        camera=source,
+        external=source,
+        policy=policy,
+        external_gain_db=-13.9794,
+        reasons=("측정 기반 보수 감쇠",),
+    )
+    mix_analyzer = MagicMock(spec=FFmpegMixAnalyzer)
+    mix_analyzer.recommend.return_value = recommendation
+    renderer = MagicMock(spec=FFmpegRenderer)
+    output = tmp_path / "clip.mp4"
+    renderer.render_with_report.return_value = RenderedOutput(output)
+
+    report = RecorderSyncPipeline(renderer=renderer, mix_analyzer=mix_analyzer).process(
+        AnalysisBundle((session,), (video,), (match,)),
+        tmp_path,
+        mode=RenderMode.MIX,
+        mix_profile=MixProfile.AUTO,
+    )
+
+    analysis_plan = mix_analyzer.recommend.call_args.args[0]
+    assert analysis_plan.mode is RenderMode.MIX
+    rendered_plan = renderer.render_with_report.call_args.args[0]
+    assert rendered_plan.camera_audio_volume == pytest.approx(1.0)
+    assert rendered_plan.external_audio_volume == pytest.approx(0.2)
+    assert rendered_plan.external_highpass_hz == pytest.approx(100)
+    assert report.matches[0].output_path == output
+    assert report.mix_recommendations[0] is not None
+    assert report.mix_recommendations[0].applied
+
+
+def test_파이프라인_자동_mix_추천_전용은_분석만_하고_렌더하지_않는다(
+    tmp_path: Path,
+) -> None:
+    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True, audio_channels=2)
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 30, 48_000, 1, "pcm_f32le", None),),
+    )
+    match = AudioMatch(
+        video.path,
+        5,
+        MatchStatus.MATCHED,
+        session_id=session.id,
+        external_start_seconds=3,
+    )
+    source_levels = AudioLevelMetrics(2, 48_000, -12, 7, -1.1, -1, 5, "float_analysis")
+    source = MixSourceMetrics(source_levels, 0.2, 1_300, 0.8, -18)
+    recommendation = MixRecommendation(
+        camera=source,
+        external=source,
+        policy=MixPolicy(
+            camera_audio_volume=1.0,
+            external_audio_volume=10 ** (-12 / 20),
+            external_highpass_hz=80,
+            audio_level_policy=AudioLevelPolicy(-16, -1, OutputChannelLayout.STEREO, 0.5),
+        ),
+        external_gain_db=-12,
+        reasons=("측정 기반 보수 감쇠",),
+    )
+    mix_analyzer = MagicMock(spec=FFmpegMixAnalyzer)
+    mix_analyzer.recommend.return_value = recommendation
+    renderer = MagicMock(spec=FFmpegRenderer)
+
+    report = RecorderSyncPipeline(renderer=renderer, mix_analyzer=mix_analyzer).process(
+        AnalysisBundle((session,), (video,), (match,)),
+        tmp_path,
+        mode=RenderMode.MIX,
+        mix_profile=MixProfile.AUTO,
+        recommend_mix_only=True,
+    )
+
+    mix_analyzer.recommend.assert_called_once()
+    renderer.render.assert_not_called()
+    renderer.render_with_report.assert_not_called()
+    assert report.matches[0].status is MatchStatus.MATCHED
+    assert report.matches[0].output_path is None
+    assert report.mix_recommendations == (recommendation,)
+
+
+def test_파이프라인_자동_mix_분석_실패는_영상별_오류로_격리한다(tmp_path: Path) -> None:
+    video = VideoInfo(Path("clip.mov"), 5, 3840, 2160, True, audio_channels=2)
+    session = RecordingSession(
+        "session-001",
+        (AudioChunk(Path("REC.wav"), 30, 48_000, 1, "pcm_f32le", None),),
+    )
+    match = AudioMatch(
+        video.path,
+        5,
+        MatchStatus.MATCHED,
+        session_id=session.id,
+        external_start_seconds=3,
+    )
+    failure = MixRecommendation.failed("external analysis error: invalid frame")
+    mix_analyzer = MagicMock(spec=FFmpegMixAnalyzer)
+    mix_analyzer.recommend.return_value = failure
+    renderer = MagicMock(spec=FFmpegRenderer)
+
+    report = RecorderSyncPipeline(renderer=renderer, mix_analyzer=mix_analyzer).process(
+        AnalysisBundle((session,), (video,), (match,)),
+        tmp_path,
+        mode=RenderMode.MIX,
+        mix_profile=MixProfile.AUTO,
+    )
+
+    renderer.render_with_report.assert_not_called()
+    assert report.matches[0].status is MatchStatus.ERROR
+    assert report.matches[0].reason == "Automatic mix analysis failed"
+    assert report.mix_recommendations == (failure,)
 
 
 def test_파이프라인은_음량_안전_결과를_영상별_리포트에_연결한다(tmp_path: Path) -> None:

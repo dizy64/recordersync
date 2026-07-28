@@ -20,8 +20,10 @@ from recordersync.audio_levels import (
     decide_static_gain,
 )
 from recordersync.media import VideoInfo
+from recordersync.mix_analysis import MixRecommendation, MixSourceMetrics
 from recordersync.models import AudioChunk, AudioMatch, MatchStatus, RecordingSession
 from recordersync.pipeline import AnalysisBundle
+from recordersync.render import MixPolicy
 from recordersync.report import MatchReport
 
 SCHEMA_PATH = Path(__file__).parents[2] / "schemas" / "recordersync-report-v2.schema.json"
@@ -108,6 +110,33 @@ def test_리포트_스키마는_음량_안전_처리_결과를_검증한다(
     )
 
     Draft202012Validator(schema).validate(report.to_dict())
+
+
+def test_리포트_스키마는_자동_mix_추천과_분석_실패를_검증한다(
+    schema: dict[str, object],
+    bundle: AnalysisBundle,
+) -> None:
+    level_policy = AudioLevelPolicy(-16, -1, OutputChannelLayout.STEREO, 0.5)
+    levels = AudioLevelMetrics(2, 48_000, -12, 7, -1.1, -1, 10, "float_analysis")
+    source = MixSourceMetrics(levels, 0.2, 1_300, 0.8, -18)
+    success = MixRecommendation(
+        camera=source,
+        external=source,
+        policy=MixPolicy(1.0, 10 ** (-12 / 20), 80, level_policy),
+        external_gain_db=-12,
+        reasons=("측정 기반 보수 감쇠",),
+        applied=True,
+    )
+    failure = MixRecommendation.failed("camera analysis error: invalid frame")
+    validator = Draft202012Validator(schema)
+
+    for recommendation in (success, failure):
+        report = MatchReport(
+            sessions=bundle.sessions,
+            matches=bundle.matches,
+            mix_recommendations=(recommendation,),
+        )
+        validator.validate(report.to_dict())
 
 
 def test_리포트_스키마는_gain_충돌과_입력_분석_실패를_검증한다(

@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from recordersync.mix_analysis import MixProfile
 
 from recordersync.audio_levels import OutputChannelLayout
 from recordersync.cli import build_parser, main
@@ -65,6 +66,8 @@ def test_처리_도움말은_주요_처리_옵션을_안내한다(
     assert "원본 영상 오디오 볼륨" in stdout
     assert "--external-audio-volume" in stdout
     assert "외부 보이스레코더 오디오 볼륨" in stdout
+    assert "--mix-profile {conservative,auto}" in stdout
+    assert "측정 기반 추천" in stdout
     assert "--mode {replace,mix,fallback}" in stdout
     assert "--min-partial-seconds" in stdout
     assert "--recommended-only" in stdout
@@ -100,6 +103,7 @@ def test_처리_CLI는_안전한_교체_정책을_기본값으로_사용한다()
     assert args.audio_dir == Path("/audio")
     assert args.output_dir is None
     assert args.mode == "replace"
+    assert args.mix_profile == "conservative"
     assert args.camera_audio_volume is None
     assert args.external_audio_volume is None
     assert args.external_highpass_hz is None
@@ -241,6 +245,45 @@ def test_처리_CLI는_믹스_외의_highpass를_거부한다(
     assert "--external-highpass-hz requires --mode mix" in capsys.readouterr().err
 
 
+def test_처리_CLI는_자동_mix를_mix_모드에서만_허용한다(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(["process", "/video", "--mix-profile", "auto"])
+
+    assert exit_info.value.code == 2
+    assert "--mix-profile auto requires --mode mix" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--camera-audio-volume", "0.5"],
+        ["--external-audio-volume", "0.5"],
+        ["--external-highpass-hz", "100"],
+        [
+            "--target-lufs",
+            "-16",
+            "--max-true-peak-dbtp",
+            "-1",
+            "--output-channel-layout",
+            "stereo",
+            "--loudness-tolerance-lu",
+            "0.5",
+        ],
+    ],
+)
+def test_처리_CLI는_자동_mix와_수동_mix_정책을_함께_허용하지_않는다(
+    options: list[str],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(["process", "/video", "--mode", "mix", "--mix-profile", "auto", *options])
+
+    assert exit_info.value.code == 2
+    assert "--mix-profile auto cannot be combined with manual mix options" in capsys.readouterr().err
+
+
 def test_처리_CLI는_음량_안전_옵션을_모두_명시해야_한다(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -344,10 +387,44 @@ def test_메인_믹스는_기본_음량_정책과_필터_결정을_렌더_계층
 
     assert exit_code == 0
     kwargs = pipeline.process.call_args.kwargs
+    assert kwargs["mix_profile"] is MixProfile.CONSERVATIVE
     assert kwargs["camera_audio_volume"] is None
     assert kwargs["external_audio_volume"] is None
     assert kwargs["external_highpass_hz"] is None
     assert kwargs["audio_level_policy"] is None
+    assert json.loads(capsys.readouterr().out)["summary"]["matched"] == 1
+
+
+def test_메인_자동_mix_dry_run은_추천만_분석하고_렌더를_요청하지_않는다(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    bundle = AnalysisBundle(
+        sessions=(),
+        videos=(),
+        matches=(AudioMatch(Path("clip.mov"), 5, MatchStatus.MATCHED),),
+    )
+    pipeline = MagicMock()
+    pipeline.analyze.return_value = bundle
+    pipeline.process.return_value = MatchReport(sessions=(), matches=bundle.matches)
+
+    with patch("recordersync.cli.RecorderSyncPipeline", return_value=pipeline):
+        exit_code = main(
+            [
+                "process",
+                str(tmp_path),
+                "--mode",
+                "mix",
+                "--mix-profile",
+                "auto",
+                "--dry-run",
+            ]
+        )
+
+    assert exit_code == 0
+    kwargs = pipeline.process.call_args.kwargs
+    assert kwargs["mix_profile"] is MixProfile.AUTO
+    assert kwargs["recommend_mix_only"]
     assert json.loads(capsys.readouterr().out)["summary"]["matched"] == 1
 
 
