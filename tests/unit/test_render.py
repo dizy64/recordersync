@@ -825,6 +825,52 @@ def test_믹스_정책은_개별_옵션과_동시에_사용할_수_없다() -> N
         )
 
 
+def test_믹스_정책은_mix_모드에서만_사용할_수_있다() -> None:
+    match = AudioMatch(
+        _video().path,
+        _video().duration_seconds,
+        MatchStatus.MATCHED,
+        session_id=_session().id,
+        external_start_seconds=1,
+    )
+    policy = MixPolicy(1.0, 0.25, 80, _audio_level_policy())
+
+    with pytest.raises(ValueError, match="mix_policy requires mix mode"):
+        build_render_plan(
+            match,
+            _video(),
+            _session(),
+            Path("replace"),
+            mode=RenderMode.REPLACE,
+            mix_policy=policy,
+        )
+
+
+def test_믹스는_음량_정책만_덮어써도_기본_비율과_HP80을_유지한다() -> None:
+    match = AudioMatch(
+        _video().path,
+        _video().duration_seconds,
+        MatchStatus.MATCHED,
+        session_id=_session().id,
+        external_start_seconds=1,
+    )
+    audio_level_policy = _audio_level_policy(target_lufs=-18, maximum_true_peak_dbtp=-2)
+
+    plan = build_render_plan(
+        match,
+        _video(),
+        _session(),
+        Path("replace"),
+        mode=RenderMode.MIX,
+        audio_level_policy=audio_level_policy,
+    )
+
+    assert plan.camera_audio_volume == pytest.approx(1.0)
+    assert plan.external_audio_volume == pytest.approx(10 ** (-12 / 20))
+    assert plan.external_highpass_hz == pytest.approx(80)
+    assert plan.audio_level_policy == audio_level_policy
+
+
 def test_렌더러는_libx265로_대체하고_원자적으로_결과를_공개한다(tmp_path: Path) -> None:
     output = tmp_path / "replace" / "clip.mp4"
     plan = RenderPlan(
