@@ -533,7 +533,7 @@ def test_폴백_처리는_다중_부분_구간만_레코더_오디오로_교체�
     match = report["matches"][0]
     output = partial_synthetic_project.output_dir / "partial.mp4"
 
-    assert report["version"] == 2
+    assert report["version"] == 3
     assert report["summary"]["partial"] == 1
     assert match["status"] == "partial"
     assert match["recommended_mode"] == "fallback"

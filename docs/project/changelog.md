@@ -13,7 +13,8 @@ RecorderSync의 사용자 동작과 공개 연동 계약 변경을 버전별로 
 - component 처리 후 합산 float 신호의 음량 측정, 합산 뒤 static gain, 최종 AAC 검증
 - 카메라 오디오 채널 수를 보존하는 `analysis_inputs` v2와 mono dual-mono 처리, 다채널 자동 downmix 거부
 - `--mix-profile auto`의 원본별 float LUFS/true peak와 스펙트럼·stereo 분석, 추천 전용 dry-run, 같은 `MixPolicy` 렌더 적용
-- JSON v2 영상별 optional `mix_recommendation`과 stderr `[믹스 추천]` 요약
+- JSON v3 영상별 optional `mix_recommendation`과 stderr `[믹스 추천]` 요약
+- 장시간 auto 입력의 전체 LUFS·peak 측정은 유지하면서 스펙트럼 PCM을 시간축의 12개 10초 대표 구간으로 제한
 
 ### 호환성
 
@@ -21,7 +22,7 @@ RecorderSync의 사용자 동작과 공개 연동 계약 변경을 버전별로 
 - replace 음량 안전 옵션에는 기본값이나 자동 추론이 없다. mix는 모드를 명시한 경우에만 문서화된 기본 음량·HPF·출력 계약을 적용한다.
 - limiter/compressor를 자동 적용하지 않고, gain 충돌 또는 최종 검증 실패 파일은 최종 경로에 게시하지 않는다.
 - auto mix는 명시적 opt-in이며 수동 component/음량 정책과 함께 사용할 수 없다. 외부 음원을 boost하거나 장비명으로 분기하지 않는다.
-- JSON 계약은 additive optional 필드이므로 v2를 유지한다.
+- `mix_recommendation`은 알 수 없는 필드를 거부하는 v2 스키마와 호환되지 않으므로 REPORT_VERSION 3과 별도 스키마로 분리한다. v2 스키마 파일은 기존 계약 그대로 보존한다.
 
 ## 0.4.2 - 2026-07-26
 

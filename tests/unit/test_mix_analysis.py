@@ -50,9 +50,9 @@ def _source_metrics(
     )
 
 
-def _render_plan() -> RenderPlan:
+def _render_plan(*, duration_seconds: float = 5.0) -> RenderPlan:
     return RenderPlan(
-        video=VideoInfo(Path("clip.mov"), 5.0, 1920, 1080, True, audio_channels=2),
+        video=VideoInfo(Path("clip.mov"), duration_seconds, 1920, 1080, True, audio_channels=2),
         session=RecordingSession(
             "session-001",
             (AudioChunk(Path("REC.wav"), 30.0, 48_000, 1, "pcm_s24le", None),),
@@ -184,8 +184,26 @@ def test_자동_mix_분석_명령은_두_입력을_float로_분리_측정하고_
     assert "pan=stereo|c0=c0|c1=c0" not in camera_joined
     assert "highpass" not in external_joined
     assert "volume=" not in external_joined
+    assert "aselect=" not in external_joined
     assert camera[-1] == "pipe:1"
     assert external[-1] == "pipe:1"
+
+
+def test_장시간_자동_mix_분석은_스펙트럼_PCM을_시간축의_대표_구간으로_제한한다() -> None:
+    analyzer = FFmpegMixAnalyzer()
+
+    command = analyzer.build_command(
+        _render_plan(duration_seconds=12 * 60 * 60),
+        Path("concat.txt"),
+        MixSource.EXTERNAL,
+    )
+    joined = " ".join(command)
+
+    assert joined.count("between(t") == 12
+    assert "between(t,0,10)" in joined
+    assert "between(t,43190,43200)" in joined
+    assert "asetpts=N/SR/TB" in joined
+    assert "atrim=duration=43200" in joined
 
 
 def test_자동_mix_분석은_FFmpeg_진단의_마지막_세_줄을_실패로_보고한다() -> None:

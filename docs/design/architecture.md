@@ -144,7 +144,7 @@ FFmpeg 기본 autorotate가 스마트폰의 display matrix를 실제 픽셀 방�
 
 외부 오디오는 `--external-audio-volume`을 `volume` 필터에 먼저 적용한다. `mix`의 conservative 기본은 카메라 1.0, 외부 `10^(-12/20)`, 외부 HP80이다. mono 입력은 카메라와 외부 모두 추가 gain 없이 dual-mono로 만들고 stereo 입력은 그대로 유지한 뒤 `amix normalize=0`으로 합산한다. 3채널 이상인 카메라나 외부 입력은 승인 없는 downmix를 피하기 위해 렌더 전에 거부한다. 두 볼륨과 HPF는 사용자가 덮어쓸 수 있으며, `--external-highpass-hz 0`은 HPF를 해제한다. 이 네 구성값과 최종 음량 계약은 불변 `MixPolicy`로 묶는다.
 
-`--mix-profile auto`는 매칭된 카메라와 외부 구간을 component gain과 HPF 적용 전 독립적으로 `fltp` 디코딩한다. 48kHz float 경로의 EBU R128에서 integrated loudness, LRA, sample peak, true peak를 측정하고, 같은 디코딩 결과의 8kHz float PCM에서 160Hz 이하 에너지 비중, spectral centroid, stereo correlation, Side/Mid 에너지 비를 계산한다. 최종 stereo mix에서 mono 입력은 gain 없이 dual-mono로 배치되므로 EBU R128 branch도 같은 dual-mono 조건으로 측정하고 스펙트럼·채널 표시는 원본 mono를 유지한다. 외부 integrated loudness를 카메라보다 12 LU 낮추는 gain과 외부 true peak에 카메라 대비 3 dB 여유를 두는 gain 중 더 큰 감쇠를 선택하며 0dB보다 큰 gain은 적용하지 않는다. 외부 저역 비중이 0.08 이상 높고 centroid가 150Hz 이상 낮을 때만 HP100을 선택하고 그 외에는 HP80을 유지한다. 추천 결과도 conservative와 같은 `MixPolicy`를 반환해 이후 합산·static gain·최종 AAC 검증 경로를 그대로 사용한다.
+`--mix-profile auto`는 매칭된 카메라와 외부 구간을 component gain과 HPF 적용 전 독립적으로 `fltp` 디코딩한다. 48kHz float 경로의 EBU R128에서 전체 구간의 integrated loudness, LRA, sample peak, true peak를 측정하고, 같은 디코딩 결과의 8kHz float PCM에서 160Hz 이하 에너지 비중, spectral centroid, stereo correlation, Side/Mid 에너지 비를 계산한다. 120초를 넘는 입력은 8kHz branch에서 시간축에 균등 배치한 12개 10초 대표 구간만 이어 분석해 raw stereo PCM을 약 7.7MB 이하로 제한한다. 최종 stereo mix에서 mono 입력은 gain 없이 dual-mono로 배치되므로 EBU R128 branch도 같은 dual-mono 조건으로 측정하고 스펙트럼·채널 표시는 원본 mono를 유지한다. 외부 integrated loudness를 카메라보다 12 LU 낮추는 gain과 외부 true peak에 카메라 대비 3 dB 여유를 두는 gain 중 더 큰 감쇠를 선택하며 0dB보다 큰 gain은 적용하지 않는다. 외부 저역 비중이 0.08 이상 높고 centroid가 150Hz 이상 낮을 때만 HP100을 선택하고 그 외에는 HP80을 유지한다. 추천 결과도 conservative와 같은 `MixPolicy`를 반환해 이후 합산·static gain·최종 AAC 검증 경로를 그대로 사용한다.
 
 auto dry-run은 추천을 리포트하지만 렌더하지 않고, auto 일반 실행은 추천 정책을 명시적으로 선택한 사용자의 요청에 따라 적용한다. 장비명, 제조사, 파일명으로 정책을 분기하지 않고 limiter, compressor, noise suppression, AGC를 추가하지 않는다. 측정 지표는 보수적인 component balance를 위한 기준이지 주관적인 음질 점수가 아니다.
 
@@ -165,7 +165,7 @@ maximum_safe_gain_db = maximum_true_peak_dbtp - measured_true_peak_dbtp
 
 ## 리포트 버전과 국제화
 
-리포트 v2는 `partial` 상태, `coverage_ratio`, 시간순 `segments`, 처리 모드 추천을 제공한다. JSON 키, 상태, 수치 필드는 언어와 무관한 자동화 계약이다. `language`은 사람이 읽는 `reason`과 `recommendation_reason`의 언어를 나타내며 `ko/en`만 지원한다. 번역은 직렬화 경계에서만 수행하므로 내부 매칭·오류 사유는 안정적인 영어 원문을 유지한다. 알 수 없는 FFmpeg 진단은 정보 손실을 막기 위해 번역하지 않는다.
+리포트 v3는 v2의 `partial` 상태, `coverage_ratio`, 시간순 `segments`, 처리 모드 추천을 유지하고 auto mix의 `mix_recommendation`을 추가한다. JSON 키, 상태, 수치 필드는 언어와 무관한 자동화 계약이다. `language`은 사람이 읽는 `reason`과 `recommendation_reason`의 언어를 나타내며 `ko/en`만 지원한다. 번역은 직렬화 경계에서만 수행하므로 내부 매칭·오류 사유는 안정적인 영어 원문을 유지한다. 알 수 없는 FFmpeg 진단은 정보 손실을 막기 위해 번역하지 않는다.
 
 ## 오류와 자동화 계약
 

@@ -21,7 +21,7 @@ RecorderSync의 비즈니스 정책은 단위 테스트로 검증한다. FFmpeg�
 | `test_cli.py` | 도움말, 기본 부분 분석, 분석 재사용, auto/manual 배타성, 음량 필수 입력, 배치 명령 추천, 리포트, 종료 코드 |
 | `test_analysis_plan.py` | 분석 입력 round-trip, 지문·디렉터리·버전 검증, 언어 독립성 |
 | `test_api.py` | 외부 소비자용 세션·매칭·영상별 오류 격리·영상/세션 인덱스 식별 검증·다중 세션 렌더 계획 API |
-| `test_report.py` | JSON v2, 음량과 auto mix 정책/측정/검증, 부분 구간/사용률, 추천 명령, 한국어·영어 목록 |
+| `test_report.py` | JSON v3, 음량과 auto mix 정책/측정/검증, 부분 구간/사용률, 추천 명령, 한국어·영어 목록 |
 | `test_recommendation.py` | 영상별/배치 replace·fallback 추천과 보수적인 보류 경계 |
 | `test_check_markdown_links.py` | 로컬 링크, 외부 URL, 코드 블록, 저장소 이탈, CLI 오류 목록 |
 | `test_check_release_version.py` | 프로젝트·패키지·릴리스 태그 버전 일치와 오류 진단 |

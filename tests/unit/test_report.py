@@ -62,7 +62,7 @@ def test_매칭_리포트는_세션과_매칭과_요약을_직렬화한다() -> 
 
     payload = json.loads(report.to_json())
 
-    assert payload["version"] == 2
+    assert payload["version"] == 3
     assert payload["language"] == "ko"
     assert payload["summary"] == {
         "total": 2,

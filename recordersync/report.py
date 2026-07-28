@@ -19,7 +19,7 @@ from recordersync.recommendation import (
     recommend_mode,
 )
 
-REPORT_VERSION = 2
+REPORT_VERSION = 3
 
 
 class ReportLanguage(StrEnum):

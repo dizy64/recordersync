@@ -11,7 +11,7 @@
 - 자동 검증: `bash scripts/check.sh`, `bash scripts/test-e2e.sh` (합성 FFmpeg E2E), GitHub Actions
 - 성능 기준: 12시간·영상 200개, 일반 31.683초/실제 부분 160.178초, p95 0.159초/0.806초, p99 0.162초/0.809초, peak RSS 287.5MB/288.5MB (2026-07-17 Apple Silicon)
 
-현재 구현은 분할 녹음 세션 구성, 영상별 FFT NCC 전체/부분/다중 구간 매칭, 반복 후보 거부, 구간별 clock drift, replace/mix/fallback과 두 오디오 볼륨, 보수적인 기본 mix HP80·합산 음량 검증, 원본 측정 기반 auto mix 추천·적용, opt-in replace static gain 음량/true-peak 안전 검증, VFR 타임스탬프 보존, VideoToolbox/libx265 렌더, 선택 파일/진행률, 기본 부분 분석, 사람용 분석 목록과 보수적인 처리 모드·배치 명령 추천, dry-run/process 공통 렌더 정책, 입력 지문을 검증하는 분석 리포트 재사용, Draft 2020-12 스키마가 있는 opt-in JSON v2 리포트, 영상별 오류를 격리하는 공개 Python API, 태그 기반 GitHub Release 자동화를 포함한다. TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
+현재 구현은 분할 녹음 세션 구성, 영상별 FFT NCC 전체/부분/다중 구간 매칭, 반복 후보 거부, 구간별 clock drift, replace/mix/fallback과 두 오디오 볼륨, 보수적인 기본 mix HP80·합산 음량 검증, 원본 측정 기반 auto mix 추천·적용, opt-in replace static gain 음량/true-peak 안전 검증, VFR 타임스탬프 보존, VideoToolbox/libx265 렌더, 선택 파일/진행률, 기본 부분 분석, 사람용 분석 목록과 보수적인 처리 모드·배치 명령 추천, dry-run/process 공통 렌더 정책, 입력 지문을 검증하는 분석 리포트 재사용, Draft 2020-12 스키마가 있는 opt-in JSON v3 리포트, 영상별 오류를 격리하는 공개 Python API, 태그 기반 GitHub Release 자동화를 포함한다. TubeArchive 저장소는 아직 이 패키지를 호출하지 않는다.
 
 `MixPolicy`는 검증된 conservative mix와 측정 기반 auto가 같은 렌더 경로를 사용하는 경계다. auto는 float LUFS/true peak와 8kHz 스펙트럼·stereo 지표를 보고 component gain과 HP80/HP100만 추천하며 주관적인 음질 점수를 만들지 않는다. 현재 12 LU 상대 음량, 3 dB peak 여유, 저역 비중 0.08·centroid 150Hz 기준은 제한된 사용자 실파일 청취를 바탕으로 한 초기값이므로 장비명 분기 없이 더 많은 실파일로 calibration해야 한다.
 
@@ -75,7 +75,7 @@
 - 출력 해상도·방향·프레임 타임스탬프/VFR은 원본을 유지하지만 BT.709 HEVC 10-bit/AAC 프로파일과 영상 bitrate는 고정되어 있다.
 - 음량 안전 처리는 전체 replace와 전체 mix를 지원한다. fallback 여러 구간의 loudness 계약과 true-peak limiter/compressor는 지원하지 않는다.
 - auto mix의 스펙트럼 지표는 8kHz downsample을 사용하므로 4kHz 이상 고역의 음색이나 codec artifact를 직접 평가하지 않으며, 추천은 주관적인 음질 우열을 보증하지 않는다.
-- auto mix 스펙트럼 분석은 현재 한 원본의 8kHz float PCM 전체를 메모리에 보관하므로 stdout만 시간당 mono 약 110MiB, stereo 약 220MiB이며 float64 변환과 FFT 작업 메모리가 추가된다. 기존 12시간·영상 200개 벤치는 수 시간짜리 단일 영상을 대표하지 않으므로 후속 작업에서 streaming 또는 대표 window 분석으로 바꾸고 장시간 clip peak RSS를 다시 측정해야 한다.
+- auto mix 스펙트럼 분석은 120초를 넘는 입력에서 12개 10초 대표 구간을 사용하므로 짧고 국소적인 저역 과다나 음색 변화를 놓칠 수 있다. 전체 LUFS·LRA·sample peak·true peak는 대표 구간이 아니라 전체 렌더 구간에서 계속 측정한다.
 - 진행률은 완료 개수/비율만 제공하며 ETA·취소 후 resume·디스크 사전 용량 검사는 없다.
 - macOS 외 플랫폼은 지원 대상으로 검증하지 않았다.
 - PyPI 배포 파이프라인은 없으며 Git 태그와 GitHub Release 산출물을 사용한다.

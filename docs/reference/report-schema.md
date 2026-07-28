@@ -2,9 +2,9 @@
 
 ## 버전 정책
 
-현재 `version`은 `2`다. v2는 `partial` 상태와 다중 `segments`, `coverage_ratio`를 추가한다. 필드 추가처럼 기존 소비자가 무시할 수 있는 변경은 같은 버전에서 가능하지만, 이름·타입·상태 의미·null 가능성 변경은 REPORT_VERSION 증가와 호환성 테스트가 필요하다.
+현재 `version`은 `3`이다. v2는 `partial` 상태와 다중 `segments`, `coverage_ratio`를 추가했고, v3는 auto mix의 `mix_recommendation`을 추가한다. 스키마가 알 수 없는 필드를 거부하므로 새 필드를 추가할 때도 REPORT_VERSION 증가와 이전 스키마 보존이 필요하다.
 
-기계 판독 가능한 Draft 2020-12 스키마는 [recordersync-report-v2.schema.json](../../schemas/recordersync-report-v2.schema.json)이다. wheel에는 `recordersync/schemas/recordersync-report-v2.schema.json` 경로로도 포함된다. 스키마는 필수 필드, 타입, enum, null 가능성, 수치 범위와 알 수 없는 필드를 검증한다. summary 합계, 구간 정렬·겹침, 세션 참조, 입력 파일 지문 같은 교차 필드·파일 시스템 불변식은 각각 도메인 모델과 `process --analysis-report` 런타임 검증의 책임이다.
+기계 판독 가능한 현재 Draft 2020-12 스키마는 [recordersync-report-v3.schema.json](../../schemas/recordersync-report-v3.schema.json)이다. wheel에는 `recordersync/schemas/recordersync-report-v3.schema.json` 경로로도 포함되며, [v2 스키마](../../schemas/recordersync-report-v2.schema.json)도 이전 계약 그대로 보존한다. 스키마는 필수 필드, 타입, enum, null 가능성, 수치 범위와 알 수 없는 필드를 검증한다. summary 합계, 구간 정렬·겹침, 세션 참조, 입력 파일 지문 같은 교차 필드·파일 시스템 불변식은 각각 도메인 모델과 `process --analysis-report` 런타임 검증의 책임이다.
 
 JSON 키와 `status` 값은 번역하지 않는다. `reason`과 `recommendation_reason`만 `language`에 따라 한국어 또는 영어로 직렬화한다. CLI 기본값은 `ko`이며 `--report-language en`으로 바꿀 수 있다. 소비자는 표시 문구로 분기하지 말고 `status`, `recommended_mode`, 수치 필드를 사용한다.
 
@@ -21,7 +21,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-schema = json.loads(Path("schemas/recordersync-report-v2.schema.json").read_text(encoding="utf-8"))
+schema = json.loads(Path("schemas/recordersync-report-v3.schema.json").read_text(encoding="utf-8"))
 report = json.loads(Path("recordersync-report.json").read_text(encoding="utf-8"))
 Draft202012Validator(schema).validate(report)
 PY
@@ -48,7 +48,7 @@ PY
 
 입력이 없거나 바뀌었거나 계획 버전이 다르면 재사용을 거부한다. 자동 재분석 폴백은 stale 결과를 사용자가 눈치채지 못하게 만들 수 있으므로 제공하지 않는다. 분석 리포트와 처리 결과 리포트를 같은 경로로 지정할 수도 없다.
 
-`process --analysis-report`는 배포 wheel에 포함된 v2 JSON Schema로 전체 문서와 `analysis_inputs`의 필드 집합·필수값·수치 범위·RFC 3339 `date-time` 형식을 먼저 검증한다. unknown 필드나 유한하지 않은 JSON 수치는 거부하며, 스키마 검증 후 실제 파일의 path·size·mtime 지문을 확인한다.
+`process --analysis-report`는 배포 wheel에 포함된 v3 JSON Schema로 전체 문서와 `analysis_inputs`의 필드 집합·필수값·수치 범위·RFC 3339 `date-time` 형식을 먼저 검증한다. unknown 필드나 유한하지 않은 JSON 수치는 거부하며, 스키마 검증 후 실제 파일의 path·size·mtime 지문을 확인한다.
 
 ## audio_sessions
 
@@ -103,7 +103,7 @@ mix의 `input.codec` 값 `float_mix`는 실제 codec 이름이 아니라 카메�
 
 ### mix_recommendation
 
-`process --mode mix --mix-profile auto`를 사용한 영상에 포함하는 additive v2 필드다. `--dry-run`이면 `status`는 `recommended`, 실제 렌더와 최종 AAC 검증까지 성공하면 `applied`, 추천은 성공했지만 렌더나 최종 검증이 실패하면 `application_error`, 원본 분석이 실패하면 `error`다.
+`process --mode mix --mix-profile auto`를 사용한 영상에 포함하는 v3 필드다. `--dry-run`이면 `status`는 `recommended`, 실제 렌더와 최종 AAC 검증까지 성공하면 `applied`, 추천은 성공했지만 렌더나 최종 검증이 실패하면 `application_error`, 원본 분석이 실패하면 `error`다.
 
 | 하위 필드 | 의미 |
 |---|---|
@@ -113,7 +113,7 @@ mix의 `input.codec` 값 `float_mix`는 실제 codec 이름이 아니라 카메�
 | `reasons` | 측정값에서 gain과 HPF를 선택한 이유 |
 | `failures` | FFmpeg decode, EBU R128, PCM 스펙트럼, 정책 계산, 렌더 또는 최종 검증 실패. `recommended`와 `applied`면 빈 배열 |
 
-원본별 `audio.codec` 값 `float_analysis`는 source codec 이름이 아니라 48kHz float 경로에서 EBU R128을 측정했다는 내부 식별자다. mono의 `audio.channels`는 원본 1채널을 표시하지만 integrated loudness와 peak는 최종 stereo mix와 같은 gain 없는 dual-mono 조건으로 측정한다. 스펙트럼·stereo 지표는 같은 디코딩 신호를 8kHz float PCM으로 내려 계산한다. auto는 외부 음원을 boost하지 않으므로 `policy.external_gain_db`는 0 이하이고, 성공 상태는 non-null `camera`·`external`·`policy`, 하나 이상의 `reasons`, 빈 `failures`를 요구한다.
+원본별 `audio.codec` 값 `float_analysis`는 source codec 이름이 아니라 48kHz float 경로에서 EBU R128을 측정했다는 내부 식별자다. mono의 `audio.channels`는 원본 1채널을 표시하지만 integrated loudness와 peak는 최종 stereo mix와 같은 gain 없는 dual-mono 조건으로 측정한다. 스펙트럼·stereo 지표는 같은 디코딩 신호를 8kHz float PCM으로 내려 계산하며, 120초를 넘는 입력은 시간축에 균등 배치한 12개 10초 대표 구간을 사용한다. auto는 외부 음원을 boost하지 않으므로 `policy.external_gain_db`는 0 이하이고, 성공 상태는 non-null `camera`·`external`·`policy`, 하나 이상의 `reasons`, 빈 `failures`를 요구한다.
 
 ## segments
 
@@ -136,7 +136,7 @@ mix의 `input.codec` 값 `float_mix`는 실제 codec 이름이 아니라 카메�
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "language": "ko",
   "created_at": "2026-07-17T00:00:00+00:00",
   "summary": {

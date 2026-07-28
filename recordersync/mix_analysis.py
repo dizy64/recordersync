@@ -33,6 +33,9 @@ _BASS_EXCESS_CENTROID_HZ = 150.0
 _DEFAULT_HIGHPASS_HZ = 80.0
 _BASS_EXCESS_HIGHPASS_HZ = 100.0
 _ANALYSIS_TIMEOUT_SECONDS = 3_600.0
+_SPECTRAL_WINDOW_SECONDS = 10.0
+_SPECTRAL_WINDOW_COUNT = 12
+_MAXIMUM_SPECTRAL_SECONDS = _SPECTRAL_WINDOW_SECONDS * _SPECTRAL_WINDOW_COUNT
 
 
 class MixProfile(StrEnum):
@@ -275,6 +278,22 @@ def recommend_auto_mix(
     )
 
 
+def _spectral_selection_filter(duration_seconds: float) -> str:
+    """긴 입력의 스펙트럼 PCM을 시간축 전체의 고정 크기 대표 구간으로 제한한다."""
+
+    if duration_seconds <= _MAXIMUM_SPECTRAL_SECONDS:
+        return ""
+    last_start = duration_seconds - _SPECTRAL_WINDOW_SECONDS
+    step = last_start / (_SPECTRAL_WINDOW_COUNT - 1)
+    windows = (
+        "between(t,"
+        f"{format_ffmpeg_number(index * step)},"
+        f"{format_ffmpeg_number(index * step + _SPECTRAL_WINDOW_SECONDS)})"
+        for index in range(_SPECTRAL_WINDOW_COUNT)
+    )
+    return f"aselect='{'+'.join(windows)}',asetpts=N/SR/TB,"
+
+
 class FFmpegMixAnalyzer:
     """두 원본을 독립적인 float 신호로 디코딩해 자동 mix 정책을 계산한다."""
 
@@ -322,13 +341,14 @@ class FFmpegMixAnalyzer:
             source_chain = f"atempo={format_ffmpeg_number(plan.tempo_ratio)},"
         channel_layout = "mono" if channels == 1 else "stereo"
         meter_channel_filter = "pan=stereo|c0=c0|c1=c0," if channels == 1 else ""
+        spectral_selection = _spectral_selection_filter(plan.video.duration_seconds)
         filters = (
             f"[0:a:0]{source_chain}aresample=48000,apad,atrim=duration={format_ffmpeg_number(plan.video.duration_seconds)},"
             f"asetpts=PTS-STARTPTS,aformat=channel_layouts={channel_layout},aformat=sample_fmts=fltp,"
             "asplit=2[meter_input][spectral_input];"
             f"[meter_input]{meter_channel_filter}ebur128=peak=sample+true:framelog=quiet[metered];"
             "[metered]anullsink;"
-            f"[spectral_input]aresample={_ANALYSIS_SAMPLE_RATE}[spectral]"
+            f"[spectral_input]{spectral_selection}aresample={_ANALYSIS_SAMPLE_RATE}[spectral]"
         )
         return [
             self.ffmpeg_path,

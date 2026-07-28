@@ -77,7 +77,7 @@ uv run recordersync process ~/Videos/day1 \
   --dry-run
 ```
 
-추천을 확인한 뒤 같은 정책으로 렌더하려면 `--dry-run`만 제거합니다. auto는 카메라를 1.0으로 유지하고 외부 integrated loudness를 카메라보다 12 LU 낮추되, 외부 true peak에 카메라 대비 3 dB 여유가 더 필요하면 더 큰 감쇠를 선택합니다. mono 입력의 loudness는 최종 stereo mix와 같은 gain 없는 dual-mono 조건으로 측정합니다. 외부 음원은 자동 증폭하지 않으며, 저역 비중이 카메라보다 0.08 이상 높고 spectral centroid가 150Hz 이상 낮을 때만 HP100을 제안하고 그 외에는 HP80을 유지합니다. 장비명으로 분기하거나 limiter, compressor, noise suppression, AGC를 적용하지 않습니다.
+추천을 확인한 뒤 같은 정책으로 렌더하려면 `--dry-run`만 제거합니다. auto는 카메라를 1.0으로 유지하고 외부 integrated loudness를 카메라보다 12 LU 낮추되, 외부 true peak에 카메라 대비 3 dB 여유가 더 필요하면 더 큰 감쇠를 선택합니다. mono 입력의 loudness는 최종 stereo mix와 같은 gain 없는 dual-mono 조건으로 측정합니다. 외부 음원은 자동 증폭하지 않으며, 저역 비중이 카메라보다 0.08 이상 높고 spectral centroid가 150Hz 이상 낮을 때만 HP100을 제안하고 그 외에는 HP80을 유지합니다. 120초를 넘는 입력은 전체 LUFS·peak를 계속 측정하되 스펙트럼 지표만 시간축에 균등 배치한 12개 10초 대표 구간으로 계산해 메모리 사용량을 제한합니다. 장비명으로 분기하거나 limiter, compressor, noise suppression, AGC를 적용하지 않습니다.
 
 ```bash
 uv run recordersync process ~/Videos/day1 \
@@ -201,7 +201,7 @@ recordersync process --help
 
 JSON 키와 `matched` 같은 상태값은 자동화 호환성을 위해 영어로 고정되며, 사람이 읽는 `reason`과 `recommendation_reason`은 기본 한국어 또는 `--report-language en`의 영어로 출력됩니다. 상세 분석 JSON은 `analyze --json`을 사용하며, `process`의 stdout과 `--report` 파일도 JSON 형식입니다.
 
-JSON 리포트 v2는 상태별 `partial` 개수와 영상별 `coverage_ratio`, 시간순 `segments`를 제공합니다. 각 영상에는 `recommended_mode`, `recommendation_reason`, `recommended_options`도 포함됩니다. 각 구간에는 세션 ID, 영상/외부 시작점, 길이, `tempo_ratio`와 신뢰도 수치가 있습니다. 음량 안전 모드를 사용한 영상에는 선택적으로 `audio_levels`가 추가되어 정책, float 입력 측정값, static gain 판정, 최종 AAC 측정값과 검증 실패 목록을 제공합니다. auto mix를 사용한 영상에는 선택적으로 `mix_recommendation`이 추가되어 두 원본의 float 음량·저역 비중·spectral centroid·stereo 지표, 추천 component gain/HPF, 추천 또는 적용 상태를 제공합니다. `analyze --json`과 분석 `--report`에는 배치 전체에 대한 `recommended_command`도 포함되며, 안전한 부분 일치가 하나라도 있으면 `fallback`, 전체 일치만 있으면 기본 `replace` 명령을 제안합니다. fallback 추천에는 `--recommended-only`가 포함되어 기준 미달 부분 매칭은 출력하지 않습니다. 분석 `--report` 파일에는 `analysis_inputs`가 추가되어 추천된 `process --analysis-report`에서 재사용할 수 있습니다. stdout의 `analyze --json`은 실행 계획을 저장하지 않습니다.
+JSON 리포트 v3는 v2의 상태별 `partial` 개수, 영상별 `coverage_ratio`, 시간순 `segments`와 처리 추천 계약을 유지합니다. 각 구간에는 세션 ID, 영상/외부 시작점, 길이, `tempo_ratio`와 신뢰도 수치가 있습니다. 음량 안전 모드를 사용한 영상에는 선택적으로 `audio_levels`가 추가되어 정책, float 입력 측정값, static gain 판정, 최종 AAC 측정값과 검증 실패 목록을 제공합니다. v3는 auto mix 영상에 `mix_recommendation`을 추가해 두 원본의 float 음량·저역 비중·spectral centroid·stereo 지표, 추천 component gain/HPF, 추천 또는 적용 상태를 제공합니다. `analyze --json`과 분석 `--report`에는 배치 전체에 대한 `recommended_command`도 포함되며, 안전한 부분 일치가 하나라도 있으면 `fallback`, 전체 일치만 있으면 기본 `replace` 명령을 제안합니다. fallback 추천에는 `--recommended-only`가 포함되어 기준 미달 부분 매칭은 출력하지 않습니다. 분석 `--report` 파일에는 `analysis_inputs`가 추가되어 추천된 `process --analysis-report`에서 재사용할 수 있습니다. stdout의 `analyze --json`은 실행 계획을 저장하지 않습니다.
 
 예를 들어 `clip.mov`를 `final_clip_synced.mp4`로 만들려면 다음처럼 실행합니다.
 
@@ -270,7 +270,8 @@ bash scripts/install-hooks.sh
 - [테스트 전략](docs/development/testing.md)
 - [설치·실행·운영](docs/operations/guide.md)
 - [JSON 리포트 계약](docs/reference/report-schema.md)
-- [JSON Schema v2](schemas/recordersync-report-v2.schema.json)
+- [JSON Schema v3](schemas/recordersync-report-v3.schema.json)
+- [이전 JSON Schema v2](schemas/recordersync-report-v2.schema.json)
 - [변경 이력](docs/project/changelog.md)
 - [릴리스 절차](docs/operations/releasing.md)
 - [인수인계와 다음 작업](docs/project/handoff.md)

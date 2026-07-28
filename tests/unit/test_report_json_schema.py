@@ -1,4 +1,4 @@
-"""REPORT_VERSION 2 JSON Schema 계약."""
+"""REPORT_VERSION 3 JSON Schema 계약."""
 
 from __future__ import annotations
 
@@ -24,15 +24,24 @@ from recordersync.mix_analysis import MixRecommendation, MixSourceMetrics
 from recordersync.models import AudioChunk, AudioMatch, MatchStatus, RecordingSession
 from recordersync.pipeline import AnalysisBundle
 from recordersync.render import MixPolicy
-from recordersync.report import MatchReport
+from recordersync.report import REPORT_VERSION, MatchReport
 
-SCHEMA_PATH = Path(__file__).parents[2] / "schemas" / "recordersync-report-v2.schema.json"
+SCHEMA_PATH = Path(__file__).parents[2] / "schemas" / "recordersync-report-v3.schema.json"
+LEGACY_SCHEMA_PATH = Path(__file__).parents[2] / "schemas" / "recordersync-report-v2.schema.json"
 REPORT_DOCUMENT_PATH = Path(__file__).parents[2] / "docs" / "reference" / "report-schema.md"
 
 
 @pytest.fixture
 def schema() -> dict[str, object]:
     return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def test_리포트_버전은_새_mix_계약을_v3로_분리하고_v2_스키마를_보존한다() -> None:
+    legacy_schema = json.loads(LEGACY_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+    assert REPORT_VERSION == 3
+    assert legacy_schema["properties"]["version"]["const"] == 2
+    assert "mix_recommendation" not in legacy_schema["$defs"]["reportMatch"]["properties"]
 
 
 @pytest.fixture
