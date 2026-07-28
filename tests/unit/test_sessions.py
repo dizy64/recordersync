@@ -62,6 +62,41 @@ def test_녹음_세션_그룹화는_큰_시간_간격에서_분리한다() -> No
     assert [session.id for session in sessions] == ["session-001", "session-002"]
 
 
+def test_녹음_세션_그룹화는_임계값과_같은_공백을_같은_세션으로_유지한다() -> None:
+    start = datetime(2026, 7, 17, tzinfo=UTC)
+    chunk_duration_seconds = 60.0
+    gap_seconds = 10.0
+    chunks = [
+        _chunk("REC_001.WAV", started_at=start, duration=chunk_duration_seconds),
+        _chunk(
+            "REC_002.WAV",
+            started_at=start + timedelta(seconds=chunk_duration_seconds + gap_seconds),
+        ),
+    ]
+
+    sessions = group_recording_sessions(chunks, gap_seconds=gap_seconds)
+
+    assert len(sessions) == 1
+    assert [chunk.path.name for chunk in sessions[0].chunks] == ["REC_001.WAV", "REC_002.WAV"]
+
+
+def test_녹음_세션_그룹화는_임계값을_초과한_공백에서_분리한다() -> None:
+    start = datetime(2026, 7, 17, tzinfo=UTC)
+    chunk_duration_seconds = 60.0
+    gap_seconds = 10.0
+    chunks = [
+        _chunk("REC_001.WAV", started_at=start, duration=chunk_duration_seconds),
+        _chunk(
+            "REC_002.WAV",
+            started_at=start + timedelta(seconds=chunk_duration_seconds + gap_seconds + 0.001),
+        ),
+    ]
+
+    sessions = group_recording_sessions(chunks, gap_seconds=gap_seconds)
+
+    assert [session.id for session in sessions] == ["session-001", "session-002"]
+
+
 def test_녹음_세션_그룹화는_스트림_불일치에서_분리한다() -> None:
     start = datetime(2026, 7, 17, tzinfo=UTC)
     chunks = [
