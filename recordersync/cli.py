@@ -33,6 +33,40 @@ if TYPE_CHECKING:
 
 _DEFAULT_MATCH_OPTIONS = MatchOptions()
 _DEFAULT_SESSION_GAP_SECONDS = 10.0
+_TOP_LEVEL_HELP = """권장 작업 흐름:
+  1. recordersync analyze VIDEO_DIR --report ANALYSIS.json
+  2. 분석 결과 마지막에 출력된 권장 명령을 검토한 뒤 실행
+  3. VIDEO_DIR/replace의 결과 영상과 JSON 리포트 확인
+
+주요 처리 방식:
+  전체 교체:       recordersync process VIDEO_DIR
+  보수적인 혼합:   recordersync process VIDEO_DIR --mode mix
+  자동 혼합 확인:  recordersync process VIDEO_DIR --mode mix --mix-profile auto --dry-run
+  부분 구간 교체:  recordersync process VIDEO_DIR --mode fallback
+
+세부 옵션은 recordersync analyze --help 또는 recordersync process --help로 확인합니다."""
+_ANALYZE_HELP = """사용 예시:
+  기본 분석:             recordersync analyze VIDEO_DIR
+  별도 외부 오디오:      recordersync analyze VIDEO_DIR --audio-dir AUDIO_DIR
+  분석 리포트 저장:      recordersync analyze VIDEO_DIR --report ANALYSIS.json
+  전체 일치만 빠른 분석: recordersync analyze VIDEO_DIR --full-only
+  자동화용 JSON 출력:    recordersync analyze VIDEO_DIR --json
+
+입력 안내:
+  영상과 외부 오디오가 같은 디렉터리에 있으면 --audio-dir를 생략합니다.
+  analyze는 미디어를 만들거나 원본을 수정하지 않습니다.
+  사람용 결과 마지막에 안전하게 처리할 수 있는 권장 process 명령을 표시합니다."""
+_PROCESS_HELP = """사용 예시:
+  전체 일치 교체:       recordersync process VIDEO_DIR
+  분석 리포트 재사용:  recordersync process VIDEO_DIR --analysis-report ANALYSIS.json
+  보수적인 혼합:       recordersync process VIDEO_DIR --mode mix
+  자동 혼합 사전 확인: recordersync process VIDEO_DIR --mode mix --mix-profile auto --dry-run
+  권장 부분 구간 교체: recordersync process VIDEO_DIR --mode fallback --recommended-only
+
+안전 규칙:
+  원본 영상은 수정하지 않습니다.
+  결과는 기본적으로 VIDEO_DIR/replace에 만들며 기존 파일은 --overwrite 없이 덮어쓰지 않습니다.
+  --dry-run은 렌더하지 않고 예상 처리 결과와 출력 경로만 JSON으로 출력합니다."""
 
 
 def _unit_interval(value: str) -> float:
@@ -57,39 +91,46 @@ def _highpass_frequency(value: str) -> float:
 
 def _add_common_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("video_dir", type=Path, help="카메라 영상 파일 디렉터리")
-    parser.add_argument(
+    input_output = parser.add_argument_group("입력·출력")
+    input_output.add_argument(
         "--audio-dir",
         type=Path,
         default=None,
         help="분할된 보이스레코더 오디오 디렉터리(기본: VIDEO_DIR)",
     )
-    parser.add_argument("--output-dir", type=Path, default=None, help="기본: VIDEO_DIR/replace")
-    parser.add_argument("--report", type=Path, default=None, help="JSON 리포트 저장 경로")
-    parser.add_argument(
+    input_output.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="출력 디렉터리(기본: VIDEO_DIR/replace)",
+    )
+    input_output.add_argument("--report", type=Path, default=None, help="JSON 리포트 저장 경로")
+    input_output.add_argument(
         "--report-language",
         choices=[language.value for language in ReportLanguage],
         default=ReportLanguage.KO.value,
         help="리포트 사유 언어(기본: ko)",
     )
-    parser.add_argument(
+    matching = parser.add_argument_group("매칭 기준")
+    matching.add_argument(
         "--min-confidence",
         type=float,
         default=_DEFAULT_MATCH_OPTIONS.min_confidence,
         help=f"매칭으로 승인할 최소 종합 신뢰도(0 초과~1.0, 기본: {_DEFAULT_MATCH_OPTIONS.min_confidence:g})",
     )
-    parser.add_argument(
+    matching.add_argument(
         "--min-peak-margin",
         type=float,
         default=_DEFAULT_MATCH_OPTIONS.min_peak_margin,
         help=f"최고·차순위 후보의 최소 상관 peak 차이(0.0~2.0, 기본: {_DEFAULT_MATCH_OPTIONS.min_peak_margin:g})",
     )
-    parser.add_argument(
+    matching.add_argument(
         "--min-partial-seconds",
         type=float,
         default=_DEFAULT_MATCH_OPTIONS.min_partial_duration_seconds,
         help="부분 매칭으로 승인할 최소 연속 구간 길이(기본: 5.0)",
     )
-    parser.add_argument(
+    matching.add_argument(
         "--session-gap-seconds",
         type=float,
         default=_DEFAULT_SESSION_GAP_SECONDS,
@@ -102,15 +143,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="recordersync",
         description="보이스레코더 녹음과 영상 오디오를 비교해 영상별 음원을 교체합니다.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""사용 예시:
-  recordersync analyze VIDEO_DIR
-  recordersync analyze VIDEO_DIR --json
-  recordersync analyze VIDEO_DIR --full-only
-  recordersync process VIDEO_DIR
-  recordersync process VIDEO_DIR --audio-dir AUDIO_DIR --mode mix
-  recordersync process VIDEO_DIR --mode fallback
-
-세부 옵션은 `recordersync analyze --help` 또는 `recordersync process --help`로 확인합니다.""",
+        epilog=_TOP_LEVEL_HELP,
     )
     parser.set_defaults(json=False)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -119,14 +152,19 @@ def build_parser() -> argparse.ArgumentParser:
     analyze = subparsers.add_parser(
         "analyze",
         help="매칭과 권장 처리 모드를 분석해 사람이 읽는 결과를 출력",
+        description="영상과 외부 오디오의 일치 구간을 분석하고 파일별 상태와 권장 처리 모드를 출력합니다.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=_ANALYZE_HELP,
     )
     _add_common_options(analyze)
-    analyze.add_argument(
+    analysis_output = analyze.add_argument_group("분석 출력")
+    analysis_output.add_argument(
         "--json",
         action="store_true",
         help="기계 처리를 위한 전체 JSON을 표준 출력으로 내보냅니다.",
     )
-    partial_group = analyze.add_mutually_exclusive_group()
+    analysis_scope = analyze.add_argument_group("분석 범위")
+    partial_group = analysis_scope.add_mutually_exclusive_group()
     partial_group.add_argument(
         "--partial",
         dest="partial",
@@ -141,91 +179,100 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze.set_defaults(partial=True)
 
-    process = subparsers.add_parser("process", help="매칭 후 개별 표준화 영상을 생성")
+    process = subparsers.add_parser(
+        "process",
+        help="매칭 후 개별 표준화 영상을 생성",
+        description="분석 결과에 따라 영상별 오디오를 교체하거나 혼합하고 검증된 MP4를 생성합니다.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=_PROCESS_HELP,
+    )
     _add_common_options(process)
-    process.add_argument(
+    processing = process.add_argument_group("처리 방식")
+    processing.add_argument(
         "--mode",
         choices=[mode.value for mode in RenderMode],
         default="replace",
         help="오디오 처리 방식: replace=전체 교체, mix=혼합, fallback=일치 구간만 교체(기본: replace)",
     )
-    process.add_argument(
+    processing.add_argument(
         "--mix-profile",
         choices=[profile.value for profile in MixProfile],
         default=MixProfile.CONSERVATIVE.value,
         help="mix 정책: conservative=검증된 고정값, auto=원본 측정 기반 추천·적용(기본: conservative)",
     )
-    process.add_argument(
+    processing.add_argument(
         "--camera-audio-volume",
         type=_unit_interval,
         default=None,
         help="원본 영상 오디오 볼륨(기본: mix/fallback 1.0)",
     )
-    process.add_argument(
+    processing.add_argument(
         "--external-audio-volume",
         type=_unit_interval,
         default=None,
         help="외부 보이스레코더 오디오 볼륨(기본: mix -12dB 상당, replace/fallback 1.0)",
     )
-    process.add_argument(
+    processing.add_argument(
         "--external-highpass-hz",
         type=_highpass_frequency,
         default=None,
         help="mix 외부 오디오 high-pass 주파수(기본: 80Hz, 0은 해제)",
     )
-    process.add_argument(
+    loudness_safety = process.add_argument_group("음량 안전")
+    loudness_safety.add_argument(
         "--target-lufs",
         type=float,
         default=None,
         help="static gain 음량 안전 모드의 목표 integrated loudness([-70, -5] LUFS)",
     )
-    process.add_argument(
+    loudness_safety.add_argument(
         "--max-true-peak-dbtp",
         type=float,
         default=None,
         help="static gain 음량 안전 모드의 최종 최대 true peak([-99, 0] dBTP)",
     )
-    process.add_argument(
+    loudness_safety.add_argument(
         "--output-channel-layout",
         choices=[layout.value for layout in OutputChannelLayout],
         default=None,
         help="음량 안전 모드의 출력 채널 정책: preserve, mono, stereo",
     )
-    process.add_argument(
+    loudness_safety.add_argument(
         "--loudness-tolerance-lu",
         type=float,
         default=None,
         help="최종 AAC integrated loudness의 허용 오차((0, 10] LU)",
     )
-    process.add_argument(
+    output_control = process.add_argument_group("출력 제어")
+    output_control.add_argument(
         "--output-prefix",
         type=validate_output_affix,
         default="",
         help="출력 파일명 앞에 붙일 문자열",
     )
-    process.add_argument(
+    output_control.add_argument(
         "--output-suffix",
         type=validate_output_affix,
         default="",
         help="출력 파일명 뒤에 붙일 문자열",
     )
-    process.add_argument(
+    output_control.add_argument(
         "--recommended-only",
         action="store_true",
         help="fallback에서 analyze가 추천한 안전한 부분 매칭만 렌더링",
     )
-    process.add_argument(
+    output_control.add_argument(
         "--analysis-report",
         type=Path,
         default=None,
         help="analyze --report 결과를 검증해 재분석 없이 처리",
     )
-    process.add_argument(
+    output_control.add_argument(
         "--overwrite",
         action="store_true",
         help="기존 출력 파일 덮어쓰기",
     )
-    process.add_argument(
+    output_control.add_argument(
         "--dry-run",
         action="store_true",
         help="렌더하지 않고 예상 처리 결과와 출력 경로만 JSON으로 출력",

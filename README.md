@@ -16,50 +16,95 @@ brew bundle
 uv sync
 ```
 
-## 빠른 시작
+## 사용 방법
 
-영상과 레코더 파일이 같은 디렉터리에 있으면 `--audio-dir`를 생략합니다. 매칭 결과만 확인하는 `analyze`는 미디어 파일을 만들지 않고 파일별 매칭 여부·매칭률·실패 사유와 권장 처리 모드를 사람이 읽기 쉬운 목록으로 보여줍니다.
+아래 명령은 저장소 체크아웃에서 실행하는 형식입니다. 전역 설치한 경우 `uv run`을 빼고 `recordersync`부터 입력합니다.
 
-```bash
-uv run recordersync analyze ~/Capture/day1
+### 1. 입력 파일 준비
+
+영상과 외부 오디오를 한 디렉터리에 두는 구성이 가장 간단합니다. 이때 `--audio-dir`를 생략합니다.
+
+```text
+~/Capture/day1/
+├── IMG_0001.MOV
+├── DJI_0002.MP4
+└── DJI_03_20260726_215027.WAV
 ```
 
-자동화에서 상세 필드가 필요할 때만 JSON을 명시합니다.
+서로 다른 디렉터리에 두었다면 모든 `analyze`와 `process` 명령에 `--audio-dir ~/Recordings/day1`을 지정합니다.
+
+### 2. 먼저 분석하고 리포트 저장
+
+`analyze`는 미디어 파일을 만들거나 원본을 수정하지 않습니다. 파일별 매칭 상태·매칭률·실패 사유와 권장 처리 명령을 출력하며, `--report`를 지정하면 긴 분석을 처리 단계에서 반복하지 않아도 됩니다.
 
 ```bash
-uv run recordersync analyze ~/Capture/day1 --json
+uv run recordersync analyze ~/Capture/day1 \
+  --report ~/Capture/day1-analysis.json
 ```
 
-기본 분석은 전체 일치를 먼저 확인하고, 실패한 영상만 부분 구간까지 이어서 분석합니다. 전체 일치만 빠르게 확인하고 싶을 때는 `--full-only`를 사용합니다.
+기본 분석은 전체 일치를 먼저 확인하고 실패한 영상만 부분 구간까지 분석합니다. 전체 일치만 빠르게 확인하려면 `--full-only`, 자동화용 전체 JSON을 stdout으로 받으려면 `--json`을 사용합니다.
 
 ```bash
 uv run recordersync analyze ~/Capture/day1 --full-only
+uv run recordersync analyze ~/Capture/day1 --json
 ```
 
-사람용 결과 마지막에는 분석 입력과 안전 기준을 반영한 `recordersync process` 명령이 표시됩니다. 처리 가능한 결과가 없으면 추천 명령이 없다고 안내합니다. `--json`에서는 셸 문자열 대신 안전하게 재사용할 수 있는 `recommended_command` argv 배열을 제공합니다. 부분 일치가 섞인 추천 명령은 `--recommended-only`를 포함해 추천 기준에 미달한 부분 매칭을 자동으로 제외합니다.
-
-긴 분석을 처리 단계에서 반복하지 않으려면 분석 리포트를 저장합니다. 저장된 입력의 경로·크기·수정 시각이 그대로일 때 추천 명령은 `--analysis-report`로 결과를 검증해 재사용하고 렌더만 수행합니다.
+영상과 외부 오디오가 분리되어 있다면 다음처럼 실행합니다.
 
 ```bash
-recordersync analyze ~/Capture/day1 --report ~/Capture/day1-analysis.json
-# 출력된 추천 명령을 그대로 실행
-recordersync process ~/Capture/day1 \
+uv run recordersync analyze ~/Videos/day1 \
+  --audio-dir ~/Recordings/day1 \
+  --report ~/Videos/day1-analysis.json
+```
+
+### 3. 권장 처리 명령 실행
+
+사람용 분석 결과 마지막에는 현재 입력과 안전 기준을 반영한 `recordersync process` 명령이 표시됩니다. 해당 명령을 검토한 뒤 저장소 체크아웃에서는 앞에 `uv run`을 붙여 실행합니다. 저장된 입력의 경로·크기·수정 시각이 바뀌지 않았다면 `--analysis-report`가 분석 결과를 검증해 재사용합니다.
+
+```bash
+# analyze가 전체 일치 replace를 추천한 경우의 예시
+uv run recordersync process ~/Capture/day1 \
   --analysis-report ~/Capture/day1-analysis.json
 ```
 
-매칭이 확실한 영상만 `~/Capture/day1/replace`에 생성합니다.
+처리 가능한 결과가 없으면 추천 명령을 표시하지 않습니다. `analyze --json`과 저장된 분석 리포트에서는 셸 문자열 대신 `recommended_command` argv 배열을 제공합니다. 부분 일치가 섞인 추천 명령에는 `--recommended-only`가 포함되어 기준에 미달한 부분 매칭을 자동으로 제외합니다.
+
+### 4. 처리 방식 직접 선택
+
+| 목적 | 옵션 | 동작 |
+|---|---|---|
+| 외부 오디오로 전체 교체 | `--mode replace` 또는 생략 | 전체 매칭이 승인된 영상만 교체 |
+| 카메라 공간감과 외부 오디오 혼합 | `--mode mix` | 카메라 stereo를 유지하면서 외부 오디오를 보강 |
+| 실제 음원을 측정해 혼합값 추천 | `--mode mix --mix-profile auto` | 장비명이 아닌 LUFS·peak·스펙트럼을 기준으로 영상별 정책 결정 |
+| 일치하는 일부 구간만 교체 | `--mode fallback` | 불일치 구간에는 카메라 오디오 유지 |
+
+#### 전체 교체
+
+`replace`는 기본 모드입니다. 매칭이 확실한 영상만 `VIDEO_DIR/replace`에 만들며 원본은 수정하지 않습니다.
 
 ```bash
-uv run recordersync process ~/Capture/day1
+uv run recordersync process ~/Videos/day1 \
+  --audio-dir ~/Recordings/day1
 ```
 
-레코더 파일이 별도 디렉터리에 있을 때만 경로를 지정합니다.
+피크와 평균 음량까지 검증하려면 네 가지 음량 안전 옵션을 모두 명시합니다.
 
 ```bash
-uv run recordersync process ~/Videos/day1 --audio-dir ~/Recordings/day1
+uv run recordersync process ~/Videos/day1 \
+  --audio-dir ~/Recordings/day1 \
+  --target-lufs -16 \
+  --max-true-peak-dbtp -1 \
+  --output-channel-layout stereo \
+  --loudness-tolerance-lu 0.5
 ```
 
-카메라 stereo를 주 음원으로 유지하면서 외부 녹음을 보수적으로 보강하려면 `mix`를 명시합니다. 기본 mix는 카메라 `1.0`, 외부 녹음 `-12dB` 상당, 외부 HP80이며 합산 뒤 `-16 LUFS / -1 dBTP / stereo`를 검증합니다. 낮은 신뢰도의 매칭이 자동으로 mix로 전환되지는 않습니다.
+RecorderSync는 실제로 사용할 외부 오디오 구간을 32-bit float 처리 경로에서 EBU R128로 측정하고, 목표 LUFS에 필요한 static gain과 true-peak 한계가 허용하는 gain을 비교합니다. 두 값이 충돌하면 limiter나 compressor를 자동 적용하지 않고 해당 영상의 렌더를 중단합니다. 충돌하지 않으면 static gain만 적용한 뒤 최종 AAC를 다시 디코딩해 LUFS, true peak, 채널 수, 48kHz, 길이, codec, decoder error를 검증하고 모두 통과한 파일만 최종 경로에 게시합니다.
+
+`preserve`는 레코더 채널을 유지합니다. mono 입력을 `stereo`로 출력할 때는 추가 gain 없이 동일 신호를 좌우에 복사하며, stereo 입력을 `mono`로 합치는 작업은 사용자가 `--output-channel-layout mono`를 명시한 경우에만 수행합니다. `replace` 음량 안전은 `--external-audio-volume`의 비기본값과 함께 사용할 수 없고, mix 음량 안전은 stereo 출력만 지원합니다. 명시적 음량 안전 옵션은 `--dry-run`과 함께 사용할 수 없습니다. 측정값, gain 결정, 최종 검증은 JSON의 영상별 `audio_levels`와 stderr의 `[음량 검증]` 요약에 남습니다.
+
+#### 카메라와 외부 오디오 혼합
+
+보수적인 고정 프리셋은 카메라 `1.0`, 외부 오디오 `-12dB` 상당, 외부 HP80을 적용하고 합산 결과를 `-16 LUFS / -1 dBTP / stereo`로 검증합니다. 낮은 신뢰도의 매칭이 자동으로 mix로 전환되지는 않습니다.
 
 ```bash
 uv run recordersync process ~/Videos/day1 \
@@ -67,7 +112,7 @@ uv run recordersync process ~/Videos/day1 \
   --mode mix
 ```
 
-고정 프리셋 대신 실제로 매칭된 카메라/외부 원본의 음량·peak·스펙트럼을 측정해 보수적인 정책을 먼저 확인하려면 auto dry-run을 사용합니다. 이 명령은 출력 영상을 만들지 않고 영상별 예상 `output` 경로와 `mix_recommendation`을 보고합니다.
+실제 카메라와 외부 원본의 음량·peak·스펙트럼을 측정해 영상별 추천값을 먼저 확인하려면 auto dry-run을 사용합니다. 이 명령은 출력 영상을 만들지 않고 예상 `output` 경로와 `mix_recommendation`을 JSON으로 보고합니다.
 
 ```bash
 uv run recordersync process ~/Videos/day1 \
@@ -86,7 +131,7 @@ uv run recordersync process ~/Videos/day1 \
   --mix-profile auto
 ```
 
-원본 영상 음질이 좋지 않으면 두 볼륨을 0.0~1.0 범위에서 바꿀 수 있습니다. 아래 예시는 카메라음을 `-12dB` 상당으로 낮추고 외부 녹음을 주 음원으로 사용합니다. 외부 음원의 저역을 그대로 유지하려면 `--external-highpass-hz 0`을 명시합니다.
+직접 비율을 정하려면 두 볼륨을 0.0~1.0 범위에서 지정합니다. 아래 예시는 카메라 오디오를 `-12dB` 상당으로 낮추고 외부 오디오를 주 음원으로 사용하며 외부 오디오의 high-pass filter를 해제합니다.
 
 ```bash
 uv run recordersync process ~/Videos/day1 \
@@ -97,33 +142,31 @@ uv run recordersync process ~/Videos/day1 \
   --external-highpass-hz 0
 ```
 
-`replace`에서 피크와 평균 음량을 함께 검증하려면 네 가지 음량 안전 옵션을 모두 명시합니다. `mix`는 위의 보수적인 기본 정책을 자동 사용하며 같은 네 옵션을 모두 지정해 목표값을 바꿀 수 있습니다.
+#### 부분 구간 교체
 
-```bash
-uv run recordersync process ~/Videos/day1 \
-  --audio-dir ~/Recordings/day1 \
-  --target-lufs -16 \
-  --max-true-peak-dbtp -1 \
-  --output-channel-layout stereo \
-  --loudness-tolerance-lu 0.5
-```
-
-RecorderSync는 실제로 사용할 외부 오디오 구간을 32-bit float 처리 경로에서 EBU R128로 측정하고, 목표 LUFS에 필요한 static gain과 true-peak 한계가 허용하는 gain을 비교합니다. 두 값이 충돌하면 limiter나 compressor를 자동 적용하지 않고 해당 영상의 렌더를 중단합니다. 충돌하지 않으면 static gain만 적용한 뒤 최종 AAC를 다시 디코딩해 LUFS, true peak, 채널 수, 48kHz, 길이, codec, decoder error를 검증하고 모두 통과한 파일만 최종 경로에 게시합니다.
-
-`preserve`는 레코더 채널을 유지합니다. mono 입력을 `stereo`로 출력할 때는 추가 gain 없이 동일 신호를 좌우에 복사하며, stereo 입력을 `mono`로 합치는 작업은 사용자가 `--output-channel-layout mono`를 명시한 경우에만 수행합니다. `replace` 음량 안전은 `--external-audio-volume`의 비기본값과 함께 사용할 수 없고, mix 음량 안전은 stereo 출력만 지원합니다. 명시적 음량 안전 옵션은 `--dry-run`과 함께 사용할 수 없습니다. 측정값, gain 결정, 최종 검증은 JSON의 영상별 `audio_levels`와 stderr의 `[음량 검증]` 요약에 남습니다.
-
-레코더가 중간에 멈췄거나 영상과 녹음 길이가 다르면 `fallback`을 명시합니다. 일치하는 구간은 레코더음으로 교체하고, 영상 앞뒤와 중간의 불일치 구간은 카메라음을 유지합니다.
+레코더가 중간에 멈췄거나 영상과 녹음 길이가 다르면 `fallback`을 사용합니다. 일치하는 구간은 외부 오디오로 교체하고 영상 앞뒤와 중간의 불일치 구간은 카메라 오디오를 유지합니다.
 
 ```bash
 uv run recordersync process ~/Videos/day1 \
   --audio-dir ~/Recordings/day1 \
   --mode fallback \
-  --min-partial-seconds 5
+  --recommended-only
 ```
 
-fallback의 기본 카메라/외부 음량은 각각 1.0이며, 경계를 기본 50ms crossfade로 연결합니다. `--camera-audio-volume`과 `--external-audio-volume`으로 비율을 바꿀 수 있습니다. 후보가 애매하거나 최소 길이보다 짧은 구간은 레코더음을 쓰지 않습니다.
+fallback의 기본 카메라/외부 음량은 각각 1.0이며 경계를 기본 50ms crossfade로 연결합니다. `--camera-audio-volume`과 `--external-audio-volume`으로 비율을 바꿀 수 있습니다. 후보가 애매하거나 최소 길이보다 짧은 구간은 외부 오디오를 사용하지 않습니다.
 
-출력 위치와 리포트 위치를 지정할 수 있습니다.
+### 5. 결과 확인
+
+기본 출력 위치는 `VIDEO_DIR/replace`이고 기본 리포트는 그 안의 `recordersync-report.json`입니다. 기존 출력은 `--overwrite` 없이는 덮어쓰지 않으며 출력 경로를 원본 MP4와 같게 지정하면 항상 거부합니다.
+
+```text
+~/Capture/day1/replace/
+├── IMG_0001.mp4
+├── DJI_0002.mp4
+└── recordersync-report.json
+```
+
+출력과 리포트 위치를 직접 정할 수도 있습니다.
 
 ```bash
 uv run recordersync process ~/Videos/day1 \
@@ -196,6 +239,7 @@ uv run recordersync process ~/Videos/day1 \
 
 ```bash
 recordersync --help
+recordersync analyze --help
 recordersync process --help
 ```
 

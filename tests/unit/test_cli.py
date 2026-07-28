@@ -48,10 +48,10 @@ def test_인자_없는_메인은_도움말을_출력하고_성공을_반환한�
 
     stdout = capsys.readouterr().out
     assert "usage: recordersync" in stdout
-    assert "recordersync analyze VIDEO_DIR" in stdout
-    assert "recordersync process VIDEO_DIR" in stdout
-    assert "--full-only" in stdout
-    assert "--mode fallback" in stdout
+    assert "권장 작업 흐름:" in stdout
+    assert "recordersync analyze VIDEO_DIR --report ANALYSIS.json" in stdout
+    assert "출력된 권장 명령을 검토한 뒤 실행" in stdout
+    assert "recordersync process VIDEO_DIR --mode mix --mix-profile auto --dry-run" in stdout
 
 
 def test_처리_도움말은_주요_처리_옵션을_안내한다(
@@ -81,6 +81,13 @@ def test_처리_도움말은_주요_처리_옵션을_안내한다(
     assert "(0, 10] LU" in stdout
     assert "--overwrite" in stdout
     assert "기존 출력 파일 덮어쓰기" in stdout
+    assert "처리 방식:" in stdout
+    assert "음량 안전:" in stdout
+    assert "사용 예시:" in stdout
+    assert "recordersync process VIDEO_DIR --analysis-report ANALYSIS.json" in stdout
+    assert "recordersync process VIDEO_DIR --mode mix --mix-profile auto --dry-run" in stdout
+    assert "recordersync process VIDEO_DIR --mode fallback --recommended-only" in stdout
+    assert "원본 영상은 수정하지 않습니다." in stdout
 
 
 def test_분석_도움말은_처리_모드_추천을_안내한다(
@@ -93,6 +100,11 @@ def test_분석_도움말은_처리_모드_추천을_안내한다(
     stdout = capsys.readouterr().out
     assert "fallback 추천을 분석합니다(기본 동작)" in stdout
     assert "--full-only" in stdout
+    assert "분석 출력:" in stdout
+    assert "사용 예시:" in stdout
+    assert "recordersync analyze VIDEO_DIR --audio-dir AUDIO_DIR" in stdout
+    assert "recordersync analyze VIDEO_DIR --report ANALYSIS.json" in stdout
+    assert "영상과 외부 오디오가 같은 디렉터리에 있으면 --audio-dir를 생략합니다." in stdout
 
 
 def test_처리_CLI는_안전한_교체_정책을_기본값으로_사용한다() -> None:
